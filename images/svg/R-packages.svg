@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 317 287" role="img" aria-label="R Packages symbol" fill="none">
+  <path d="M48 83 158.5 38 269 83 158.5 130z" fill="#d9e7f3"/>
+  <path d="M48 83v119l110.5 47V130z" fill="#b8ccdc"/>
+  <path d="M158.5 130v119L269 202V83z" fill="#98b2c7"/>
+  <path d="M48 83 158.5 130 269 83" stroke="#f4f8fb" stroke-width="6" stroke-linejoin="round"/>
+  <path d="M158.5 38v92" stroke="#f9fbfd" stroke-width="6" stroke-linecap="round"/>
+  <path d="M96 160 125 172l33-14 33 14 30-13" stroke="#f4f8fb" stroke-width="7" stroke-linecap="round" stroke-linejoin="round" opacity=".95"/>
+  <path d="M96 191 125 203l33-14 33 14 30-13" stroke="#f4f8fb" stroke-width="7" stroke-linecap="round" stroke-linejoin="round" opacity=".9"/>
+  <path d="M96 222 125 234l33-14 33 14 30-13" stroke="#f4f8fb" stroke-width="7" stroke-linecap="round" stroke-linejoin="round" opacity=".8"/>
+  <path d="M96 67 158.5 93 221 67" stroke="#9fb9ce" stroke-width="7" stroke-linecap="round" stroke-linejoin="round" opacity=".65"/>
+  <path d="M117 111 158.5 128 200 111" stroke="#7ea0ba" stroke-width="7" stroke-linecap="round" stroke-linejoin="round" opacity=".8"/>
+</svg>

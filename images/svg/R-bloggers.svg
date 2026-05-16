@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 226 223" role="img" aria-label="R Bloggers symbol" fill="none">
+  <rect x="42" y="38" width="56" height="56" rx="15" fill="#ffffff" stroke="#f26b21" stroke-width="10"/>
+  <rect x="128" y="38" width="56" height="56" rx="15" fill="#ffffff" stroke="#24313d" stroke-width="10"/>
+  <rect x="42" y="125" width="56" height="56" rx="15" fill="#ffffff" stroke="#24313d" stroke-width="10"/>
+  <rect x="128" y="125" width="56" height="56" rx="15" fill="#ffffff" stroke="#c7cdd2" stroke-width="10"/>
+  <circle cx="70" cy="153" r="11" fill="#f26b21"/>
+  <path d="M70 117c40 0 73 33 73 73" stroke="#f26b21" stroke-width="12" stroke-linecap="round"/>
+  <path d="M70 87c57 0 103 46 103 103" stroke="#f26b21" stroke-width="12" stroke-linecap="round"/>
+  <path d="M54 109h142" stroke="#f2f4f7" stroke-width="8" stroke-linecap="round"/>
+  <path d="M112 52v140" stroke="#f2f4f7" stroke-width="8" stroke-linecap="round"/>
+</svg>
