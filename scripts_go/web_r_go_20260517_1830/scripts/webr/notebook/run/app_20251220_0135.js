@@ -474,9 +474,34 @@ function Notebook() {
       const isRunAllCombo = key === "Enter" && e.altKey && (e.ctrlKey || e.metaKey);
       const isAltEnter = key === "Enter" && e.altKey && !e.ctrlKey && !e.metaKey;
       const isRunCombo = key === "Enter" && !e.altKey && (e.shiftKey || e.ctrlKey || e.metaKey);
-      const isHelpCombo = (key === "h" || key === "H") && (e.altKey || e.ctrlKey && e.shiftKey || e.metaKey && e.shiftKey);
-      if (!isRunAllCombo && !isAltEnter && !isRunCombo && !isHelpCombo)
+      const hasPrimary = e.ctrlKey || e.metaKey;
+      const isNewCombo = (key === "n" || key === "N") && hasPrimary && e.altKey && !e.shiftKey;
+      const isSaveCombo = (key === "s" || key === "S") && hasPrimary && !e.altKey && !e.shiftKey;
+      const isShareCombo = (key === "s" || key === "S") && hasPrimary && e.altKey && !e.shiftKey;
+      const isHelpCombo = key === "F1" || (key === "h" || key === "H") && hasPrimary && e.altKey && !e.shiftKey;
+      if (!isRunAllCombo && !isAltEnter && !isRunCombo && !isNewCombo && !isSaveCombo && !isShareCombo && !isHelpCombo)
         return;
+      if (isNewCombo) {
+        e.preventDefault();
+        e.stopPropagation();
+        if (!isViewMode && canEdit && !busy)
+          handleNewNotebook();
+        return;
+      }
+      if (isSaveCombo) {
+        e.preventDefault();
+        e.stopPropagation();
+        if (!isViewMode && canEdit && !busy)
+          handleSaveNotebook();
+        return;
+      }
+      if (isShareCombo) {
+        e.preventDefault();
+        e.stopPropagation();
+        if (!isViewMode)
+          handleShare();
+        return;
+      }
       if (isHelpCombo) {
         if (isViewMode)
           return;
@@ -517,7 +542,7 @@ function Notebook() {
     }
     window.addEventListener("keydown", handleKeyDown, true);
     return () => window.removeEventListener("keydown", handleKeyDown, true);
-  }, [cells, activeCellId, canEdit, ready, busy]);
+  }, [cells, activeCellId, canEdit, ready, busy, isViewMode, notebookTitle, shareMode, runtimeSessionInfo]);
   function handleNewNotebook() {
     if (!window.confirm("\uD604\uC7AC \uB178\uD2B8\uBD81 \uB0B4\uC6A9\uC744 \uBAA8\uB450 \uC9C0\uC6B0\uACE0 \uC0C8\uB85C \uC2DC\uC791\uD560\uAE4C\uC694?"))
       return;
@@ -691,15 +716,19 @@ function Notebook() {
   }
   const [pkgInput, setPkgInput] = useState("");
   const [installedPackages, setInstalledPackages] = useState([...CORE_PACKAGES]);
+  const [pkgWorking, setPkgWorking] = useState(null);
   const [dataFiles, setDataFiles] = useState([]);
   async function handleInstallPackage() {
     if (!webrInstance)
+      return;
+    if (pkgWorking)
       return;
     const pkg = (pkgInput || "").trim();
     if (!pkg)
       return;
     try {
       setBusy(true);
+      setPkgWorking({ action: "install", pkg });
       setStatus(`Installing package '${pkg}'...`);
       await webrInstance.installPackages([pkg]);
       const ok = await webrInstance.evalRBoolean(`"${pkg}" %in% rownames(installed.packages())`);
@@ -720,10 +749,15 @@ webR\uC740 WebAssembly\uB85C \uBBF8\uB9AC \uBE4C\uB4DC\uB41C \uD328\uD0A4\uC9C0\
       alert("Failed: " + (e && e.message ? e.message : String(e)));
       setStatus("Install failed");
     } finally {
+      setPkgWorking(null);
       setBusy(false);
     }
   }
   async function handleRemovePackage(pkg) {
+    if (!webrInstance)
+      return;
+    if (pkgWorking)
+      return;
     if (CORE_PACKAGES.includes(pkg)) {
       alert("Cannot remove core package.");
       return;
@@ -732,10 +766,12 @@ webR\uC740 WebAssembly\uB85C \uBBF8\uB9AC \uBE4C\uB4DC\uB41C \uD328\uD0A4\uC9C0\
       return;
     try {
       setBusy(true);
+      setPkgWorking({ action: "remove", pkg });
       await webrInstance.evalRVoid(`if ("${pkg}" %in% rownames(installed.packages())) remove.packages("${pkg}")`);
     } catch (e) {
       console.warn(e);
     } finally {
+      setPkgWorking(null);
       setBusy(false);
       setInstalledPackages((prev) => prev.filter((p) => p !== pkg));
       setStatus(`Removed '${pkg}'.`);
@@ -1186,6 +1222,7 @@ ${varName}`;
     {
       type: "button",
       onClick: handleNewNotebook,
+      title: "New notebook (Ctrl/Cmd+Alt+N)",
       className: "inline-flex items-center gap-1 rounded-full border border-slate-300 px-3 py-1 text-xs hover:bg-slate-50 dark:border-slate-600 dark:hover:bg-slate-800"
     },
     /* @__PURE__ */ React.createElement("span", { className: "font-medium" }, "New")
@@ -1194,6 +1231,7 @@ ${varName}`;
     {
       type: "button",
       onClick: handleSaveNotebook,
+      title: "Save notebook (Ctrl/Cmd+S)",
       className: "inline-flex items-center gap-1 rounded-full border border-slate-300 px-3 py-1 text-xs hover:bg-slate-50 dark:border-slate-600 dark:hover:bg-slate-800"
     },
     /* @__PURE__ */ React.createElement("span", { className: "font-medium" }, "Save")
@@ -1202,6 +1240,7 @@ ${varName}`;
     {
       type: "button",
       onClick: () => setShowHelp(true),
+      title: "Help (F1 or Ctrl/Cmd+Alt+H)",
       className: "inline-flex items-center gap-1 rounded-full border border-slate-300 px-3 py-1 text-xs hover:bg-slate-50 dark:border-slate-600 dark:hover:bg-slate-800"
     },
     /* @__PURE__ */ React.createElement("span", { className: "font-medium" }, "Help")
@@ -1210,6 +1249,7 @@ ${varName}`;
     {
       type: "button",
       onClick: handleShare,
+      title: "Share notebook (Ctrl/Cmd+Alt+S)",
       className: "inline-flex items-center gap-1 rounded-full border border-slate-300 px-3 py-1 text-xs hover:bg-slate-50 dark:border-slate-600 dark:hover:bg-slate-800"
     },
     /* @__PURE__ */ React.createElement("span", { className: "font-medium" }, "Share")
@@ -1463,7 +1503,15 @@ ${varName}`;
       },
       "\u00D7"
     )),
-    /* @__PURE__ */ React.createElement("section", { className: "mb-6" }, /* @__PURE__ */ React.createElement("div", { className: "mb-2 flex items-center justify-between" }, /* @__PURE__ */ React.createElement("h2", { className: "text-[12px] font-semibold text-slate-600 dark:text-slate-200" }, "PACKAGE MANAGER")), canEdit ? /* @__PURE__ */ React.createElement("div", { className: "mb-2 flex gap-1" }, /* @__PURE__ */ React.createElement("input", { type: "text", placeholder: "e.g. dplyr", value: pkgInput, onChange: (e) => setPkgInput(e.target.value), className: "flex-1 rounded-lg border px-2 py-1 text-xs " + (darkMode ? "border-slate-700 bg-slate-900 text-slate-100" : "border-slate-200 bg-white text-slate-900") }), /* @__PURE__ */ React.createElement("button", { type: "button", onClick: handleInstallPackage, className: "rounded-lg bg-orange-500 px-3 py-1 text-xs font-medium text-white hover:bg-orange-600" }, "Add")) : /* @__PURE__ */ React.createElement("div", { className: "mb-2 text-[11px] text-slate-400" }, "View mode: packages are read-only."), /* @__PURE__ */ React.createElement("div", { className: "mb-2 flex flex-wrap gap-1" }, POPULAR_PACKAGES.map((pkg) => /* @__PURE__ */ React.createElement("button", { key: pkg, type: "button", onClick: () => setPkgInput(pkg), className: "rounded-full bg-slate-100 px-2 py-0.5 text-[11px] text-slate-600 hover:bg-orange-50 hover:text-orange-600 dark:bg-slate-800 dark:text-slate-300" }, pkg))), /* @__PURE__ */ React.createElement("div", { className: "rounded-xl border text-[11px] " + (darkMode ? "border-slate-800 bg-slate-900" : "border-slate-200 bg-white") }, /* @__PURE__ */ React.createElement("div", { className: "border-b px-2 py-1.5 text-[11px] text-slate-400 dark:border-slate-800" }, "INSTALLED PACKAGES"), /* @__PURE__ */ React.createElement("ul", { className: "max-h-40 overflow-y-auto px-2 py-1.5 space-y-0.5" }, installedPackages.map((pkg) => /* @__PURE__ */ React.createElement("li", { key: pkg, className: "flex items-center justify-between py-0.5" }, /* @__PURE__ */ React.createElement("span", { className: "text-slate-600 dark:text-slate-200" }, pkg), /* @__PURE__ */ React.createElement("div", { className: "flex items-center gap-1" }, /* @__PURE__ */ React.createElement("span", { className: "text-[10px] text-emerald-500" }, CORE_PACKAGES.includes(pkg) ? "core" : "ready"), canEdit && !CORE_PACKAGES.includes(pkg) && /* @__PURE__ */ React.createElement("button", { type: "button", onClick: () => handleRemovePackage(pkg), className: "rounded-full px-1 text-[11px] text-slate-400 hover:bg-red-50 hover:text-red-500 dark:hover:bg-slate-800", title: "Remove package" }, "\u2715"))))))),
+    /* @__PURE__ */ React.createElement("section", { className: "mb-6" }, /* @__PURE__ */ React.createElement("div", { className: "mb-2 flex items-center justify-between" }, /* @__PURE__ */ React.createElement("h2", { className: "text-[12px] font-semibold text-slate-600 dark:text-slate-200" }, "PACKAGE MANAGER")), canEdit ? /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("div", { className: "mb-2 flex gap-1" }, /* @__PURE__ */ React.createElement("input", { type: "text", placeholder: "e.g. dplyr", value: pkgInput, onChange: (e) => setPkgInput(e.target.value), onKeyDown: (e) => {
+      if (e.key === "Enter" && !e.isComposing) {
+        e.preventDefault();
+        handleInstallPackage();
+      }
+    }, disabled: !!pkgWorking, className: "flex-1 rounded-lg border px-2 py-1 text-xs " + (pkgWorking ? "cursor-wait opacity-70 " : "") + (darkMode ? "border-slate-700 bg-slate-900 text-slate-100" : "border-slate-200 bg-white text-slate-900") }), /* @__PURE__ */ React.createElement("button", { type: "button", disabled: !!pkgWorking, onClick: handleInstallPackage, className: "inline-flex items-center justify-center gap-1 rounded-lg px-3 py-1 text-xs font-medium text-white " + (pkgWorking ? "cursor-wait bg-orange-400" : "bg-orange-500 hover:bg-orange-600") }, pkgWorking && pkgWorking.action === "install" ? /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("span", { className: "h-3 w-3 animate-spin rounded-full border-2 border-white/80 border-t-transparent" }), "Adding") : "Add")), pkgWorking ? /* @__PURE__ */ React.createElement("div", { className: "mb-2 inline-flex items-center gap-2 text-[11px] text-slate-500" }, /* @__PURE__ */ React.createElement("span", { className: "h-3 w-3 animate-spin rounded-full border-2 border-orange-400 border-t-transparent" }), pkgWorking.action === "remove" ? `Removing ${pkgWorking.pkg}...` : `Installing ${pkgWorking.pkg}...`) : null) : /* @__PURE__ */ React.createElement("div", { className: "mb-2 text-[11px] text-slate-400" }, "View mode: packages are read-only."), /* @__PURE__ */ React.createElement("div", { className: "mb-2 flex flex-wrap gap-1" }, POPULAR_PACKAGES.map((pkg) => /* @__PURE__ */ React.createElement("button", { key: pkg, type: "button", disabled: !!pkgWorking, onClick: () => setPkgInput(pkg), className: "rounded-full px-2 py-0.5 text-[11px] " + (pkgWorking ? "cursor-wait bg-slate-100 text-slate-400" : "bg-slate-100 text-slate-600 hover:bg-orange-50 hover:text-orange-600 dark:bg-slate-800 dark:text-slate-300") }, pkg))), /* @__PURE__ */ React.createElement("div", { className: "rounded-xl border text-[11px] " + (darkMode ? "border-slate-800 bg-slate-900" : "border-slate-200 bg-white") }, /* @__PURE__ */ React.createElement("div", { className: "border-b px-2 py-1.5 text-[11px] text-slate-400 dark:border-slate-800" }, "INSTALLED PACKAGES"), /* @__PURE__ */ React.createElement("ul", { className: "max-h-40 overflow-y-auto px-2 py-1.5 space-y-0.5" }, installedPackages.map((pkg) => {
+      const isRemoving = pkgWorking && pkgWorking.action === "remove" && pkgWorking.pkg === pkg;
+      return /* @__PURE__ */ React.createElement("li", { key: pkg, className: "flex items-center justify-between py-0.5" }, /* @__PURE__ */ React.createElement("span", { className: "text-slate-600 dark:text-slate-200" }, pkg), /* @__PURE__ */ React.createElement("div", { className: "flex items-center gap-1" }, /* @__PURE__ */ React.createElement("span", { className: "inline-flex items-center gap-1 text-[10px] " + (isRemoving ? "text-orange-500" : "text-emerald-500") }, isRemoving && /* @__PURE__ */ React.createElement("span", { className: "h-2.5 w-2.5 animate-spin rounded-full border-2 border-orange-400 border-t-transparent" }), CORE_PACKAGES.includes(pkg) ? "core" : isRemoving ? "removing" : "ready"), canEdit && !CORE_PACKAGES.includes(pkg) && /* @__PURE__ */ React.createElement("button", { type: "button", disabled: !!pkgWorking, onClick: () => handleRemovePackage(pkg), className: "inline-flex h-5 w-5 items-center justify-center rounded-full text-[11px] " + (pkgWorking ? "cursor-wait text-slate-300" : "text-slate-400 hover:bg-red-50 hover:text-red-500 dark:hover:bg-slate-800"), title: "Remove package" }, isRemoving ? /* @__PURE__ */ React.createElement("span", { className: "h-3 w-3 animate-spin rounded-full border-2 border-orange-400 border-t-transparent" }) : "\u2715")));
+    })))),
     /* @__PURE__ */ React.createElement("section", { className: "mb-6" }, /* @__PURE__ */ React.createElement("div", { className: "mb-2 flex items-center justify-between" }, /* @__PURE__ */ React.createElement("h2", { className: "text-[12px] font-semibold text-slate-600 dark:text-slate-200" }, "DATA MANAGER")), canEdit && /* @__PURE__ */ React.createElement("label", { className: "mb-2 inline-flex w-full cursor-pointer items-center justify-center rounded-lg border border-dashed border-slate-300 px-2 py-2 text-[11px] text-slate-500 hover:border-orange-400 hover:text-orange-500 dark:border-slate-700 dark:hover:border-orange-400" }, /* @__PURE__ */ React.createElement("span", null, "CSV / RDS / XLSX / TXT Upload"), /* @__PURE__ */ React.createElement("input", { type: "file", accept: ".csv,.rds,.txt,.xlsx,.xls", className: "hidden", onChange: handleDataUpload })), /* @__PURE__ */ React.createElement("div", { className: "rounded-xl border text-[11px] " + (darkMode ? "border-slate-800 bg-slate-900" : "border-slate-200 bg-white") }, /* @__PURE__ */ React.createElement("div", { className: "border-b px-2 py-1.5 text-[11px] text-slate-400 dark:border-slate-800" }, "UPLOADED FILES"), dataFiles.length === 0 ? /* @__PURE__ */ React.createElement("div", { className: "px-2 py-2 text-[11px] text-slate-400" }, "No files yet.") : /* @__PURE__ */ React.createElement("ul", { className: "max-h-40 overflow-y-auto px-2 py-1.5 space-y-1" }, dataFiles.map((f) => /* @__PURE__ */ React.createElement("li", { key: f.path, className: "flex flex-col gap-0.5 text-[11px]" }, /* @__PURE__ */ React.createElement("div", { className: "flex items-center justify-between" }, /* @__PURE__ */ React.createElement("span", { className: "text-slate-800 dark:text-slate-100" }, f.name), /* @__PURE__ */ React.createElement("button", { type: "button", onClick: () => {
       if (!canEdit)
         return;
@@ -1484,7 +1532,7 @@ ${varName}`;
   )), showHelp && /* @__PURE__ */ React.createElement("div", { className: "fixed inset-0 z-40 flex items-center justify-center bg-black/40", onClick: (e) => {
     if (e.target === e.currentTarget)
       setShowHelp(false);
-  } }, /* @__PURE__ */ React.createElement("div", { className: "w-full max-w-lg rounded-2xl border p-4 text-sm " + (darkMode ? "border-slate-700 bg-slate-950 text-slate-100" : "border-slate-200 bg-white text-slate-800") }, /* @__PURE__ */ React.createElement("div", { className: "mb-2 flex items-center justify-between" }, /* @__PURE__ */ React.createElement("h2", { className: "text-sm font-semibold" }, "Web-R Notebook Help"), /* @__PURE__ */ React.createElement("button", { type: "button", onClick: () => setShowHelp(false), className: "text-slate-400 hover:text-slate-600" }, "\u2715")), /* @__PURE__ */ React.createElement("div", { className: "space-y-2 text-[12px]" }, /* @__PURE__ */ React.createElement("p", { className: "font-medium" }, "Keyboard Shortcuts"), /* @__PURE__ */ React.createElement("ul", { className: "list-disc pl-5 space-y-1" }, /* @__PURE__ */ React.createElement("li", null, /* @__PURE__ */ React.createElement("strong", null, "Ctrl+Enter"), " / ", /* @__PURE__ */ React.createElement("strong", null, "Cmd+Enter"), ": Run current cell"), /* @__PURE__ */ React.createElement("li", null, /* @__PURE__ */ React.createElement("strong", null, "Ctrl+Shift+Enter"), " / ", /* @__PURE__ */ React.createElement("strong", null, "Cmd+Shift+Enter"), ": Run cell + insert below"), /* @__PURE__ */ React.createElement("li", null, /* @__PURE__ */ React.createElement("strong", null, "Alt+Enter"), ": Insert new R Code cell below"), /* @__PURE__ */ React.createElement("li", null, /* @__PURE__ */ React.createElement("strong", null, "Ctrl+Alt+Enter"), " / ", /* @__PURE__ */ React.createElement("strong", null, "Cmd+Alt+Enter"), ": Run all cells"))))), showShare && /* @__PURE__ */ React.createElement("div", { className: "fixed inset-0 z-40 flex items-center justify-center bg-black/40", onClick: (e) => {
+  } }, /* @__PURE__ */ React.createElement("div", { className: "w-full max-w-lg rounded-2xl border p-4 text-sm " + (darkMode ? "border-slate-700 bg-slate-950 text-slate-100" : "border-slate-200 bg-white text-slate-800") }, /* @__PURE__ */ React.createElement("div", { className: "mb-2 flex items-center justify-between" }, /* @__PURE__ */ React.createElement("h2", { className: "text-sm font-semibold" }, "Web-R Notebook Help"), /* @__PURE__ */ React.createElement("button", { type: "button", onClick: () => setShowHelp(false), className: "text-slate-400 hover:text-slate-600" }, "\u2715")), /* @__PURE__ */ React.createElement("div", { className: "space-y-2 text-[12px]" }, /* @__PURE__ */ React.createElement("p", { className: "font-medium" }, "Keyboard Shortcuts"), /* @__PURE__ */ React.createElement("ul", { className: "list-disc pl-5 space-y-1" }, /* @__PURE__ */ React.createElement("li", null, /* @__PURE__ */ React.createElement("strong", null, "Ctrl+S"), " / ", /* @__PURE__ */ React.createElement("strong", null, "Cmd+S"), ": Save notebook"), /* @__PURE__ */ React.createElement("li", null, /* @__PURE__ */ React.createElement("strong", null, "Ctrl+Alt+N"), " / ", /* @__PURE__ */ React.createElement("strong", null, "Cmd+Alt+N"), ": New notebook"), /* @__PURE__ */ React.createElement("li", null, /* @__PURE__ */ React.createElement("strong", null, "Ctrl+Alt+H"), " / ", /* @__PURE__ */ React.createElement("strong", null, "Cmd+Alt+H"), " / ", /* @__PURE__ */ React.createElement("strong", null, "F1"), ": Help"), /* @__PURE__ */ React.createElement("li", null, /* @__PURE__ */ React.createElement("strong", null, "Ctrl+Alt+S"), " / ", /* @__PURE__ */ React.createElement("strong", null, "Cmd+Alt+S"), ": Share notebook"), /* @__PURE__ */ React.createElement("li", null, /* @__PURE__ */ React.createElement("strong", null, "Ctrl+Enter"), " / ", /* @__PURE__ */ React.createElement("strong", null, "Cmd+Enter"), ": Run current cell"), /* @__PURE__ */ React.createElement("li", null, /* @__PURE__ */ React.createElement("strong", null, "Ctrl+Shift+Enter"), " / ", /* @__PURE__ */ React.createElement("strong", null, "Cmd+Shift+Enter"), ": Run cell + insert below"), /* @__PURE__ */ React.createElement("li", null, /* @__PURE__ */ React.createElement("strong", null, "Alt+Enter"), ": Insert new R Code cell below"), /* @__PURE__ */ React.createElement("li", null, /* @__PURE__ */ React.createElement("strong", null, "Ctrl+Alt+Enter"), " / ", /* @__PURE__ */ React.createElement("strong", null, "Cmd+Alt+Enter"), ": Run all cells"))))), showShare && /* @__PURE__ */ React.createElement("div", { className: "fixed inset-0 z-40 flex items-center justify-center bg-black/40", onClick: (e) => {
     if (e.target === e.currentTarget)
       setShowShare(false);
   } }, /* @__PURE__ */ React.createElement("div", { className: "w-full max-w-xl rounded-2xl border p-4 text-sm " + (darkMode ? "border-slate-700 bg-slate-950 text-slate-100" : "border-slate-200 bg-white text-slate-800") }, /* @__PURE__ */ React.createElement("div", { className: "mb-2 flex items-center justify-between" }, /* @__PURE__ */ React.createElement("h2", { className: "text-sm font-semibold" }, "Share Notebook"), /* @__PURE__ */ React.createElement("button", { type: "button", onClick: () => setShowShare(false), className: "text-slate-400 hover:text-slate-600", "aria-label": "Close share dialog" }, "\u2715")), /* @__PURE__ */ React.createElement("div", { className: "space-y-3 text-[12px]" }, /* @__PURE__ */ React.createElement("div", { className: "rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-slate-600" }, /* @__PURE__ */ React.createElement("span", { className: "font-semibold text-slate-800" }, "\uD604\uC7AC \uC0C1\uD0DC: "), shareMode === 1 ? "\uCEE4\uBBA4\uB2C8\uD2F0\uC5D0 \uACF5\uC720" : shareMode === 2 ? "\uB9C1\uD06C\uB85C\uB9CC \uACF5\uC720" : "\uBE44\uACF5\uAC1C"), /* @__PURE__ */ React.createElement("div", { className: "flex flex-col gap-2 sm:flex-row", role: "radiogroup", "aria-label": "Notebook sharing mode" }, /* @__PURE__ */ React.createElement(
