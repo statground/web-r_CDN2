@@ -1,0 +1,88 @@
+.webr-notebook-site-shell {
+  width: 100%;
+}
+
+.webr-notebook-site-app {
+  height: min(900px, calc(100vh - 220px));
+  min-height: 680px;
+}
+
+.webr-notebook-site-app .CodeMirror {
+  height: auto;
+  min-height: 140px;
+  font-size: 13px;
+  line-height: 1.5;
+  padding: 0.75rem;
+  border-radius: 0.75rem;
+}
+
+.webr-notebook-site-app .output-area {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-size: 12px;
+  white-space: pre;
+  word-break: normal;
+  overflow-x: auto;
+}
+
+.webr-notebook-site-app .markdown-body h1 {
+  font-size: 1.5rem;
+  font-weight: 700;
+  margin-bottom: 0.5rem;
+}
+
+.webr-notebook-site-app .markdown-body h2 {
+  font-size: 1.25rem;
+  font-weight: 600;
+  margin-top: 1rem;
+  margin-bottom: 0.25rem;
+}
+
+.webr-notebook-site-app .markdown-body p {
+  margin-top: 0;
+  margin-bottom: 0.75rem;
+  line-height: 1.6;
+}
+
+.webr-notebook-site-app .markdown-body > * + * {
+  margin-top: 0.4rem;
+}
+
+.webr-notebook-site-app .markdown-body blockquote {
+  margin-top: 0.6rem;
+  margin-bottom: 0.6rem;
+  padding-left: 0.75rem;
+  border-left: 3px solid #e5e7eb;
+  color: #4b5563;
+}
+
+.webr-notebook-site-app .markdown-body h1,
+.webr-notebook-site-app .markdown-body h2,
+.webr-notebook-site-app .markdown-body h3 {
+  margin-top: 1.6rem;
+  margin-bottom: 0.9rem;
+  font-weight: 700;
+}
+
+.webr-notebook-site-app .markdown-body code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  background: rgba(15, 23, 42, 0.04);
+  padding: 1px 4px;
+  border-radius: 4px;
+}
+
+@media (max-width: 1023px) {
+  .webr-notebook-site-app {
+    height: min(840px, calc(100vh - 180px));
+    min-height: 640px;
+  }
+}
+
+@media (max-width: 640px) {
+  .webr-notebook-site-app {
+    height: calc(100vh - 132px);
+    min-height: 620px;
+    border-left: 0;
+    border-right: 0;
+    border-radius: 0;
+  }
+}
