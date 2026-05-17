@@ -1,4 +1,13 @@
 let class_span_btn_default = "flex flex-row justify-center items-center w-fit h-[20px] px-1.5 rounded-xl";
+const webr_status_badge_base = "inline-flex h-[24px] min-w-[44px] items-center justify-center rounded-md px-2 text-[12px] font-extrabold leading-none";
+const webr_status_badge_tones = {
+  new: "bg-red-50 text-red-600",
+  secret: "bg-slate-100 text-slate-700",
+  my: "bg-blue-50 text-blue-700"
+};
+function WebRStatusBadge(props) {
+  return /* @__PURE__ */ React.createElement("span", { class: `${webr_status_badge_base} ${webr_status_badge_tones[props.tone] || webr_status_badge_tones.secret}` }, props.label);
+}
 function getIndexArticleHref(data) {
   const item = data || {};
   const uuid = item.uuid || item.uuid_article || "";
@@ -74,13 +83,13 @@ function Span_btn_article_comment(props) {
   ), props.cnt_comment.toString().replace(/\B(?<!\.\d*)(?=(\d{3})+(?!\d))/g, ","));
 }
 function Span_btn_article_new(props) {
-  return props.toggle === 1 && /* @__PURE__ */ React.createElement("span", { class: `${class_span_btn_default} text-[10px] bg-red-500 text-white animate-pulse` }, "NEW");
+  return props.toggle === 1 && /* @__PURE__ */ React.createElement(WebRStatusBadge, { tone: "new", label: "NEW" });
 }
 function Span_btn_article_secret(props) {
-  return props.toggle === 1 && /* @__PURE__ */ React.createElement("span", { class: `${class_span_btn_default} text-[10px] bg-gray-500 text-white animate-pulse` }, "SECRET");
+  return props.toggle === 1 && /* @__PURE__ */ React.createElement(WebRStatusBadge, { tone: "secret", label: "SECRET" });
 }
 function Span_btn_my_article(props) {
-  return props.toggle === "writer" && /* @__PURE__ */ React.createElement("span", { class: `${class_span_btn_default} text-[10px] bg-blue-500 text-white animate-pulse` }, "MY");
+  return props.toggle === "writer" && /* @__PURE__ */ React.createElement(WebRStatusBadge, { tone: "my", label: "MY" });
 }
 function Div_main_header() {
   return /* @__PURE__ */ React.createElement("div", { class: "flex flex-col justify-center items-center text-center w-full" }, /* @__PURE__ */ React.createElement("h1", { class: "mb-4 text-2xl font-extrabold leading-none tracking-tight text-gray-900 md:text-5xl" }, "\uC6F9\uC5D0\uC11C \uD558\uB294 ", /* @__PURE__ */ React.createElement("mark", { class: "px-2 text-white bg-blue-600 rounded" }, "R"), " \uD1B5\uACC4"), /* @__PURE__ */ React.createElement("p", { class: "text-base font-normal text-gray-500 md:text-lg lg:text-xl" }, '"\uC6F9\uC5D0\uC11C \uD558\uB294 R\uD1B5\uACC4"\uB294, \uD1B5\uACC4\uC5D0\uB294 \uAD00\uC2EC\uC774 \uC788\uC73C\uB098 R\uC744 \uC5B4\uB824\uC6CC\uD558\uB294 \uC5EC\uB7EC \uC5F0\uAD6C\uC790\uB4E4\uC744 \uC704\uD55C \uD504\uB85C\uC81D\uD2B8\uC785\uB2C8\uB2E4.', /* @__PURE__ */ React.createElement("br", null), "R\uC124\uCE58\uC5C6\uC774 \uD074\uB9AD\uB9CC\uC73C\uB85C \uC6F9\uC5D0 \uC788\uB294 \uC11C\uBC84\uB97C \uC774\uC6A9\uD558\uC5EC \uD1B5\uACC4\uBD84\uC11D\uC744 \uD558\uACE0 \uBCF4\uB2E4 R\uC744 \uC27D\uAC8C \uC0AC\uC6A9\uD558\uAE30 \uC704\uD55C \uD328\uD0A4\uC9C0 \uBC0F \uC571 \uACF5\uB3D9\uAC1C\uBC1C\uC744 \uBAA9\uD45C\uB85C \uD558\uACE0 \uC788\uC2B5\uB2C8\uB2E4."));

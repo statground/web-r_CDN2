@@ -579,6 +579,15 @@ function _compressImageOnce(blob, maxWidth, maxHeight, quality) {
   });
 }
 const class_span_btn_default = "flex flex-row justify-center items-center w-fit h-[20px] px-1.5 rounded-xl";
+const webr_status_badge_base = "inline-flex h-[24px] min-w-[44px] items-center justify-center rounded-md px-2 text-[12px] font-extrabold leading-none";
+const webr_status_badge_tones = {
+  new: "bg-red-50 text-red-600",
+  secret: "bg-slate-100 text-slate-700",
+  my: "bg-blue-50 text-blue-700"
+};
+function WebRStatusBadge(props) {
+  return /* @__PURE__ */ React.createElement("span", { class: `${webr_status_badge_base} ${webr_status_badge_tones[props.tone] || webr_status_badge_tones.secret}` }, props.label);
+}
 function Span_btn_user(props) {
   const roles = {
     "\uAD00\uB9AC\uC790": "yellow",
@@ -600,19 +609,19 @@ function Span_btn_article_comment(props) {
   return props.cnt_comment > 0 && /* @__PURE__ */ React.createElement("span", { class: `${class_span_btn_default} text-xs bg-purple-100 text-blue-800` }, /* @__PURE__ */ React.createElement("img", { src: "https://cdn.jsdelivr.net/gh/statground/web-R_CDN@f3e464e95616fa13712baa6adbbb0b6cda7ee821/images/svg/comment.svg", class: "w-3 h-3 mr-1" }), props.cnt_comment.toString().replace(/\B(?<!\.\d*)(?=(\d{3})+(?!\d))/g, ","));
 }
 function Span_btn_article_new(props) {
-  return props.toggle === 1 && /* @__PURE__ */ React.createElement("span", { class: `${class_span_btn_default} text-[10px] bg-red-500 text-white animate-pulse` }, "NEW");
+  return props.toggle === 1 && /* @__PURE__ */ React.createElement(WebRStatusBadge, { tone: "new", label: "NEW" });
 }
 function Span_btn_article_secret(props) {
-  return props.toggle === 1 && /* @__PURE__ */ React.createElement("span", { class: `${class_span_btn_default} text-[10px] bg-gray-500 text-white animate-pulse` }, "SECRET");
+  return props.toggle === 1 && /* @__PURE__ */ React.createElement(WebRStatusBadge, { tone: "secret", label: "SECRET" });
 }
 function Span_btn_comment_secret(props) {
-  return props.toggle === 1 && /* @__PURE__ */ React.createElement("span", { class: `${class_span_btn_default} text-[10px] bg-gray-500 text-white animate-pulse` }, "SECRET");
+  return props.toggle === 1 && /* @__PURE__ */ React.createElement(WebRStatusBadge, { tone: "secret", label: "SECRET" });
 }
 function Span_btn_my_article(props) {
-  return props.toggle === "writer" && /* @__PURE__ */ React.createElement("span", { class: `${class_span_btn_default} text-[10px] bg-blue-500 text-white animate-pulse` }, "MY");
+  return props.toggle === "writer" && /* @__PURE__ */ React.createElement(WebRStatusBadge, { tone: "my", label: "MY" });
 }
 function Span_btn_my_comment(props) {
-  return props.toggle === "writer" && /* @__PURE__ */ React.createElement("span", { class: `${class_span_btn_default} text-[10px] bg-blue-500 text-white animate-pulse` }, "MY");
+  return props.toggle === "writer" && /* @__PURE__ */ React.createElement(WebRStatusBadge, { tone: "my", label: "MY" });
 }
 function Div_box_header(props) {
   return /* @__PURE__ */ React.createElement("div", { class: "flex w-full items-center justify-between gap-2 border-b border-slate-200 pb-2" }, /* @__PURE__ */ React.createElement("p", { class: "text-base font-bold text-slate-950" }, props.title), props.count != null && /* @__PURE__ */ React.createElement("span", { class: "rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-600" }, props.count));
@@ -911,7 +920,7 @@ function LatestArticleItem(props) {
   const meta = latestArticleMetaParts(article);
   const title = cleanBoardTitle(article.title) || "\uC81C\uBAA9 \uC5C6\uC74C";
   const linkProps = article.category_url === "notebook" && article.url ? { href: articleHrefFromData(article), target: "_blank", rel: "noopener noreferrer" } : { href: articleHrefFromData(article) };
-  return /* @__PURE__ */ React.createElement("a", { ...linkProps, class: "group block w-full rounded-lg border border-transparent px-4 py-3 transition hover:border-blue-200 hover:bg-blue-50/70" }, /* @__PURE__ */ React.createElement("div", { class: "mb-1 flex flex-wrap items-center gap-2" }, /* @__PURE__ */ React.createElement("span", { class: "rounded-full border px-2 py-0.5 text-xs font-semibold " + info.className }, info.label), /* @__PURE__ */ React.createElement(RCommunitySourceChip, { article }), article.check_reader === "writer" && /* @__PURE__ */ React.createElement("span", { class: "rounded-full bg-blue-600 px-2 py-0.5 text-[11px] font-bold text-white" }, "MY"), article.is_new === 1 && /* @__PURE__ */ React.createElement("span", { class: "rounded-full bg-rose-500 px-2 py-0.5 text-[11px] font-bold text-white" }, "NEW")), /* @__PURE__ */ React.createElement("p", { class: "whitespace-normal break-keep text-base font-bold leading-6 text-slate-950 group-hover:text-blue-800" }, title), /* @__PURE__ */ React.createElement("div", { class: "mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500" }, meta.map((part, index) => /* @__PURE__ */ React.createElement("span", { key: "latest_meta_" + index }, part))));
+  return /* @__PURE__ */ React.createElement("a", { ...linkProps, class: "group block w-full rounded-lg border border-transparent px-4 py-3 transition hover:border-blue-200 hover:bg-blue-50/70" }, /* @__PURE__ */ React.createElement("div", { class: "mb-1 flex flex-wrap items-center gap-2" }, /* @__PURE__ */ React.createElement("span", { class: "rounded-full border px-2 py-0.5 text-xs font-semibold " + info.className }, info.label), /* @__PURE__ */ React.createElement(RCommunitySourceChip, { article }), article.check_reader === "writer" && /* @__PURE__ */ React.createElement(WebRStatusBadge, { tone: "my", label: "MY" }), article.is_new === 1 && /* @__PURE__ */ React.createElement(WebRStatusBadge, { tone: "new", label: "NEW" })), /* @__PURE__ */ React.createElement("p", { class: "whitespace-normal break-keep text-base font-bold leading-6 text-slate-950 group-hover:text-blue-800" }, title), /* @__PURE__ */ React.createElement("div", { class: "mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500" }, meta.map((part, index) => /* @__PURE__ */ React.createElement("span", { key: "latest_meta_" + index }, part))));
 }
 function PaginationButton(props) {
   const disabled = !!props.disabled;
@@ -958,7 +967,7 @@ function SidebarArticleItem(props) {
   const readText = numberText(article.cnt_read);
   const commentText = numberText(article.cnt_comment);
   const title = cleanBoardTitle(article.title) || "\uC81C\uBAA9 \uC5C6\uC74C";
-  return /* @__PURE__ */ React.createElement("a", { href: articleHrefFromData(article), class: "group block rounded-md border border-transparent px-2 py-2 transition hover:border-blue-200 hover:bg-blue-50/60" }, /* @__PURE__ */ React.createElement("div", { class: "mb-1 flex min-w-0 flex-wrap items-center gap-1.5" }, /* @__PURE__ */ React.createElement("span", { class: "shrink-0 rounded-full border px-2 py-0.5 text-[11px] font-semibold leading-4 " + info.className }, info.label), /* @__PURE__ */ React.createElement(RCommunitySourceChip, { article }), article.check_reader === "writer" && /* @__PURE__ */ React.createElement("span", { class: "shrink-0 rounded-full bg-blue-600 px-1.5 py-0.5 text-[10px] font-bold leading-4 text-white" }, "MY"), article.is_new === 1 && /* @__PURE__ */ React.createElement("span", { class: "shrink-0 rounded-full bg-rose-500 px-1.5 py-0.5 text-[10px] font-bold leading-4 text-white" }, "NEW")), /* @__PURE__ */ React.createElement("p", { class: "truncate text-sm font-semibold leading-5 text-slate-950 group-hover:text-blue-800" }, title), /* @__PURE__ */ React.createElement("div", { class: "mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-slate-500" }, /* @__PURE__ */ React.createElement("span", { class: "max-w-[9rem] truncate font-medium text-slate-700" }, article.user_nickname || "\uC791\uC131\uC790"), compactDate(article.created_at) && /* @__PURE__ */ React.createElement("span", null, compactDate(article.created_at)), readText && /* @__PURE__ */ React.createElement("span", null, "\uC870\uD68C ", readText), commentText && /* @__PURE__ */ React.createElement("span", null, "\uB313\uAE00 ", commentText)));
+  return /* @__PURE__ */ React.createElement("a", { href: articleHrefFromData(article), class: "group block rounded-md border border-transparent px-2 py-2 transition hover:border-blue-200 hover:bg-blue-50/60" }, /* @__PURE__ */ React.createElement("div", { class: "mb-1 flex min-w-0 flex-wrap items-center gap-1.5" }, /* @__PURE__ */ React.createElement("span", { class: "shrink-0 rounded-full border px-2 py-0.5 text-[11px] font-semibold leading-4 " + info.className }, info.label), /* @__PURE__ */ React.createElement(RCommunitySourceChip, { article }), article.check_reader === "writer" && /* @__PURE__ */ React.createElement(WebRStatusBadge, { tone: "my", label: "MY" }), article.is_new === 1 && /* @__PURE__ */ React.createElement(WebRStatusBadge, { tone: "new", label: "NEW" })), /* @__PURE__ */ React.createElement("p", { class: "truncate text-sm font-semibold leading-5 text-slate-950 group-hover:text-blue-800" }, title), /* @__PURE__ */ React.createElement("div", { class: "mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-slate-500" }, /* @__PURE__ */ React.createElement("span", { class: "max-w-[9rem] truncate font-medium text-slate-700" }, article.user_nickname || "\uC791\uC131\uC790"), compactDate(article.created_at) && /* @__PURE__ */ React.createElement("span", null, compactDate(article.created_at)), readText && /* @__PURE__ */ React.createElement("span", null, "\uC870\uD68C ", readText), commentText && /* @__PURE__ */ React.createElement("span", null, "\uB313\uAE00 ", commentText)));
 }
 function SidebarCommentItem(props) {
   const comment = props.data || {};
