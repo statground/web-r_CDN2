@@ -73,7 +73,20 @@ function myInfoFetchJSON(url, options) {
   return fetch(url, { credentials: "same-origin", ...options || {} }).then((res) => res.json()).catch(() => ({}));
 }
 const myInfoStatementSignatureURL = "/account/myinfo/payment_statement_signature.png";
-const myInfoStatementFontFamily = '"Noto Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif';
+const myInfoStatementFontFamily = '"Noto Sans KR", "Malgun Gothic", "Apple SD Gothic Neo", Arial, sans-serif';
+const myInfoStatementFontProbe = '"Noto Sans KR"';
+async function myInfoEnsureStatementFonts() {
+  if (!document.fonts || !document.fonts.ready)
+    return;
+  try {
+    await Promise.all([
+      document.fonts.load(`400 20px ${myInfoStatementFontProbe}`),
+      document.fonts.load(`700 20px ${myInfoStatementFontProbe}`)
+    ]);
+    await document.fonts.ready;
+  } catch (_) {
+  }
+}
 function myInfoStatementDateParts(value) {
   const text = myInfoText(value).trim();
   const match = text.match(/^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2})(?::(\d{2}))?)?/);
@@ -215,6 +228,7 @@ function myInfoCreateStatementCanvas(row, user, signatureImage) {
   const quantity = Math.max(1, Math.round(myInfoNumber(row.quantity) || 1));
   const amount = Math.round(myInfoNumber(row.amount));
   const unitPrice = Math.round(myInfoNumber(row.unit_price) || amount / quantity);
+  const remarkText = myInfoText(row.statement_note || row.remark || row.memo || row.note).trim();
   ctx.fillStyle = "#ffffff";
   ctx.fillRect(0, 0, canvas.width, canvas.height);
   ctx.fillStyle = "#f4f7fa";
@@ -325,22 +339,25 @@ function myInfoCreateStatementCanvas(row, user, signatureImage) {
   myInfoDrawText(ctx, quantity.toLocaleString("ko-KR"), left + 705, 1308, { align: "right", font: `20px ${myInfoStatementFontFamily}` });
   myInfoDrawText(ctx, myInfoMoney(amount), left + 900, 1308, { align: "right", font: `bold 22px ${myInfoStatementFontFamily}` });
   myInfoDrawLine(ctx, left, 1348, left + width, 1348, "#94a3b8", 1);
-  myInfoDrawText(ctx, "비고", left + 20, 1400, { font: `20px ${myInfoStatementFontFamily}` });
-  myInfoDrawLine(ctx, left, 1460, left + width, 1460, "#94a3b8", 1);
-  myInfoDrawText(ctx, `${parts.year || ""} 년  ${parts.month || ""} 월  ${parts.day || ""} 일`, 620, 1585, {
+  if (remarkText) {
+    myInfoDrawText(ctx, "비고", left + 20, 1400, { font: `20px ${myInfoStatementFontFamily}` });
+    myInfoDrawText(ctx, remarkText, left + 120, 1400, { font: `19px ${myInfoStatementFontFamily}`, maxWidth: width - 150 });
+    myInfoDrawLine(ctx, left, 1460, left + width, 1460, "#94a3b8", 1);
+  }
+  myInfoDrawText(ctx, `${parts.year || ""} 년  ${parts.month || ""} 월  ${parts.day || ""} 일`, 620, 1548, {
     align: "center",
     font: `bold 24px ${myInfoStatementFontFamily}`
   });
-  myInfoDrawText(ctx, "공급자 : (주)통계마당", 885, 1630, { font: `bold 20px ${myInfoStatementFontFamily}` });
-  myInfoDrawText(ctx, `인수자 : ${buyerName}(인)`, 885, 1688, { font: `bold 20px ${myInfoStatementFontFamily}` });
+  myInfoDrawText(ctx, "공급자 : (주)통계마당", 885, 1600, { font: `bold 20px ${myInfoStatementFontFamily}` });
+  myInfoDrawText(ctx, `인수자 : ${buyerName}(인)`, 885, 1652, { font: `bold 20px ${myInfoStatementFontFamily}` });
   if (signatureImage) {
-    ctx.drawImage(signatureImage, 1030, 1550, 130, 130);
+    ctx.drawImage(signatureImage, 1030, 1526, 124, 124);
   }
   ctx.fillStyle = "#78909c";
-  ctx.fillRect(30, 1694, 1180, 64);
-  myInfoDrawText(ctx, "통계마당 Statistical Ground", 520, 1726, {
+  ctx.fillRect(30, 1700, 1180, 54);
+  myInfoDrawText(ctx, "통계마당 Statistical Ground Corp.", 620, 1727, {
     align: "center",
-    font: `bold 30px ${myInfoStatementFontFamily}`,
+    font: `bold 28px ${myInfoStatementFontFamily}`,
     color: "#ffffff"
   });
   return canvas;
@@ -402,6 +419,7 @@ async function myInfoDownloadPaymentStatement(row, user, signatureDataURL) {
     window.alert("거래명세서 도장 이미지를 불러오지 못했습니다. 새로고침 후 다시 시도해 주세요.");
     return;
   }
+  await myInfoEnsureStatementFonts();
   myInfoLogPaymentStatementDownload(row);
   const canvas = myInfoCreateStatementCanvas(row, user, signatureImage);
   const jpegBytes = myInfoDataURLBytes(canvas.toDataURL("image/jpeg", 0.92));
@@ -1096,7 +1114,7 @@ function MyInfoPayments(props) {
         { className: "overflow-x-auto" },
         React.createElement(
           "table",
-          { className: "w-full min-w-[760px] text-left text-sm" },
+          { className: "w-full min-w-[900px] text-left text-sm" },
           React.createElement(
             "thead",
             { className: "border-b border-slate-200 text-xs font-semibold uppercase text-slate-500" },
@@ -1108,7 +1126,8 @@ function MyInfoPayments(props) {
               React.createElement("th", { className: "px-3 py-3" }, "\uC77C\uC2DC"),
               React.createElement("th", { className: "px-3 py-3" }, "\uBC29\uC2DD"),
               React.createElement("th", { className: "px-3 py-3" }, "\uC0C1\uD0DC"),
-              React.createElement("th", { className: "px-3 py-3 text-right" }, "\uAE08\uC561")
+              React.createElement("th", { className: "px-3 py-3 text-right" }, "\uAE08\uC561"),
+              React.createElement("th", { className: "px-3 py-3 text-center" }, "\uAC70\uB798\uBA85\uC138\uC11C")
             )
           ),
           React.createElement(
@@ -1118,23 +1137,28 @@ function MyInfoPayments(props) {
               "tr",
               {
                 key: myInfoText(row.order_id) || idx,
-                className: "cursor-pointer hover:bg-sky-50",
-                tabIndex: 0,
-                title: "\uAC70\uB798\uBA85\uC138\uC11C PDF \uB2E4\uC6B4\uB85C\uB4DC",
-                onClick: () => myInfoDownloadPaymentStatement(row, props.user || {}, signatureDataURL),
-                onKeyDown: (event) => {
-                  if (event.key === "Enter" || event.key === " ") {
-                    event.preventDefault();
-                    myInfoDownloadPaymentStatement(row, props.user || {}, signatureDataURL);
-                  }
-                }
+                className: "hover:bg-slate-50"
               },
               React.createElement("td", { className: "px-3 py-3 font-semibold text-slate-950" }, myInfoText(row.product_name) || "-"),
               React.createElement("td", { className: "px-3 py-3 text-slate-600" }, myInfoText(row.order_id) || "-"),
               React.createElement("td", { className: "px-3 py-3 text-slate-600" }, myInfoDate(row.created_at)),
               React.createElement("td", { className: "px-3 py-3 text-slate-600" }, myInfoText(row.method) || "-"),
               React.createElement("td", { className: "px-3 py-3" }, React.createElement("span", { className: "rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700" }, myInfoStatusText(row.status))),
-              React.createElement("td", { className: "px-3 py-3 text-right font-semibold text-slate-950" }, myInfoMoney(row.amount))
+              React.createElement("td", { className: "px-3 py-3 text-right font-semibold text-slate-950" }, myInfoMoney(row.amount)),
+              React.createElement(
+                "td",
+                { className: "px-3 py-3 text-center" },
+                React.createElement(
+                  "button",
+                  {
+                    type: "button",
+                    className: "rounded-md border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:border-slate-950 hover:bg-slate-950 hover:text-white",
+                    "aria-label": `${myInfoText(row.order_id) || "\uACB0\uC81C"} \uAC70\uB798\uBA85\uC138\uC11C \uB2E4\uC6B4\uB85C\uB4DC`,
+                    onClick: () => myInfoDownloadPaymentStatement(row, props.user || {}, signatureDataURL)
+                  },
+                  "\uAC70\uB798\uBA85\uC138\uC11C"
+                )
+              )
             ))
           )
         )

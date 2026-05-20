@@ -77,7 +77,21 @@ function myInfoFetchJSON(url, options) {
 }
 
 const myInfoStatementSignatureURL = "/account/myinfo/payment_statement_signature.png";
-const myInfoStatementFontFamily = '"Noto Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif';
+const myInfoStatementFontFamily = '"Noto Sans KR", "Malgun Gothic", "Apple SD Gothic Neo", Arial, sans-serif';
+const myInfoStatementFontProbe = '"Noto Sans KR"';
+
+async function myInfoEnsureStatementFonts() {
+  if (!document.fonts || !document.fonts.ready) return;
+  try {
+    await Promise.all([
+      document.fonts.load(`400 20px ${myInfoStatementFontProbe}`),
+      document.fonts.load(`700 20px ${myInfoStatementFontProbe}`),
+    ]);
+    await document.fonts.ready;
+  } catch (_) {
+    // Canvas will fall back to the local Korean system font stack.
+  }
+}
 
 function myInfoStatementDateParts(value) {
   const text = myInfoText(value).trim();
@@ -229,6 +243,7 @@ function myInfoCreateStatementCanvas(row, user, signatureImage) {
   const quantity = Math.max(1, Math.round(myInfoNumber(row.quantity) || 1));
   const amount = Math.round(myInfoNumber(row.amount));
   const unitPrice = Math.round(myInfoNumber(row.unit_price) || amount / quantity);
+  const remarkText = myInfoText(row.statement_note || row.remark || row.memo || row.note).trim();
 
   ctx.fillStyle = "#ffffff";
   ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -345,24 +360,27 @@ function myInfoCreateStatementCanvas(row, user, signatureImage) {
   myInfoDrawText(ctx, quantity.toLocaleString("ko-KR"), left + 705, 1308, { align: "right", font: `20px ${myInfoStatementFontFamily}` });
   myInfoDrawText(ctx, myInfoMoney(amount), left + 900, 1308, { align: "right", font: `bold 22px ${myInfoStatementFontFamily}` });
   myInfoDrawLine(ctx, left, 1348, left + width, 1348, "#94a3b8", 1);
-  myInfoDrawText(ctx, "비고", left + 20, 1400, { font: `20px ${myInfoStatementFontFamily}` });
-  myInfoDrawLine(ctx, left, 1460, left + width, 1460, "#94a3b8", 1);
+  if (remarkText) {
+    myInfoDrawText(ctx, "비고", left + 20, 1400, { font: `20px ${myInfoStatementFontFamily}` });
+    myInfoDrawText(ctx, remarkText, left + 120, 1400, { font: `19px ${myInfoStatementFontFamily}`, maxWidth: width - 150 });
+    myInfoDrawLine(ctx, left, 1460, left + width, 1460, "#94a3b8", 1);
+  }
 
-  myInfoDrawText(ctx, `${parts.year || ""} 년  ${parts.month || ""} 월  ${parts.day || ""} 일`, 620, 1585, {
+  myInfoDrawText(ctx, `${parts.year || ""} 년  ${parts.month || ""} 월  ${parts.day || ""} 일`, 620, 1548, {
     align: "center",
     font: `bold 24px ${myInfoStatementFontFamily}`,
   });
-  myInfoDrawText(ctx, "공급자 : (주)통계마당", 885, 1630, { font: `bold 20px ${myInfoStatementFontFamily}` });
-  myInfoDrawText(ctx, `인수자 : ${buyerName}(인)`, 885, 1688, { font: `bold 20px ${myInfoStatementFontFamily}` });
+  myInfoDrawText(ctx, "공급자 : (주)통계마당", 885, 1600, { font: `bold 20px ${myInfoStatementFontFamily}` });
+  myInfoDrawText(ctx, `인수자 : ${buyerName}(인)`, 885, 1652, { font: `bold 20px ${myInfoStatementFontFamily}` });
   if (signatureImage) {
-    ctx.drawImage(signatureImage, 1030, 1550, 130, 130);
+    ctx.drawImage(signatureImage, 1030, 1526, 124, 124);
   }
 
   ctx.fillStyle = "#78909c";
-  ctx.fillRect(30, 1694, 1180, 64);
-  myInfoDrawText(ctx, "통계마당 Statistical Ground", 520, 1726, {
+  ctx.fillRect(30, 1700, 1180, 54);
+  myInfoDrawText(ctx, "통계마당 Statistical Ground Corp.", 620, 1727, {
     align: "center",
-    font: `bold 30px ${myInfoStatementFontFamily}`,
+    font: `bold 28px ${myInfoStatementFontFamily}`,
     color: "#ffffff",
   });
 
@@ -428,6 +446,7 @@ async function myInfoDownloadPaymentStatement(row, user, signatureDataURL) {
     window.alert("거래명세서 도장 이미지를 불러오지 못했습니다. 새로고침 후 다시 시도해 주세요.");
     return;
   }
+  await myInfoEnsureStatementFonts();
   myInfoLogPaymentStatementDownload(row);
   const canvas = myInfoCreateStatementCanvas(row, user, signatureImage);
   const jpegBytes = myInfoDataURLBytes(canvas.toDataURL("image/jpeg", 0.92));
@@ -1340,7 +1359,7 @@ function MyInfoPayments(props) {
             <MyInfoChart option={chartOption} className="h-[280px] w-full" empty="결제 차트를 표시할 데이터가 없습니다." />
           </div>
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[760px] text-left text-sm">
+            <table className="w-full min-w-[900px] text-left text-sm">
               <thead className="border-b border-slate-200 text-xs font-semibold uppercase text-slate-500">
                 <tr>
                   <th className="px-3 py-3">상품</th>
@@ -1349,22 +1368,14 @@ function MyInfoPayments(props) {
                   <th className="px-3 py-3">방식</th>
                   <th className="px-3 py-3">상태</th>
                   <th className="px-3 py-3 text-right">금액</th>
+                  <th className="px-3 py-3 text-center">거래명세서</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {rows.map((row, idx) => (
                   <tr
                     key={myInfoText(row.order_id) || idx}
-                    className="cursor-pointer hover:bg-sky-50"
-                    tabIndex={0}
-                    title="거래명세서 PDF 다운로드"
-                    onClick={() => myInfoDownloadPaymentStatement(row, props.user || {}, signatureDataURL)}
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter" || event.key === " ") {
-                        event.preventDefault();
-                        myInfoDownloadPaymentStatement(row, props.user || {}, signatureDataURL);
-                      }
-                    }}
+                    className="hover:bg-slate-50"
                   >
                     <td className="px-3 py-3 font-semibold text-slate-950">{myInfoText(row.product_name) || "-"}</td>
                     <td className="px-3 py-3 text-slate-600">{myInfoText(row.order_id) || "-"}</td>
@@ -1372,6 +1383,16 @@ function MyInfoPayments(props) {
                     <td className="px-3 py-3 text-slate-600">{myInfoText(row.method) || "-"}</td>
                     <td className="px-3 py-3"><span className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">{myInfoStatusText(row.status)}</span></td>
                     <td className="px-3 py-3 text-right font-semibold text-slate-950">{myInfoMoney(row.amount)}</td>
+                    <td className="px-3 py-3 text-center">
+                      <button
+                        type="button"
+                        className="rounded-md border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:border-slate-950 hover:bg-slate-950 hover:text-white"
+                        aria-label={`${myInfoText(row.order_id) || "결제"} 거래명세서 다운로드`}
+                        onClick={() => myInfoDownloadPaymentStatement(row, props.user || {}, signatureDataURL)}
+                      >
+                        거래명세서
+                      </button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
