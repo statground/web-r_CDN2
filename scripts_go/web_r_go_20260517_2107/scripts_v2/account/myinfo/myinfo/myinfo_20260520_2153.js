@@ -59,6 +59,10 @@ function myInfoStatusText(status) {
   const text = myInfoText(status).trim();
   if (text === "DONE")
     return "\uC644\uB8CC";
+  if (text === "REFUNDED")
+    return "\uD658\uBD88";
+  if (text === "PARTIAL_REFUNDED")
+    return "\uBD80\uBD84 \uD658\uBD88";
   if (text === "WAITING")
     return "\uB300\uAE30";
   if (text === "CANCELED")

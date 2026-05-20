@@ -63,6 +63,8 @@ function myInfoCommentHref(row) {
 function myInfoStatusText(status) {
   const text = myInfoText(status).trim();
   if (text === "DONE") return "완료";
+  if (text === "REFUNDED") return "환불";
+  if (text === "PARTIAL_REFUNDED") return "부분 환불";
   if (text === "WAITING") return "대기";
   if (text === "CANCELED") return "취소";
   return text || "-";
