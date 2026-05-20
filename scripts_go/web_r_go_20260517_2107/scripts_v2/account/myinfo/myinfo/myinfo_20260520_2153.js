@@ -93,6 +93,14 @@ function myInfoStatementFileName(row) {
   const date = [parts.year, parts.month, parts.day].filter(Boolean).join("");
   return `거래명세서_${date || "payment"}_${order || "order"}.pdf`;
 }
+function myInfoImageFromSource(src) {
+  return new Promise((resolve) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = () => resolve(null);
+    image.src = src;
+  });
+}
 function myInfoImageFromBlob(blob) {
   return new Promise((resolve) => {
     const image = new Image();
@@ -108,7 +116,11 @@ function myInfoImageFromBlob(blob) {
     image.src = url;
   });
 }
-async function myInfoLoadStatementSignature() {
+async function myInfoLoadStatementSignature(dataURL) {
+  const embedded = myInfoText(dataURL).trim();
+  if (embedded.startsWith("data:image/")) {
+    return myInfoImageFromSource(embedded);
+  }
   try {
     const res = await fetch(`${myInfoStatementSignatureURL}?v=${Date.now()}`, {
       credentials: "same-origin",
@@ -120,6 +132,16 @@ async function myInfoLoadStatementSignature() {
   } catch (_) {
     return null;
   }
+}
+function myInfoLogPaymentStatementDownload(row) {
+  const form = new FormData();
+  form.append("order_id", myInfoText(row && row.order_id));
+  fetch("/account/ajax_log_payment_statement_download/", {
+    method: "POST",
+    credentials: "same-origin",
+    body: form
+  }).catch(() => {
+  });
 }
 function myInfoDrawLine(ctx, x1, y1, x2, y2, color, width) {
   ctx.save();
@@ -374,12 +396,13 @@ function myInfoBuildImagePDF(jpegBytes, width, height) {
   add(`trailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF`);
   return new Blob([myInfoConcatBytes(chunks)], { type: "application/pdf" });
 }
-async function myInfoDownloadPaymentStatement(row, user) {
-  const signatureImage = await myInfoLoadStatementSignature();
+async function myInfoDownloadPaymentStatement(row, user, signatureDataURL) {
+  const signatureImage = await myInfoLoadStatementSignature(signatureDataURL);
   if (!signatureImage) {
     window.alert("거래명세서 도장 이미지를 불러오지 못했습니다. 새로고침 후 다시 시도해 주세요.");
     return;
   }
+  myInfoLogPaymentStatementDownload(row);
   const canvas = myInfoCreateStatementCanvas(row, user, signatureImage);
   const jpegBytes = myInfoDataURLBytes(canvas.toDataURL("image/jpeg", 0.92));
   const blob = myInfoBuildImagePDF(jpegBytes, canvas.width, canvas.height);
@@ -1059,6 +1082,7 @@ function MyInfoComments(props) {
 function MyInfoPayments(props) {
   const [paymentGranularity, setPaymentGranularity] = React.useState("month");
   const rows = myInfoRows((props.data || {}).list);
+  const signatureDataURL = myInfoText((props.data || {}).statement_signature_data_url);
   const chartOption = myInfoPaymentAmountOption(rows, paymentGranularity);
   return React.createElement(
     MyInfoPanel,
@@ -1097,11 +1121,11 @@ function MyInfoPayments(props) {
                 className: "cursor-pointer hover:bg-sky-50",
                 tabIndex: 0,
                 title: "\uAC70\uB798\uBA85\uC138\uC11C PDF \uB2E4\uC6B4\uB85C\uB4DC",
-                onClick: () => myInfoDownloadPaymentStatement(row, props.user || {}),
+                onClick: () => myInfoDownloadPaymentStatement(row, props.user || {}, signatureDataURL),
                 onKeyDown: (event) => {
                   if (event.key === "Enter" || event.key === " ") {
                     event.preventDefault();
-                    myInfoDownloadPaymentStatement(row, props.user || {});
+                    myInfoDownloadPaymentStatement(row, props.user || {}, signatureDataURL);
                   }
                 }
               },
