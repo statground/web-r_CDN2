@@ -948,33 +948,69 @@ function MyInfoApp() {
     payments: /* @__PURE__ */ React.createElement(MyInfoPayments, { data: payments, loading: dataLoading.payments }),
     connection: /* @__PURE__ */ React.createElement(MyInfoConnection, { data: connection, loading: dataLoading.connection })
   }[active];
-  return /* @__PURE__ */ React.createElement("main", { className: "mx-auto w-full max-w-[1480px] px-4 py-10 text-slate-950 sm:px-6 lg:px-8" }, /* @__PURE__ */ React.createElement("header", { className: "mb-10" }, /* @__PURE__ */ React.createElement("h1", { className: "text-3xl font-bold tracking-normal text-slate-950" }, "\uB0B4 \uC815\uBCF4"), /* @__PURE__ */ React.createElement("p", { className: "mt-3 text-base text-slate-500" }, "\uACC4\uC815 \uC815\uBCF4\uC640 \uD65C\uB3D9 \uB0B4\uC5ED\uC744 \uD655\uC778\uD569\uB2C8\uB2E4.")), /* @__PURE__ */ React.createElement("div", { className: "grid grid-cols-1 gap-7 lg:grid-cols-[248px_minmax(0,1fr)] xl:grid-cols-[280px_minmax(0,1fr)]" }, /* @__PURE__ */ React.createElement("aside", { className: "sticky top-6 h-fit rounded-lg border border-slate-200 bg-white p-3 shadow-sm md:static" }, /* @__PURE__ */ React.createElement("nav", { id: "myinfo-account-menu", className: "space-y-3" }, menuGroups.map((group) => /* @__PURE__ */ React.createElement("section", { key: group.key, className: "space-y-2" }, /* @__PURE__ */ React.createElement(
-    "button",
-    {
-      type: "button",
-      className: `flex w-full items-center justify-between rounded-lg px-4 py-3 text-left text-sm font-bold transition ${openGroups[group.key] ? "bg-slate-950 text-white" : "border border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100"}`,
-      "aria-expanded": !!openGroups[group.key],
-      "aria-controls": `myinfo-menu-group-${group.key}`,
-      onClick: () => toggleGroup(group.key)
-    },
-    /* @__PURE__ */ React.createElement("span", null, group.title),
-    /* @__PURE__ */ React.createElement("span", { "aria-hidden": "true" }, openGroups[group.key] ? "-" : "+")
-  ), /* @__PURE__ */ React.createElement("div", { id: `myinfo-menu-group-${group.key}`, className: `${openGroups[group.key] ? "block" : "hidden"} space-y-1` }, group.items.map((item) => {
-    const selected = item.key === active;
-    if (item.href) {
-      return /* @__PURE__ */ React.createElement("a", { key: item.key, href: item.href, className: "block w-full rounded-lg px-4 py-3 text-left text-sm font-semibold text-slate-700 transition hover:bg-slate-100" }, item.label);
-    }
-    return /* @__PURE__ */ React.createElement(
-      "button",
-      {
-        key: item.key,
-        type: "button",
-        onClick: () => activate(item.key),
-        className: `w-full rounded-lg px-4 py-3 text-left text-sm font-semibold transition ${selected ? "bg-slate-950 text-white" : "text-slate-700 hover:bg-slate-100"}`
-      },
-      item.label
-    );
-  }))))), /* @__PURE__ */ React.createElement("div", { className: "min-w-0" }, loading ? /* @__PURE__ */ React.createElement("div", { className: "rounded-lg border border-slate-200 bg-white p-10 text-center text-sm text-slate-500" }, "\uBD88\uB7EC\uC624\uB294 \uC911\uC785\uB2C8\uB2E4.") : content)));
+  return React.createElement(
+    "main",
+    { className: "mx-auto w-full max-w-[1480px] px-4 py-10 text-slate-950 sm:px-6 lg:px-8" },
+    React.createElement(
+      "header",
+      { className: "mb-10" },
+      React.createElement("h1", { className: "text-3xl font-bold tracking-normal text-slate-950" }, "\uB0B4 \uC815\uBCF4"),
+      React.createElement("p", { className: "mt-3 text-base text-slate-500" }, "\uACC4\uC815 \uC815\uBCF4\uC640 \uD65C\uB3D9 \uB0B4\uC5ED\uC744 \uD655\uC778\uD569\uB2C8\uB2E4.")
+    ),
+    React.createElement(
+      "div",
+      { className: "grid grid-cols-1 gap-7 lg:grid-cols-[248px_minmax(0,1fr)] xl:grid-cols-[280px_minmax(0,1fr)]" },
+      React.createElement(
+        "aside",
+        { className: "sticky top-6 h-fit rounded-lg border border-slate-200 bg-white p-3 shadow-sm md:static" },
+        React.createElement(
+          "nav",
+          { id: "myinfo-account-menu", className: "space-y-3" },
+          menuGroups.map((group) => React.createElement(
+            "section",
+            { key: group.key, className: "space-y-2" },
+            React.createElement(
+              "button",
+              {
+                type: "button",
+                className: `flex w-full items-center justify-between rounded-lg px-4 py-3 text-left text-sm font-bold transition ${openGroups[group.key] ? "bg-slate-950 text-white" : "border border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100"}`,
+                "aria-expanded": !!openGroups[group.key],
+                "aria-controls": `myinfo-menu-group-${group.key}`,
+                onClick: () => toggleGroup(group.key)
+              },
+              React.createElement("span", null, group.title),
+              React.createElement("span", { "aria-hidden": "true" }, openGroups[group.key] ? "-" : "+")
+            ),
+            React.createElement(
+              "div",
+              { id: `myinfo-menu-group-${group.key}`, className: `${openGroups[group.key] ? "block" : "hidden"} space-y-1` },
+              group.items.map((item) => {
+                const selected = item.key === active;
+                if (item.href) {
+                  return React.createElement("a", { key: item.key, href: item.href, className: "block w-full rounded-lg px-4 py-3 text-left text-sm font-semibold text-slate-700 transition hover:bg-slate-100" }, item.label);
+                }
+                return React.createElement(
+                  "button",
+                  {
+                    key: item.key,
+                    type: "button",
+                    onClick: () => activate(item.key),
+                    className: `w-full rounded-lg px-4 py-3 text-left text-sm font-semibold transition ${selected ? "bg-slate-950 text-white" : "text-slate-700 hover:bg-slate-100"}`
+                  },
+                  item.label
+                );
+              })
+            )
+          ))
+        )
+      ),
+      React.createElement(
+        "div",
+        { className: "min-w-0" },
+        loading ? React.createElement("div", { className: "rounded-lg border border-slate-200 bg-white p-10 text-center text-sm text-slate-500" }, "\uBD88\uB7EC\uC624\uB294 \uC911\uC785\uB2C8\uB2E4.") : content
+      )
+    )
+  );
 }
 function set_main() {
   const container = document.getElementById("div_main");
