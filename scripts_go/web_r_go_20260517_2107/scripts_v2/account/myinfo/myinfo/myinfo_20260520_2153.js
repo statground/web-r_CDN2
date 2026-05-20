@@ -254,17 +254,27 @@ function myInfoCreateStatementCanvas(row, user, signatureImage) {
   const partyW = (width - partyGap) / 2;
   const partyHeaderH = 42;
   const partyRowH = 50;
-  const partyH = partyHeaderH + partyRowH * 4;
+  const supplierRows = [
+    ["상호명", "주식회사 통계마당", { align: "left", size: 19, weight: "bold" }],
+    ["대표자", "유재성", { align: "left", size: 19, weight: "bold" }],
+    ["사업자등록번호", "795-88-02574", { align: "left", size: 19, weight: "bold" }],
+    ["주소", "서울특별시 강남구 테헤란로70길 12 402-106A호", { align: "left", size: 16, minSize: 11 }]
+  ];
+  const recipientRows = [
+    ["닉네임", buyerName, { align: "left", size: 19, weight: "bold" }]
+  ];
+  const partyH = partyHeaderH + partyRowH * Math.max(supplierRows.length, recipientRows.length);
   const drawPartyBlock = (title, x, rows2) => {
+    const blockH = partyHeaderH + partyRowH * rows2.length;
     ctx.save();
     ctx.fillStyle = "#edf3f7";
     ctx.fillRect(x, partyTop, partyW, partyHeaderH);
     ctx.restore();
     ctx.strokeStyle = "#cbd5e1";
     ctx.lineWidth = 1;
-    ctx.strokeRect(x, partyTop, partyW, partyH);
+    ctx.strokeRect(x, partyTop, partyW, blockH);
     myInfoDrawLine(ctx, x, partyTop + partyHeaderH, x + partyW, partyTop + partyHeaderH, "#cbd5e1", 1);
-    myInfoDrawLine(ctx, x + 150, partyTop + partyHeaderH, x + 150, partyTop + partyH, "#cbd5e1", 1);
+    myInfoDrawLine(ctx, x + 150, partyTop + partyHeaderH, x + 150, partyTop + blockH, "#cbd5e1", 1);
     myInfoDrawCellText(ctx, title, x, partyTop, partyW, partyHeaderH, { size: 21, weight: "bold" });
     rows2.forEach((entry, idx) => {
       const y = partyTop + partyHeaderH + partyRowH * idx;
@@ -274,18 +284,8 @@ function myInfoCreateStatementCanvas(row, user, signatureImage) {
       myInfoDrawCellText(ctx, entry[1], x + 150, y, partyW - 150, partyRowH, entry[2] || { align: "left", size: 19, weight: "bold" });
     });
   };
-  drawPartyBlock("공급자", left, [
-    ["상호명", "주식회사 통계마당", { align: "left", size: 19, weight: "bold" }],
-    ["대표자", "유재성", { align: "left", size: 19, weight: "bold" }],
-    ["사업자등록번호", "795-88-02574", { align: "left", size: 19, weight: "bold" }],
-    ["주소", "서울특별시 강남구 테헤란로70길 12 402-106A호", { align: "left", size: 16, minSize: 11 }]
-  ]);
-  drawPartyBlock("공급받는자", left + partyW + partyGap, [
-    ["상호명", buyerName, { align: "left", size: 19, weight: "bold" }],
-    ["대표자", buyerName, { align: "left", size: 19, weight: "bold" }],
-    ["사업자등록번호", buyerEmail || "-", { align: "left", size: 17, minSize: 12 }],
-    ["주소", "-", { align: "left", size: 17 }]
-  ]);
+  drawPartyBlock("공급자", left, supplierRows);
+  drawPartyBlock("공급받는자", left + partyW + partyGap, recipientRows);
   const tableTop = partyTop + partyH + 42;
   const tableCols = [66, 390, 180, 90, 150, 200];
   const tableHeaderH = 54;
