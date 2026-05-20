@@ -76,6 +76,289 @@ function myInfoFetchJSON(url, options) {
     .catch(() => ({}));
 }
 
+const myInfoStatementSignatureURL = "/account/myinfo/payment_statement_signature.png";
+
+function myInfoStatementDateParts(value) {
+  const text = myInfoText(value).trim();
+  const match = text.match(/^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2})(?::(\d{2}))?)?/);
+  if (!match) return { year: "", month: "", day: "", time: "", date: text };
+  return {
+    year: match[1],
+    month: match[2],
+    day: match[3],
+    time: match[4] ? `${match[4]}:${match[5] || "00"}:${match[6] || "00"}` : "",
+    date: `${match[1]}. ${match[2]}. ${match[3]}`,
+  };
+}
+
+function myInfoStatementFileName(row) {
+  const parts = myInfoStatementDateParts(row.created_at);
+  const order = myInfoText(row.order_id).trim().replace(/[\\/:*?"<>|]+/g, "-");
+  const date = [parts.year, parts.month, parts.day].filter(Boolean).join("");
+  return `거래명세서_${date || "payment"}_${order || "order"}.pdf`;
+}
+
+function myInfoLoadStatementSignature() {
+  return new Promise((resolve) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = () => resolve(null);
+    image.src = `${myInfoStatementSignatureURL}?v=${Date.now()}`;
+  });
+}
+
+function myInfoDrawLine(ctx, x1, y1, x2, y2, color, width) {
+  ctx.save();
+  ctx.strokeStyle = color || "#111827";
+  ctx.lineWidth = width || 1;
+  ctx.beginPath();
+  ctx.moveTo(x1, y1);
+  ctx.lineTo(x2, y2);
+  ctx.stroke();
+  ctx.restore();
+}
+
+function myInfoDrawText(ctx, text, x, y, options = {}) {
+  ctx.save();
+  ctx.fillStyle = options.color || "#0f172a";
+  ctx.font = options.font || '28px "Noto Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif';
+  ctx.textAlign = options.align || "left";
+  ctx.textBaseline = options.baseline || "middle";
+  ctx.globalAlpha = options.alpha || 1;
+  ctx.fillText(myInfoText(text), x, y, options.maxWidth || undefined);
+  ctx.restore();
+}
+
+function myInfoDrawCellText(ctx, text, x, y, width, height, options = {}) {
+  myInfoDrawText(ctx, text, x + width / 2, y + height / 2, {
+    align: "center",
+    maxWidth: Math.max(10, width - 16),
+    font: options.font || '22px "Noto Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif',
+    color: options.color || "#0f172a",
+  });
+}
+
+function myInfoDrawStatementFallbackStamp(ctx, x, y, size) {
+  ctx.save();
+  ctx.strokeStyle = "#ef4444";
+  ctx.fillStyle = "#ef4444";
+  ctx.lineWidth = 5;
+  ctx.beginPath();
+  ctx.arc(x + size / 2, y + size / 2, size / 2 - 3, 0, Math.PI * 2);
+  ctx.stroke();
+  myInfoDrawText(ctx, "통계", x + size / 2, y + size * 0.38, {
+    align: "center",
+    font: 'bold 22px "Noto Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif',
+    color: "#ef4444",
+  });
+  myInfoDrawText(ctx, "마당", x + size / 2, y + size * 0.62, {
+    align: "center",
+    font: 'bold 22px "Noto Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif',
+    color: "#ef4444",
+  });
+  ctx.restore();
+}
+
+function myInfoCreateStatementCanvas(row, user, signatureImage) {
+  const canvas = document.createElement("canvas");
+  canvas.width = 1240;
+  canvas.height = 1754;
+  const ctx = canvas.getContext("2d");
+  const parts = myInfoStatementDateParts(row.created_at);
+  const orderID = myInfoText(row.order_id).trim();
+  const paymentDateTime = `${parts.date}${parts.time ? ` ${parts.time}` : ""}`.trim();
+  const buyerName = myInfoText(row.username).trim()
+    || myInfoText(user && (user.name || user.nickname || user.real_name || user.username)).trim()
+    || myInfoText(row.email).trim()
+    || "-";
+  const buyerEmail = myInfoText(row.email).trim() || myInfoText(user && user.email).trim();
+  const itemName = myInfoText(row.order_name).trim() || myInfoText(row.product_name).trim() || "Web-R 결제 상품";
+  const quantity = Math.max(1, Math.round(myInfoNumber(row.quantity) || 1));
+  const amount = Math.round(myInfoNumber(row.amount));
+  const unitPrice = Math.round(myInfoNumber(row.unit_price) || amount / quantity);
+
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  ctx.fillStyle = "#f4f7fa";
+  ctx.fillRect(30, 90, 1180, 535);
+
+  myInfoDrawText(ctx, `NO. ${orderID}`, 92, 148, {
+    font: 'bold 17px "Noto Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif',
+    color: "#111827",
+    maxWidth: 520,
+  });
+  myInfoDrawText(ctx, "거  래  명  세  서", 620, 250, {
+    align: "center",
+    font: 'bold 54px "Noto Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif',
+    color: "#78909c",
+  });
+
+  const left = 82;
+  const top = 330;
+  const width = 1076;
+  const rowH = 58;
+  myInfoDrawLine(ctx, left, top, left + width, top, "#111827", 4);
+  myInfoDrawLine(ctx, left, top + rowH, left + width, top + rowH, "#cbd5e1", 1);
+  myInfoDrawLine(ctx, left + 210, top, left + 210, top + rowH * 2, "#cbd5e1", 1);
+  myInfoDrawLine(ctx, left + 540, top, left + 540, top + rowH * 2, "#cbd5e1", 1);
+  myInfoDrawLine(ctx, left + 740, top, left + 740, top + rowH * 2, "#cbd5e1", 1);
+  myInfoDrawCellText(ctx, "작성일자", left, top, 210, rowH);
+  myInfoDrawCellText(ctx, parts.date || "-", left + 210, top, 330, rowH, { font: 'bold 23px "Noto Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif' });
+  myInfoDrawCellText(ctx, "주문번호", left + 540, top, 200, rowH);
+  myInfoDrawCellText(ctx, orderID || "-", left + 740, top, 336, rowH, { font: 'bold 19px "Noto Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif' });
+  myInfoDrawCellText(ctx, "결제일시", left, top + rowH, 210, rowH);
+  myInfoDrawCellText(ctx, paymentDateTime || "-", left + 210, top + rowH, 330, rowH);
+  myInfoDrawCellText(ctx, "결제방식", left + 540, top + rowH, 200, rowH);
+  myInfoDrawCellText(ctx, myInfoText(row.method) || "-", left + 740, top + rowH, 336, rowH);
+
+  const partyTop = top + rowH * 2 + 10;
+  const partyH = 235;
+  const partyW = 540;
+  ctx.strokeStyle = "#cbd5e1";
+  ctx.lineWidth = 1;
+  ctx.strokeRect(left, partyTop, partyW, partyH);
+  ctx.strokeRect(left + partyW, partyTop, partyW, partyH);
+  [0, 1, 2, 3].forEach((idx) => {
+    const y = partyTop + 58 * (idx + 1);
+    myInfoDrawLine(ctx, left, y, left + partyW * 2, y, "#cbd5e1", 1);
+  });
+  myInfoDrawLine(ctx, left + 160, partyTop, left + 160, partyTop + partyH, "#cbd5e1", 1);
+  myInfoDrawLine(ctx, left + partyW + 160, partyTop, left + partyW + 160, partyTop + partyH, "#cbd5e1", 1);
+  myInfoDrawText(ctx, "공급자", left + 32, partyTop + partyH / 2, { align: "center", font: '22px "Noto Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif' });
+  myInfoDrawText(ctx, "공급받는자", left + partyW + 38, partyTop + partyH / 2, { align: "center", font: '20px "Noto Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif' });
+  ["상호명", "대표자", "사업자등록번호", "주소"].forEach((label, idx) => {
+    myInfoDrawCellText(ctx, label, left + 60, partyTop + 58 * idx, 100, 58);
+    myInfoDrawCellText(ctx, label, left + partyW + 60, partyTop + 58 * idx, 100, 58);
+  });
+  myInfoDrawCellText(ctx, "주식회사 통계마당", left + 160, partyTop, 380, 58, { font: 'bold 21px "Noto Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif' });
+  myInfoDrawCellText(ctx, "유재성", left + 160, partyTop + 58, 380, 58, { font: 'bold 21px "Noto Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif' });
+  myInfoDrawCellText(ctx, "795-88-02574", left + 160, partyTop + 116, 380, 58, { font: 'bold 21px "Noto Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif' });
+  myInfoDrawCellText(ctx, "서울특별시 강남구 테헤란로70길 12 402-106A호", left + 160, partyTop + 174, 380, 58, { font: '18px "Noto Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif' });
+  myInfoDrawCellText(ctx, buyerName, left + partyW + 160, partyTop + 58, 380, 58, { font: 'bold 21px "Noto Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif' });
+  myInfoDrawCellText(ctx, buyerEmail || "-", left + partyW + 160, partyTop + 116, 380, 58, { font: '18px "Noto Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif' });
+
+  const tableTop = 650;
+  myInfoDrawLine(ctx, left, tableTop, left + width, tableTop, "#111827", 3);
+  myInfoDrawLine(ctx, left, tableTop + 58, left + width, tableTop + 58, "#94a3b8", 1);
+  myInfoDrawText(ctx, "NO", left + 34, tableTop + 29, { font: '20px "Noto Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif' });
+  myInfoDrawText(ctx, "품목", left + 245, tableTop + 29, { align: "center", font: '20px "Noto Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif' });
+  myInfoDrawText(ctx, "대상", left + 560, tableTop + 29, { align: "center", font: '20px "Noto Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif' });
+  myInfoDrawText(ctx, "수량", left + 705, tableTop + 29, { align: "right", font: '20px "Noto Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif' });
+  myInfoDrawText(ctx, "단가", left + 815, tableTop + 29, { align: "right", font: '20px "Noto Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif' });
+  myInfoDrawText(ctx, "금액 (VAT 포함)", left + 1010, tableTop + 29, { align: "right", font: '20px "Noto Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif' });
+  myInfoDrawText(ctx, "1", left + 36, tableTop + 90, { align: "center", font: '20px "Noto Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif' });
+  myInfoDrawText(ctx, itemName, left + 245, tableTop + 90, { align: "center", maxWidth: 340, font: '21px "Noto Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif' });
+  myInfoDrawText(ctx, buyerName, left + 560, tableTop + 90, { align: "center", maxWidth: 180, font: '20px "Noto Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif' });
+  myInfoDrawText(ctx, quantity.toLocaleString("ko-KR"), left + 705, tableTop + 90, { align: "right", font: '20px "Noto Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif' });
+  myInfoDrawText(ctx, myInfoMoney(unitPrice), left + 815, tableTop + 90, { align: "right", font: '20px "Noto Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif' });
+  myInfoDrawText(ctx, myInfoMoney(amount), left + 1010, tableTop + 90, { align: "right", font: 'bold 21px "Noto Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif' });
+
+  myInfoDrawText(ctx, "통계마당", 620, 1070, {
+    align: "center",
+    font: 'bold 150px "Noto Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif',
+    color: "#0f172a",
+    alpha: 0.06,
+  });
+  myInfoDrawLine(ctx, left, 1265, left + width, 1265, "#94a3b8", 1);
+  myInfoDrawText(ctx, "합계", left + 250, 1308, { align: "center", font: 'bold 20px "Noto Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif' });
+  myInfoDrawText(ctx, quantity.toLocaleString("ko-KR"), left + 705, 1308, { align: "right", font: '20px "Noto Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif' });
+  myInfoDrawText(ctx, myInfoMoney(amount), left + 900, 1308, { align: "right", font: 'bold 22px "Noto Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif' });
+  myInfoDrawLine(ctx, left, 1348, left + width, 1348, "#94a3b8", 1);
+  myInfoDrawText(ctx, "비고", left + 20, 1400, { font: '20px "Noto Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif' });
+  myInfoDrawLine(ctx, left, 1460, left + width, 1460, "#94a3b8", 1);
+
+  myInfoDrawText(ctx, `${parts.year || ""} 년  ${parts.month || ""} 월  ${parts.day || ""} 일`, 620, 1585, {
+    align: "center",
+    font: 'bold 24px "Noto Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif',
+  });
+  myInfoDrawText(ctx, "공급자 : (주)통계마당", 885, 1630, { font: 'bold 20px "Noto Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif' });
+  myInfoDrawText(ctx, `인수자 : ${buyerName}(인)`, 885, 1688, { font: 'bold 20px "Noto Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif' });
+  if (signatureImage) {
+    ctx.drawImage(signatureImage, 1048, 1572, 94, 94);
+  } else {
+    myInfoDrawStatementFallbackStamp(ctx, 1048, 1572, 94);
+  }
+
+  ctx.fillStyle = "#78909c";
+  ctx.fillRect(30, 1694, 1180, 64);
+  myInfoDrawText(ctx, "통계마당 Statistical Ground", 520, 1726, {
+    align: "center",
+    font: 'bold 30px "Noto Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif',
+    color: "#ffffff",
+  });
+
+  return canvas;
+}
+
+function myInfoStringBytes(text) {
+  return new TextEncoder().encode(text);
+}
+
+function myInfoDataURLBytes(dataURL) {
+  const base64 = dataURL.split(",")[1] || "";
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+  return bytes;
+}
+
+function myInfoConcatBytes(parts) {
+  const total = parts.reduce((sum, part) => sum + part.length, 0);
+  const output = new Uint8Array(total);
+  let offset = 0;
+  parts.forEach((part) => {
+    output.set(part, offset);
+    offset += part.length;
+  });
+  return output;
+}
+
+function myInfoBuildImagePDF(jpegBytes, width, height) {
+  const chunks = [];
+  const offsets = [0];
+  let byteOffset = 0;
+  const add = (part) => {
+    const bytes = typeof part === "string" ? myInfoStringBytes(part) : part;
+    chunks.push(bytes);
+    byteOffset += bytes.length;
+  };
+  const addObject = (num, body) => {
+    offsets[num] = byteOffset;
+    add(`${num} 0 obj\n${body}\nendobj\n`);
+  };
+  add("%PDF-1.4\n");
+  addObject(1, "<< /Type /Catalog /Pages 2 0 R >>");
+  addObject(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>");
+  addObject(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /XObject << /Im0 4 0 R >> >> /Contents 5 0 R >>");
+  offsets[4] = byteOffset;
+  add(`4 0 obj\n<< /Type /XObject /Subtype /Image /Width ${width} /Height ${height} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${jpegBytes.length} >>\nstream\n`);
+  add(jpegBytes);
+  add("\nendstream\nendobj\n");
+  const content = "q\n595 0 0 842 0 0 cm\n/Im0 Do\nQ\n";
+  addObject(5, `<< /Length ${content.length} >>\nstream\n${content}endstream`);
+  const xrefOffset = byteOffset;
+  add("xref\n0 6\n0000000000 65535 f \n");
+  for (let i = 1; i <= 5; i += 1) add(`${String(offsets[i]).padStart(10, "0")} 00000 n \n`);
+  add(`trailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF`);
+  return new Blob([myInfoConcatBytes(chunks)], { type: "application/pdf" });
+}
+
+async function myInfoDownloadPaymentStatement(row, user) {
+  const signatureImage = await myInfoLoadStatementSignature();
+  const canvas = myInfoCreateStatementCanvas(row, user, signatureImage);
+  const jpegBytes = myInfoDataURLBytes(canvas.toDataURL("image/jpeg", 0.92));
+  const blob = myInfoBuildImagePDF(jpegBytes, canvas.width, canvas.height);
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = myInfoStatementFileName(row);
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
 function myInfoGlobals() {
   return window.__webr_globals__ || {};
 }
@@ -986,7 +1269,19 @@ function MyInfoPayments(props) {
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {rows.map((row, idx) => (
-                  <tr key={myInfoText(row.order_id) || idx} className="hover:bg-slate-50">
+                  <tr
+                    key={myInfoText(row.order_id) || idx}
+                    className="cursor-pointer hover:bg-sky-50"
+                    tabIndex={0}
+                    title="거래명세서 PDF 다운로드"
+                    onClick={() => myInfoDownloadPaymentStatement(row, props.user || {})}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        myInfoDownloadPaymentStatement(row, props.user || {});
+                      }
+                    }}
+                  >
                     <td className="px-3 py-3 font-semibold text-slate-950">{myInfoText(row.product_name) || "-"}</td>
                     <td className="px-3 py-3 text-slate-600">{myInfoText(row.order_id) || "-"}</td>
                     <td className="px-3 py-3 text-slate-600">{myInfoDate(row.created_at)}</td>
@@ -1266,7 +1561,7 @@ function MyInfoApp() {
     google: <MyInfoGooglePanel identity={googleIdentity} onLinked={(identity) => setGoogleIdentity(identity)} reload={loadAccount} />,
     articles: <MyInfoArticles data={articles} loading={dataLoading.articles} />,
     comments: <MyInfoComments data={comments} loading={dataLoading.comments} />,
-    payments: <MyInfoPayments data={payments} loading={dataLoading.payments} />,
+    payments: <MyInfoPayments data={payments} loading={dataLoading.payments} user={user} />,
     connection: <MyInfoConnection data={connection} loading={dataLoading.connection} />,
   }[active];
 
