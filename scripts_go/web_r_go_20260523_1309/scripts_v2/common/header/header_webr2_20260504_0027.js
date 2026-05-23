@@ -548,9 +548,9 @@ function MegaItem(props) {
   return h("li", null,
     h("a", {
       href: item.href,
-      className: "flex min-h-[92px] gap-3 rounded-lg p-3 text-gray-900 hover:bg-gray-50 hover:text-blue-700"
+      className: "flex min-h-[128px] items-center gap-5 rounded-lg p-4 text-gray-900 hover:bg-gray-50 hover:text-blue-700"
     },
-      h(MenuImageIcon, { icon: item.icon, image: item.image, className: "mt-0.5 h-7 w-7", imageClassName: "mt-0.5 h-7 w-7 rounded object-contain" }),
+      h(MenuImageIcon, { icon: item.icon, image: item.image, className: "h-20 w-28", imageClassName: "h-20 w-28 max-w-full rounded object-contain" }),
       h("span", { className: "min-w-0" },
         h("span", { className: "block text-base font-semibold leading-6" }, item.title),
         h("span", { className: "mt-1 block text-sm font-normal leading-6 text-gray-500" }, item.description)
