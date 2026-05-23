@@ -52,6 +52,7 @@ const menuSections = {
   },
   community: {
     title: "커뮤니티",
+    directHref: "/community/",
     panelTitle: "Web-R 커뮤니티",
     panelText: "Web-R 게시판과 R 커뮤니티 원천을 분리해서 볼 수 있습니다.",
     panelLink: ["/community/", "커뮤니티 보기"],
@@ -98,10 +99,10 @@ const menuSections = {
     items: [
       ["/intro/notice/", "공지사항", "서비스 공지와 업데이트 안내를 확인합니다.", WEBR_CDN + "images/svg/menu_notice.svg"],
       ["/intro/membership/", "정회원 가입", "정회원과 기관/팀 회원 상품을 확인합니다.", WEBR_CDN + "images/svg/menu_membership.svg"],
-      ["/intro/", "회사 소개", "Web-R과 통계마당 소개 페이지입니다."],
-      ["/intro/terms/", "이용 약관", "서비스 이용 약관으로 이동합니다."],
-      ["/intro/privates/", "개인정보 보호 방침", "개인정보 처리 기준을 확인합니다."],
-      ["/intro/refund/", "환불 규정", "환불 및 결제 취소 기준을 확인합니다."]
+      ["/intro/", "회사 소개", "Web-R과 통계마당 소개 페이지입니다.", WEBR_CDN + "images/svg/R_logo_gray.svg"],
+      ["/intro/terms/", "이용 약관", "서비스 이용 약관으로 이동합니다.", WEBR_CDN + "images/svg/menu_notice.svg"],
+      ["/intro/privates/", "개인정보 보호 방침", "개인정보 처리 기준을 확인합니다.", WEBR_CDN + "images/svg/category.svg"],
+      ["/intro/refund/", "환불 규정", "환불 및 결제 취소 기준을 확인합니다.", WEBR_CDN + "images/svg/menu_membership.svg"]
     ]
   }
 };
@@ -202,6 +203,13 @@ function SocialIcon(props) {
   }, h("img", { src: props.icon, className: "h-4 w-4", alt: "" }));
 }
 
+function MembershipPromptBubble() {
+  return h("span", { className: "relative ml-2 inline-flex items-center rounded-full border border-amber-200 bg-amber-100 px-2 py-0.5 text-[11px] font-extrabold leading-4 text-amber-800 shadow-sm" },
+    h("span", { className: "absolute -left-1 top-1/2 h-2 w-2 -translate-y-1/2 rotate-45 border-b border-l border-amber-200 bg-amber-100", "aria-hidden": "true" }),
+    h("span", { className: "relative" }, "정회원 가입")
+  );
+}
+
 function AccountLinks(props) {
   const data = props.data || {};
   const name = data.name || window.gv_username || "";
@@ -226,7 +234,11 @@ function AccountLinks(props) {
       h(UserCircleIcon),
       h("span", null, name),
       h("span", { className: "pointer-events-none absolute left-1/2 top-full z-50 mt-2 hidden -translate-x-1/2 whitespace-nowrap rounded-md bg-gray-950 px-2 py-1 text-xs font-semibold text-white shadow-lg group-hover:block group-focus-within:block" }, "내 정보 수정")),
-    role ? h(UtilityLink, { href: "/intro/membership/", className: "inline-flex min-h-[36px] items-center rounded-lg px-3 text-sm font-semibold text-blue-700 hover:bg-blue-50" }, role) : null,
+    role ? h(UtilityLink, {
+      href: "/intro/membership/",
+      title: role === "준회원" ? "정회원 가입 안내" : undefined,
+      className: `inline-flex min-h-[36px] items-center rounded-lg px-3 text-sm font-semibold ${role === "준회원" ? "text-amber-700 hover:bg-amber-50" : "text-blue-700 hover:bg-blue-50"}`
+    }, role, role === "준회원" ? h(MembershipPromptBubble) : null) : null,
     showTeamMenu ? h(UtilityLink, { href: teamMenu.href, className: "inline-flex min-h-[36px] items-center rounded-lg px-3 text-sm font-semibold text-emerald-700 hover:bg-emerald-50" }, teamMenu.label || "팀 관리") : null,
     role === "관리자" ? h(UtilityLink, { href: "/admin/", className: "inline-flex min-h-[36px] items-center rounded-lg px-3 text-sm font-semibold text-gray-700 hover:bg-gray-50 hover:text-blue-700" }, "Admin Page") : null,
     h("span", { className: "h-5 w-px bg-gray-200", "aria-hidden": "true" }),
@@ -355,12 +367,13 @@ function LegacyIntroMenu() {
 
 function MegaItem(props) {
   const item = props.item;
+  const icon = item[3];
   return h("li", null,
     h("a", {
       href: item[0],
       className: "flex min-h-[92px] gap-3 rounded-lg p-3 text-gray-900 hover:bg-gray-50 hover:text-blue-700"
     },
-      h("span", { className: "mt-0.5 text-gray-500" }, h(ChevronIcon, { className: "h-5 w-5" })),
+      icon ? h("img", { src: icon, className: "mt-0.5 h-7 w-7 shrink-0 rounded object-contain", alt: "" }) : h("span", { className: "mt-0.5 text-gray-500" }, h(ChevronIcon, { className: "h-5 w-5" })),
       h("span", { className: "min-w-0" },
         h("span", { className: "block text-base font-semibold leading-6" }, item[1]),
         h("span", { className: "mt-1 block text-sm font-normal leading-6 text-gray-500" }, item[2])
@@ -370,6 +383,9 @@ function MegaItem(props) {
 }
 
 function MegaMenu(props) {
+  if ((menuSections[props.id] || {}).directHref) {
+    return null;
+  }
   if (props.id === "webr" || props.id === "book" || props.id === "workshop") {
     return h(ImageMegaMenu, { id: props.id });
   }
@@ -409,6 +425,12 @@ function MegaMenu(props) {
 
 function DesktopNavItem(props) {
   const section = menuSections[props.id];
+  if (section.directHref) {
+    return h("a", {
+      href: section.directHref,
+      className: "inline-flex items-center whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900 hover:text-blue-700"
+    }, section.title);
+  }
   return h("span", {
     className: "inline-flex cursor-pointer items-center whitespace-nowrap px-2 py-2 text-sm font-medium text-gray-900 hover:text-blue-700",
     onClick: function() { click_dropdown(props.id); },
@@ -425,26 +447,54 @@ function DesktopNavItem(props) {
 
 function MobileMenuItem(props) {
   const section = menuSections[props.id];
+  if (section.directHref) {
+    return h("a", {
+      href: section.directHref,
+      className: "flex min-h-[44px] w-full items-center justify-between rounded-lg px-3 text-left text-sm font-semibold text-gray-900 hover:bg-blue-50"
+    },
+      h("span", { className: "inline-flex items-center gap-2" },
+        h("img", { src: section.icon, className: "h-5 w-5 shrink-0 object-contain", alt: "" }),
+        section.title
+      )
+    );
+  }
+  const [open, setOpen] = React.useState(false);
+  const panelLink = section.panelLink || null;
   return h("div", { className: "w-full" },
     h("button", {
       type: "button",
       className: "flex min-h-[44px] w-full items-center justify-between rounded-lg px-3 text-left text-sm font-semibold text-gray-900 hover:bg-blue-50",
-      onClick: function() { click_dropdown(props.id); }
+      "aria-expanded": open ? "true" : "false",
+      "aria-controls": "div_menu_mobile_" + props.id,
+      onClick: function() { setOpen(!open); }
     },
       h("span", { className: "inline-flex items-center gap-2" },
-        h("img", { src: section.icon, className: "h-4 w-4", alt: "" }),
+        h("img", { src: section.icon, className: "h-5 w-5 shrink-0 object-contain", alt: "" }),
         section.title
       ),
       h(DownIcon, null)
     ),
-    h("div", { id: "div_menu_mobile_" + props.id, className: "hidden" },
+    h("div", { id: "div_menu_mobile_" + props.id, className: open ? "block" : "hidden" },
       h("div", { className: "space-y-1 px-5 pb-2" },
+        panelLink ? h("a", {
+          href: panelLink[0],
+          className: "mb-2 flex gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-700 hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700"
+        },
+          h("img", { src: section.icon, className: "mt-0.5 h-7 w-7 shrink-0 object-contain", alt: "" }),
+          h("span", { className: "min-w-0" },
+            h("span", { className: "block font-bold text-slate-950" }, section.panelTitle || section.title),
+            section.panelText ? h("span", { className: "mt-1 block text-xs leading-5 text-slate-500" }, section.panelText) : null
+          )
+        ) : null,
         section.items.map(function(item) {
           return h("a", {
             key: item[0],
             href: item[0],
-            className: "block rounded-md px-3 py-2 text-sm text-gray-600 hover:bg-gray-50 hover:text-blue-700"
-          }, item[1]);
+            className: "flex items-center gap-3 rounded-md px-3 py-2 text-sm text-gray-600 hover:bg-gray-50 hover:text-blue-700"
+          },
+            item[3] ? h("img", { src: item[3], className: "h-6 w-6 shrink-0 rounded object-contain", alt: "" }) : h(ChevronIcon, { className: "h-4 w-4 shrink-0 text-gray-400" }),
+            h("span", { className: "min-w-0" }, item[1])
+          );
         })
       )
     )
