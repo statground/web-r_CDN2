@@ -1,19 +1,3 @@
-const MenuState = {
-  hamburger: false,
-  sections: {
-    webr: false,
-    r_ecosystem: false,
-    community: false,
-    book: false,
-    workshop: false,
-    intro: false
-  }
-};
-
-const MENUS = ["webr", "r_ecosystem", "community", "book", "workshop", "intro"];
-const CLASS_PC_OPEN = "hidden bg-white border-b border-gray-200 shadow-sm md:block";
-const CLASS_MOBILE_OPEN = "flex flex-col space-y-3 border-t border-gray-200 bg-white px-6 py-4 md:hidden";
-const CLASS_HIDDEN = "hidden";
 const h = React.createElement;
 
 const WEBR_CDN = "https://cdn.jsdelivr.net/gh/statground/web-R_CDN@f3e464e95616fa13712baa6adbbb0b6cda7ee821/";
@@ -28,84 +12,87 @@ const socialLinks = [
   ["Threads", "https://www.threads.net/@statground", COMMON_CDN + "images/svg/footer_threads.svg"]
 ];
 
-const menuSections = {
+const MENU_SECTIONS = {
   webr: {
     title: "Web-R 접속",
-    panelTitle: "Web-R 실행 환경",
-    panelText: "브라우저에서 바로 R 분석 환경과 Web-R 2.0 도구를 실행합니다.",
-    panelLink: ["/webr/2.0/", "Web-R 2.0 보기"],
-    icon: WEBR_CDN + "images/svg/R_logo.svg",
+    icon: "r-logo",
     items: [
-      ["/webr/", "무료 서버 접속", "가입 여부와 무관하게 기본 Web-R 서버에 접속합니다.", WEBR_CDN + "images/svg/R_logo_black.svg"],
-      ["/webr/member/", "정회원 서버 접속", "정회원 전용 서버와 분석 환경으로 이동합니다.", WEBR_CDN + "images/svg/R_logo.svg"],
-      ["/webr/2.0/", "Web-R 2.0", "메타분석, ROC, 표본수 계산 등 새 Web-R 앱 모음입니다.", WEBR_CDN + "images/webr/advanced_webR.png"],
-      ["/webr/notebook/", "Web-R Notebook", "분석 노트북을 만들고 실행하고 공유합니다.", WEBR_CDN + "images/svg/menu_webr_notebook2.svg"]
+      { href: "/webr/", title: "무료 서버 접속", description: "가입 여부와 무관하게 기본 Web-R 서버에 접속합니다.", icon: "r-logo-dark" },
+      { href: "/webr/member/", title: "정회원 서버 접속", description: "정회원 전용 서버와 분석 환경으로 이동합니다.", icon: "r-logo" },
+      { href: "/webr/2.0/", title: "Web-R 2.0", description: "메타분석, ROC, 표본수 계산 등 새 Web-R 앱 모음입니다.", icon: "webr2" },
+      { href: "/webr/notebook/", title: "Web-R Notebook", description: "분석 노트북을 만들고 실행하고 공유합니다.", icon: "notebook" }
     ]
   },
   r_ecosystem: {
     title: "R 에코시스템",
-    icon: WEBR_CDN + "images/svg/category.svg",
+    icon: "category",
     items: [
-      ["/r-ecosystem/", "소식·글", "공식 발표, 블로그·해설, 저널·뉴스레터를 모아 봅니다.", WEBR_CDN + "images/svg/menu_notice.svg"],
-      ["/r-ecosystem/packages/", "패키지", "CRAN, Bioconductor, R-universe 패키지와 dependency 신호를 탐색합니다.", WEBR_CDN + "images/svg/R-packages.svg"]
+      { href: "/r-ecosystem/", title: "소식·글", description: "공식 발표, 블로그·해설, 저널·뉴스레터를 모아 봅니다.", icon: "notice" },
+      { href: "/r-ecosystem/packages/", title: "패키지", description: "CRAN, Bioconductor, R-universe 패키지와 dependency 신호를 탐색합니다.", icon: "package" }
     ]
   },
   community: {
     title: "커뮤니티",
     directHref: "/community/",
-    panelTitle: "Web-R 커뮤니티",
-    panelText: "Web-R 게시판과 R 커뮤니티 원천을 분리해서 볼 수 있습니다.",
-    panelLink: ["/community/", "커뮤니티 보기"],
-    icon: WEBR_CDN + "images/svg/menu_free.svg",
+    icon: "community",
     items: [
-      ["/community/", "Web-R 커뮤니티", "Web-R 이용자 게시판과 자유게시판으로 이동합니다.", WEBR_CDN + "images/svg/menu_free.svg"],
-      ["/community/r-community/", "R 커뮤니티", "Reddit, Posit Community, Stack Overflow 등 외부 R 커뮤니티 글을 봅니다.", WEBR_CDN + "images/svg/category.svg"]
+      { href: "/community/", title: "Web-R 커뮤니티", description: "Web-R 이용자 게시판과 자유게시판으로 이동합니다.", icon: "community" },
+      { href: "/community/r-community/", title: "R 커뮤니티", description: "Reddit, Posit Community, Stack Overflow 등 외부 R 커뮤니티 글을 봅니다.", icon: "category" }
     ]
   },
   book: {
     title: "도서",
-    panelTitle: "R 도서 허브",
-    panelText: "R 관련 도서, 번역서와 학습 자료를 한곳에서 탐색합니다.",
-    panelLink: ["/book/", "R 도서 모음 보기"],
-    icon: WEBR_CDN + "images/svg/menu_book.svg",
+    icon: "book",
+    hub: { href: "/book/", title: "R 도서 허브", description: "R 관련 도서, 번역서와 학습 자료를 한곳에서 탐색합니다.", icon: "book-hub" },
     items: [
-      ["/book/001/", "의학논문 작성을 위한 R통계와 그래프", "의학 논문 작성과 R 그래프 실습 자료입니다.", WEBR_CDN + "images/book/book_001.jpg"],
-      ["/book/002/", "R을 이용한 조건부과정분석", "조건부과정분석 예제와 보조 자료입니다.", WEBR_CDN + "images/book/book_002.jpg"],
-      ["/book/003/", "웹에서 클릭만으로 하는 R통계분석", "Web-R 기반 통계분석 실습 도서입니다.", WEBR_CDN + "images/book/book_003.jpg"],
-      ["/book/004/", "Learning ggplot2 Using Shiny App", "ggplot2 학습과 Shiny 예제를 함께 봅니다.", WEBR_CDN + "images/book/book_004.jpg"],
-      ["/book/005/", "일반화가법모형 소개", "GAM 분석 예제와 설명 자료입니다.", WEBR_CDN + "images/book/book_005.jpg"],
-      ["/book/006/", "밑바닥부터 시작하는 ROC 커브 분석", "ROC 커브 분석 실습 자료입니다.", WEBR_CDN + "images/book/book_006.jpg"],
-      ["/book/007/", "웹R을 이용한 통계분석", "웹R 기반 통계분석 예제입니다.", WEBR_CDN + "images/book/book_007.jpg"],
-      ["/book/008/", "의료인을 위한 R 생존분석", "의료 연구 생존분석 실습 자료입니다.", WEBR_CDN + "images/book/book_008.jpg"]
+      { href: "/book/001/", title: "의학논문 작성을 위한 R통계와 그래프", description: "의학 논문 작성과 R 그래프 실습 자료입니다.", icon: "book", image: WEBR_CDN + "images/book/book_001.jpg" },
+      { href: "/book/002/", title: "R을 이용한 조건부과정분석", description: "조건부과정분석 예제와 보조 자료입니다.", icon: "book", image: WEBR_CDN + "images/book/book_002.jpg" },
+      { href: "/book/003/", title: "웹에서 클릭만으로 하는 R통계분석", description: "Web-R 기반 통계분석 실습 도서입니다.", icon: "book", image: WEBR_CDN + "images/book/book_003.jpg" },
+      { href: "/book/004/", title: "Learning ggplot2 Using Shiny App", description: "ggplot2 학습과 Shiny 예제를 함께 봅니다.", icon: "book", image: WEBR_CDN + "images/book/book_004.jpg" },
+      { href: "/book/005/", title: "일반화가법모형 소개", description: "GAM 분석 예제와 설명 자료입니다.", icon: "book", image: WEBR_CDN + "images/book/book_005.jpg" },
+      { href: "/book/006/", title: "밑바닥부터 시작하는 ROC 커브 분석", description: "ROC 커브 분석 실습 자료입니다.", icon: "book", image: WEBR_CDN + "images/book/book_006.jpg" },
+      { href: "/book/007/", title: "웹R을 이용한 통계분석", description: "웹R 기반 통계분석 예제입니다.", icon: "book", image: WEBR_CDN + "images/book/book_007.jpg" },
+      { href: "/book/008/", title: "의료인을 위한 R 생존분석", description: "의료 연구 생존분석 실습 자료입니다.", icon: "book", image: WEBR_CDN + "images/book/book_008.jpg" }
     ]
   },
   workshop: {
     title: "워크샵",
-    panelTitle: "워크샵 자료",
-    panelText: "강의 자료와 Web-R 공식 YouTube 영상을 이어서 확인합니다.",
-    panelLink: ["/workshop/", "워크샵 보기"],
-    icon: WEBR_CDN + "images/svg/menu_workshop.svg",
+    icon: "workshop",
     items: [
-      ["/workshop/youtube/", "유튜브", "Web-R 공식 영상과 관련 자료를 봅니다.", WEBR_CDN + "images/svg/menu_youtube.svg"],
-      ["/workshop/", "워크샵", "워크샵 안내와 강의 자료로 이동합니다.", WEBR_CDN + "images/svg/menu_workshop.svg"]
+      { href: "/workshop/youtube/", title: "유튜브", description: "Web-R 공식 영상과 관련 자료를 봅니다.", icon: "youtube" },
+      { href: "/workshop/", title: "워크샵", description: "워크샵 안내와 강의 자료로 이동합니다.", icon: "workshop" }
     ]
   },
   intro: {
     title: "Web-R 소개",
-    panelTitle: "서비스 안내",
-    panelText: "공지, 멤버십, 이용 약관과 개인정보 보호 방침을 확인합니다.",
-    panelLink: ["/intro/", "회사 소개 보기"],
-    icon: WEBR_CDN + "images/svg/menu_notice.svg",
+    icon: "intro",
     items: [
-      ["/intro/notice/", "공지사항", "서비스 공지와 업데이트 안내를 확인합니다.", WEBR_CDN + "images/svg/menu_notice.svg"],
-      ["/intro/membership/", "정회원 가입", "정회원과 기관/팀 회원 상품을 확인합니다.", WEBR_CDN + "images/svg/menu_membership.svg"],
-      ["/intro/", "회사 소개", "Web-R과 통계마당 소개 페이지입니다.", WEBR_CDN + "images/svg/R_logo_gray.svg"],
-      ["/intro/terms/", "이용 약관", "서비스 이용 약관으로 이동합니다.", WEBR_CDN + "images/svg/menu_notice.svg"],
-      ["/intro/privates/", "개인정보 보호 방침", "개인정보 처리 기준을 확인합니다.", WEBR_CDN + "images/svg/category.svg"],
-      ["/intro/refund/", "환불 규정", "환불 및 결제 취소 기준을 확인합니다.", WEBR_CDN + "images/svg/menu_membership.svg"]
+      { href: "/intro/notice/", title: "공지사항", description: "서비스 공지와 업데이트 안내를 확인합니다.", icon: "notice" },
+      { href: "/intro/membership/", title: "정회원 가입", description: "정회원과 기관/팀 회원 상품을 확인합니다.", icon: "membership" },
+      { href: "/intro/", title: "회사 소개", description: "Web-R과 통계마당 소개 페이지입니다.", icon: "company" },
+      { href: "/intro/terms/", title: "이용 약관", description: "서비스 이용 약관으로 이동합니다.", icon: "terms" },
+      { href: "/intro/privates/", title: "개인정보 보호 방침", description: "개인정보 처리 기준을 확인합니다.", icon: "privacy" },
+      { href: "/intro/refund/", title: "환불 규정", description: "환불 및 결제 취소 기준을 확인합니다.", icon: "refund" }
     ]
   }
 };
+
+const MENUS = Object.keys(MENU_SECTIONS);
+const MenuState = {
+  hamburger: false,
+  sections: MENUS.reduce(function(acc, id) {
+    acc[id] = false;
+    return acc;
+  }, {})
+};
+
+const CLASS_PC_OPEN = "hidden bg-white border-b border-gray-200 shadow-sm md:block";
+const CLASS_MOBILE_OPEN = "flex flex-col space-y-3 border-t border-gray-200 bg-white px-6 py-4 md:hidden";
+const CLASS_HIDDEN = "hidden";
+
+function getMenuSection(id) {
+  return MENU_SECTIONS[id];
+}
 
 function closeAllMenus() {
   MENUS.forEach(function(menu) {
@@ -171,6 +158,131 @@ function DownIcon() {
 function HamburgerIcon() {
   return h("svg", { className: "h-6 w-6", fill: "none", stroke: "currentColor", viewBox: "0 0 24 24", "aria-hidden": "true" },
     h("path", { strokeLinecap: "round", strokeLinejoin: "round", strokeWidth: "2", d: "M4 6h16M4 12h16M4 18h16" })
+  );
+}
+
+function MenuIcon(props) {
+  const icon = props && props.icon ? props.icon : "category";
+  const className = props && props.className ? props.className : "h-6 w-6";
+  if (icon === "r-logo" || icon === "r-logo-dark") {
+    const letterColor = icon === "r-logo-dark" ? "#111827" : "#2563eb";
+    return h("svg", { className, viewBox: "0 0 32 32", fill: "none", "aria-hidden": "true" },
+      h("ellipse", { cx: "15.5", cy: "16", rx: "13", ry: "8", fill: "#e5e7eb", stroke: "#94a3b8", strokeWidth: "2" }),
+      h("text", { x: "11", y: "21", fill: letterColor, fontFamily: "Arial, sans-serif", fontSize: "16", fontWeight: "900" }, "R")
+    );
+  }
+  if (icon === "webr2") {
+    return h("svg", { className, viewBox: "0 0 32 32", fill: "none", "aria-hidden": "true" },
+      h("rect", { x: "4", y: "5", width: "24", height: "20", rx: "4", fill: "#dbeafe", stroke: "#2563eb", strokeWidth: "2" }),
+      h("path", { d: "M9 12h4M9 17h7M19 12h4M20 18l2 2 3-5", stroke: "#1d4ed8", strokeLinecap: "round", strokeLinejoin: "round", strokeWidth: "2" }),
+      h("path", { d: "M10 27h12", stroke: "#2563eb", strokeLinecap: "round", strokeWidth: "2" })
+    );
+  }
+  const base = { className, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", "aria-hidden": "true" };
+  const stroke = { strokeLinecap: "round", strokeLinejoin: "round", strokeWidth: "2" };
+  if (icon === "notice" || icon === "intro") {
+    return h("svg", base,
+      h("path", Object.assign({}, stroke, { d: "M4 13v-2a2 2 0 012-2h2l8-4v14l-8-4H6a2 2 0 01-2-2z" })),
+      h("path", Object.assign({}, stroke, { d: "M18 10a4 4 0 010 4M8 15l1 4" }))
+    );
+  }
+  if (icon === "package") {
+    return h("svg", base,
+      h("path", Object.assign({}, stroke, { d: "M12 3l8 4.5v9L12 21l-8-4.5v-9L12 3z" })),
+      h("path", Object.assign({}, stroke, { d: "M4.5 7.5L12 12l7.5-4.5M12 12v9" }))
+    );
+  }
+  if (icon === "community") {
+    return h("svg", base,
+      h("path", Object.assign({}, stroke, { d: "M7 8h10M7 12h6" })),
+      h("path", Object.assign({}, stroke, { d: "M5 18l-2 3V5a2 2 0 012-2h14a2 2 0 012 2v11a2 2 0 01-2 2H5z" }))
+    );
+  }
+  if (icon === "book" || icon === "book-hub") {
+    return h("svg", base,
+      h("path", Object.assign({}, stroke, { d: "M5 4h10a4 4 0 014 4v12H9a4 4 0 00-4 4V4z" })),
+      h("path", Object.assign({}, stroke, { d: "M5 20h10a4 4 0 014 4M9 8h6M9 12h5" }))
+    );
+  }
+  if (icon === "workshop") {
+    return h("svg", base,
+      h("path", Object.assign({}, stroke, { d: "M4 5h16v10H4zM8 21l4-6 4 6M9 9h6" }))
+    );
+  }
+  if (icon === "youtube") {
+    return h("svg", base,
+      h("rect", { x: "3", y: "6", width: "18", height: "12", rx: "3", stroke: "currentColor", strokeWidth: "2" }),
+      h("path", Object.assign({}, stroke, { d: "M10 9.5l5 2.5-5 2.5v-5z" }))
+    );
+  }
+  if (icon === "notebook") {
+    return h("svg", base,
+      h("path", Object.assign({}, stroke, { d: "M7 3h9l3 3v15H7a2 2 0 01-2-2V5a2 2 0 012-2z" })),
+      h("path", Object.assign({}, stroke, { d: "M15 3v4h4M8 11h8M8 15h6" }))
+    );
+  }
+  if (icon === "membership") {
+    return h("svg", base,
+      h("path", Object.assign({}, stroke, { d: "M12 3l2.7 5.5 6.1.9-4.4 4.2 1 6-5.4-2.9-5.4 2.9 1-6-4.4-4.2 6.1-.9L12 3z" }))
+    );
+  }
+  if (icon === "company") {
+    return h("svg", base,
+      h("path", Object.assign({}, stroke, { d: "M4 21h16M6 21V5a2 2 0 012-2h8a2 2 0 012 2v16M9 8h2M13 8h2M9 12h2M13 12h2M10 21v-4h4v4" }))
+    );
+  }
+  if (icon === "terms") {
+    return h("svg", base,
+      h("path", Object.assign({}, stroke, { d: "M7 3h7l5 5v13H7a2 2 0 01-2-2V5a2 2 0 012-2z" })),
+      h("path", Object.assign({}, stroke, { d: "M14 3v6h5M8 13h8M8 17h6" }))
+    );
+  }
+  if (icon === "privacy") {
+    return h("svg", base,
+      h("path", Object.assign({}, stroke, { d: "M12 3l8 4v5c0 5-3.4 8-8 9-4.6-1-8-4-8-9V7l8-4z" })),
+      h("path", Object.assign({}, stroke, { d: "M9 12l2 2 4-5" }))
+    );
+  }
+  if (icon === "refund") {
+    return h("svg", base,
+      h("rect", { x: "3", y: "5", width: "18", height: "14", rx: "2", stroke: "currentColor", strokeWidth: "2" }),
+      h("path", Object.assign({}, stroke, { d: "M3 10h18M8 15h4M17 14l-2 2 2 2" }))
+    );
+  }
+  return h("svg", base,
+    h("path", Object.assign({}, stroke, { d: "M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z" }))
+  );
+}
+
+function iconToneClass(icon) {
+  const tones = {
+    "r-logo": "text-blue-600",
+    "r-logo-dark": "text-gray-950",
+    webr2: "text-sky-600",
+    notebook: "text-amber-500",
+    package: "text-emerald-600",
+    community: "text-amber-600",
+    book: "text-sky-600",
+    "book-hub": "text-blue-600",
+    workshop: "text-orange-500",
+    youtube: "text-red-600",
+    membership: "text-amber-600",
+    privacy: "text-indigo-600",
+    refund: "text-emerald-600",
+    company: "text-slate-600",
+    terms: "text-slate-600",
+    notice: "text-blue-600",
+    intro: "text-blue-600",
+    category: "text-slate-500"
+  };
+  return tones[icon] || "text-slate-500";
+}
+
+function MenuIconBadge(props) {
+  const icon = props.icon || "category";
+  const className = props.className || "h-6 w-6";
+  return h("span", { className: "inline-flex shrink-0 items-center justify-center " + iconToneClass(icon) },
+    h(MenuIcon, { icon, className })
   );
 }
 
@@ -290,35 +402,62 @@ function MenuTitleStrip(props) {
   );
 }
 
+function MenuArtwork(props) {
+  const item = props.item || {};
+  const icon = item.icon || "category";
+  const imageClassName = props.imageClassName || "h-20 w-32 max-w-full object-scale-down";
+  const iconClassName = props.iconClassName || "h-12 w-12";
+  const fallbackClassName = (item.image ? "hidden " : "flex ") + "items-center justify-center";
+  return h("span", { className: props.className || "mb-2 flex h-20 w-32 items-center justify-center" },
+    item.image ? h("img", {
+      src: item.image,
+      className: imageClassName,
+      alt: "",
+      onError: function(event) {
+        event.currentTarget.style.display = "none";
+        const fallback = event.currentTarget.parentNode ? event.currentTarget.parentNode.querySelector("[data-menu-icon-fallback='true']") : null;
+        if (fallback) {
+          fallback.classList.remove("hidden");
+          fallback.classList.add("flex");
+        }
+      }
+    }) : null,
+    h("span", { "data-menu-icon-fallback": "true", className: fallbackClassName },
+      h(MenuIconBadge, { icon, className: iconClassName })
+    )
+  );
+}
+
 function ImageTile(props) {
   const item = props.item;
   return h("li", { className: "flex w-full" },
     h("a", {
-      href: item[0],
+      href: item.href,
       className: "flex min-h-[150px] w-full flex-col items-center justify-center rounded-lg px-4 py-3 text-center text-sm font-medium text-gray-700 hover:border hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700"
     },
-      h("img", { src: item[3], className: "mb-2 h-20 w-32 max-w-full object-scale-down", alt: "" }),
-      h("span", null, item[1])
+      h(MenuArtwork, { item }),
+      h("span", null, item.title)
     )
   );
 }
 
 function MegaFeaturePanel(props) {
-  const section = props.section;
-  const link = section.panelLink || ["#", "바로가기"];
+  const hub = props.section.hub;
+  if (!hub) return null;
   return h("aside", { className: "border-t border-gray-200 p-3 md:border-t-0" },
-    h("h3", { className: "mb-2 text-base font-semibold text-gray-900" }, section.panelTitle),
-    h("p", { className: "mb-3 text-sm leading-6 text-gray-500" }, section.panelText),
+    h(MenuIconBadge, { icon: hub.icon, className: "mb-2 h-8 w-8" }),
+    h("h3", { className: "mb-2 text-base font-semibold text-gray-900" }, hub.title),
+    h("p", { className: "mb-3 text-sm leading-6 text-gray-500" }, hub.description),
     h("a", {
-      href: link[0],
+      href: hub.href,
       className: "inline-flex items-center text-sm font-medium text-blue-700 hover:text-blue-800"
-    }, link[1] + " →")
+    }, "바로가기 →")
   );
 }
 
 function ImageMegaMenu(props) {
-  const section = menuSections[props.id];
-  const hasFeature = props.id === "book";
+  const section = getMenuSection(props.id);
+  const hasFeature = !!section.hub;
   const columns = splitColumns(section.items, props.id === "workshop" ? 2 : hasFeature ? 3 : 4);
   const gridClass = props.id === "workshop"
     ? "mx-auto grid max-w-4xl grid-cols-1 gap-6 px-6 py-4 text-sm text-gray-600 md:grid-cols-2 md:px-10"
@@ -328,7 +467,7 @@ function ImageMegaMenu(props) {
       columns.map(function(column, index) {
         return h("ul", { key: props.id + "-image-col-" + index, className: "space-y-3" },
           column.map(function(item) {
-            return h(ImageTile, { key: item[0], item });
+            return h(ImageTile, { key: item.href, item });
           })
         );
       }),
@@ -339,18 +478,16 @@ function ImageMegaMenu(props) {
 }
 
 function LegacyIntroMenu() {
-  const section = menuSections.intro;
+  const section = getMenuSection("intro");
   const notice = section.items[0];
   const membership = section.items[1];
   const policyLinks = section.items.slice(3);
   function TextLink(props) {
     return h("li", { className: "flex w-full justify-center" },
       h("a", {
-        href: props.item[0],
-        target: props.item[2] || undefined,
-        rel: props.item[2] ? "noopener noreferrer" : undefined,
+        href: props.item.href,
         className: "w-full px-4 py-2 text-center text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-700"
-      }, props.item[1])
+      }, props.item.title)
     );
   }
   return h("nav", { id: "div_megamenu_intro", className: "hidden", "aria-label": "Web-R 소개 하위 메뉴" },
@@ -358,7 +495,7 @@ function LegacyIntroMenu() {
       h("ul", { className: "space-y-3" }, h(ImageTile, { item: notice })),
       h("ul", { className: "space-y-3" }, h(ImageTile, { item: membership })),
       h("ul", { className: "flex flex-col items-center py-4" }, policyLinks.map(function(item) {
-        return h(TextLink, { key: item[0], item: [item[0], item[1], ""] });
+        return h(TextLink, { key: item.href, item });
       }))
     ),
     h(MenuTitleStrip, { title: "Web-R 소개" })
@@ -367,23 +504,22 @@ function LegacyIntroMenu() {
 
 function MegaItem(props) {
   const item = props.item;
-  const icon = item[3];
   return h("li", null,
     h("a", {
-      href: item[0],
+      href: item.href,
       className: "flex min-h-[92px] gap-3 rounded-lg p-3 text-gray-900 hover:bg-gray-50 hover:text-blue-700"
     },
-      icon ? h("img", { src: icon, className: "mt-0.5 h-7 w-7 shrink-0 rounded object-contain", alt: "" }) : h("span", { className: "mt-0.5 text-gray-500" }, h(ChevronIcon, { className: "h-5 w-5" })),
+      h(MenuIconBadge, { icon: item.icon, className: "mt-0.5 h-7 w-7" }),
       h("span", { className: "min-w-0" },
-        h("span", { className: "block text-base font-semibold leading-6" }, item[1]),
-        h("span", { className: "mt-1 block text-sm font-normal leading-6 text-gray-500" }, item[2])
+        h("span", { className: "block text-base font-semibold leading-6" }, item.title),
+        h("span", { className: "mt-1 block text-sm font-normal leading-6 text-gray-500" }, item.description)
       )
     )
   );
 }
 
 function MegaMenu(props) {
-  if ((menuSections[props.id] || {}).directHref) {
+  if ((getMenuSection(props.id) || {}).directHref) {
     return null;
   }
   if (props.id === "webr" || props.id === "book" || props.id === "workshop") {
@@ -392,14 +528,14 @@ function MegaMenu(props) {
   if (props.id === "intro") {
     return h(LegacyIntroMenu, null);
   }
-  const section = menuSections[props.id];
-  const hasPanel = !!(section.panelTitle && section.panelText && section.panelLink);
-  const columnCount = hasPanel ? 3 : Math.min(3, Math.max(1, section.items.length));
+  const section = getMenuSection(props.id);
+  const hasHub = !!section.hub;
+  const columnCount = hasHub ? 3 : Math.min(3, Math.max(1, section.items.length));
   const columns = splitColumns(section.items, columnCount);
   let gridClass = "mx-auto grid max-w-screen-xl grid-cols-1 gap-6 px-6 py-7 text-gray-900 md:grid-cols-4 md:px-4";
-  if (!hasPanel && columnCount === 2) {
+  if (!hasHub && columnCount === 2) {
     gridClass = "mx-auto grid max-w-4xl grid-cols-1 gap-6 px-6 py-7 text-gray-900 md:grid-cols-2 md:px-4";
-  } else if (!hasPanel) {
+  } else if (!hasHub) {
     gridClass = "mx-auto grid max-w-screen-lg grid-cols-1 gap-6 px-6 py-7 text-gray-900 md:grid-cols-3 md:px-4";
   }
   return h("nav", { id: "div_megamenu_" + props.id, className: "hidden", "aria-label": section.title + " 하위 메뉴" },
@@ -407,24 +543,17 @@ function MegaMenu(props) {
       columns.map(function(column, index) {
         return h("ul", { key: props.id + "-col-" + index, className: "space-y-1" },
           column.map(function(item) {
-            return h(MegaItem, { key: item[0], item });
+            return h(MegaItem, { key: item.href, item });
           })
         );
       }),
-      hasPanel ? h("aside", { className: "border-t border-gray-200 p-3 md:border-t-0" },
-        h("h2", { className: "mb-2 text-base font-semibold text-gray-900" }, section.panelTitle),
-        h("p", { className: "mb-3 text-sm leading-6 text-gray-500" }, section.panelText),
-        h("a", { href: section.panelLink[0], className: "inline-flex items-center text-sm font-medium text-blue-700 hover:text-blue-800" },
-          section.panelLink[1],
-          h("span", { className: "ml-1" }, "→")
-        )
-      ) : null
+      hasHub ? h(MegaFeaturePanel, { section }) : null
     )
   );
 }
 
 function DesktopNavItem(props) {
-  const section = menuSections[props.id];
+  const section = getMenuSection(props.id);
   if (section.directHref) {
     return h("a", {
       href: section.directHref,
@@ -446,20 +575,20 @@ function DesktopNavItem(props) {
 }
 
 function MobileMenuItem(props) {
-  const section = menuSections[props.id];
+  const section = getMenuSection(props.id);
   if (section.directHref) {
     return h("a", {
       href: section.directHref,
       className: "flex min-h-[44px] w-full items-center justify-between rounded-lg px-3 text-left text-sm font-semibold text-gray-900 hover:bg-blue-50"
     },
       h("span", { className: "inline-flex items-center gap-2" },
-        h("img", { src: section.icon, className: "h-5 w-5 shrink-0 object-contain", alt: "" }),
+        h(MenuIconBadge, { icon: section.icon, className: "h-5 w-5" }),
         section.title
       )
     );
   }
   const [open, setOpen] = React.useState(false);
-  const panelLink = section.panelLink || null;
+  const hub = section.hub || null;
   return h("div", { className: "w-full" },
     h("button", {
       type: "button",
@@ -469,31 +598,31 @@ function MobileMenuItem(props) {
       onClick: function() { setOpen(!open); }
     },
       h("span", { className: "inline-flex items-center gap-2" },
-        h("img", { src: section.icon, className: "h-5 w-5 shrink-0 object-contain", alt: "" }),
+        h(MenuIconBadge, { icon: section.icon, className: "h-5 w-5" }),
         section.title
       ),
       h(DownIcon, null)
     ),
     h("div", { id: "div_menu_mobile_" + props.id, className: open ? "block" : "hidden" },
       h("div", { className: "space-y-1 px-5 pb-2" },
-        panelLink ? h("a", {
-          href: panelLink[0],
+        hub ? h("a", {
+          href: hub.href,
           className: "mb-2 flex gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-700 hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700"
         },
-          h("img", { src: section.icon, className: "mt-0.5 h-7 w-7 shrink-0 object-contain", alt: "" }),
+          h(MenuIconBadge, { icon: hub.icon, className: "mt-0.5 h-7 w-7" }),
           h("span", { className: "min-w-0" },
-            h("span", { className: "block font-bold text-slate-950" }, section.panelTitle || section.title),
-            section.panelText ? h("span", { className: "mt-1 block text-xs leading-5 text-slate-500" }, section.panelText) : null
+            h("span", { className: "block font-bold text-slate-950" }, hub.title),
+            hub.description ? h("span", { className: "mt-1 block text-xs leading-5 text-slate-500" }, hub.description) : null
           )
         ) : null,
         section.items.map(function(item) {
           return h("a", {
-            key: item[0],
-            href: item[0],
+            key: item.href,
+            href: item.href,
             className: "flex items-center gap-3 rounded-md px-3 py-2 text-sm text-gray-600 hover:bg-gray-50 hover:text-blue-700"
           },
-            item[3] ? h("img", { src: item[3], className: "h-6 w-6 shrink-0 rounded object-contain", alt: "" }) : h(ChevronIcon, { className: "h-4 w-4 shrink-0 text-gray-400" }),
-            h("span", { className: "min-w-0" }, item[1])
+            h(MenuIconBadge, { icon: item.icon, className: "h-6 w-6" }),
+            h("span", { className: "min-w-0" }, item.title)
           );
         })
       )
