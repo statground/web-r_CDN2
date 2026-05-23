@@ -18,14 +18,37 @@
   var style = document.createElement("style");
   style.id = "webr-admin-dashboard-shared-style";
   style.textContent = `
+    :root[data-webr-admin-dashboard] #div_main {
+      width: 100%;
+    }
     :root[data-webr-admin-dashboard] #div_main > div {
       background: #f8fafc;
       gap: 14px;
+      justify-content: stretch !important;
+      max-width: none !important;
       padding: 14px 12px !important;
+      width: 100% !important;
+    }
+    :root[data-webr-admin-dashboard] #div_main > div > div:first-child,
+    :root[data-webr-admin-dashboard] #div_main > div > div:nth-child(2) {
+      max-width: none !important;
+      min-width: 0;
+      width: 100% !important;
     }
     @media (min-width: 768px) {
       :root[data-webr-admin-dashboard] #div_main > div {
+        align-items: start !important;
+        grid-template-columns: minmax(220px, 260px) minmax(0, 1fr) !important;
         padding: 18px 32px !important;
+      }
+      :root[data-webr-admin-dashboard] #div_main > div > div:first-child {
+        grid-column: 1 !important;
+      }
+      :root[data-webr-admin-dashboard] #div_main > div > div:first-child > div {
+        width: 100% !important;
+      }
+      :root[data-webr-admin-dashboard] #div_main > div > div:nth-child(2) {
+        grid-column: 2 !important;
       }
     }
     @media (min-width: 1280px) {
@@ -81,7 +104,7 @@
       align-items: stretch !important;
       display: grid !important;
       gap: 8px !important;
-      grid-template-columns: repeat(auto-fit, minmax(132px, 1fr)) !important;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)) !important;
       justify-content: stretch !important;
       padding: 0 !important;
       width: 100% !important;
@@ -95,13 +118,27 @@
       padding: 10px !important;
       text-align: left !important;
     }
+    :root[data-webr-admin-dashboard] #div_main dl.grid > div[class*="flex"] {
+      align-items: flex-start !important;
+      justify-content: center !important;
+    }
     :root[data-webr-admin-dashboard] #div_main dt {
       color: #020617 !important;
-      font-size: 1.28rem !important;
+      font-size: clamp(1rem, 1.18vw, 1.22rem) !important;
       font-weight: 850 !important;
       letter-spacing: 0 !important;
       line-height: 1.08 !important;
-      white-space: normal !important;
+      max-width: 100% !important;
+      white-space: nowrap !important;
+      word-break: keep-all !important;
+    }
+    :root[data-webr-admin-dashboard] #div_main .text-4xl,
+    :root[data-webr-admin-dashboard] #div_main dd.mt-3[class*="text-3xl"] {
+      font-size: clamp(1.05rem, 1.28vw, 1.28rem) !important;
+      letter-spacing: 0 !important;
+      line-height: 1.08 !important;
+      white-space: nowrap !important;
+      word-break: keep-all !important;
     }
     :root[data-webr-admin-dashboard] #div_main dd {
       color: #64748b !important;
@@ -176,7 +213,7 @@
     :root[data-webr-admin-dashboard="webr"] #div_main > div > div:nth-child(2) > div:nth-child(3) dl,
     :root[data-webr-admin-dashboard="payments"] #div_main > div > div:nth-child(2) > div:nth-child(2) dl {
       gap: 10px !important;
-      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)) !important;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)) !important;
       padding: 0 !important;
     }
     @media (min-width: 1024px) {
