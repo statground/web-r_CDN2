@@ -1290,10 +1290,25 @@ function myInfoSectionPath(key) {
 function myInfoSectionURL(key) {
   return `${myInfoSectionPath(key)}${window.location.search || ""}`;
 }
-function myInfoReplaceLegacyHashURL(key) {
-  if (!myInfoHashSectionKey())
-    return;
-  window.history.replaceState({ myinfoSection: key }, "", myInfoSectionURL(key));
+function myInfoLegacyHashRedirectURL() {
+  const key = myInfoHashSectionKey();
+  return key ? myInfoSectionURL(key) : "";
+}
+function myInfoShouldLoadUser(section) {
+  return ["overview", "email", "profile", "payments"].includes(section);
+}
+function myInfoShouldLoadGender(section) {
+  return section === "overview" || section === "profile";
+}
+function myInfoShouldLoadGoogle(section) {
+  return section === "overview" || section === "google";
+}
+function myInfoSectionDataKeys(section) {
+  if (section === "overview")
+    return ["articles", "comments", "payments"];
+  if (["articles", "comments", "payments", "connection"].includes(section))
+    return [section];
+  return [];
 }
 function MyInfoApp() {
   const menuGroups = [
@@ -1322,17 +1337,20 @@ function MyInfoApp() {
   ];
   const menuItems = menuGroups.flatMap((group) => group.items);
   const initialKey = myInfoLocationSectionKey();
-  const [active, setActive] = React.useState(menuItems.some((item) => item.key === initialKey && !item.href) ? initialKey : "overview");
+  const active = menuItems.some((item) => item.key === initialKey && !item.href) ? initialKey : "overview";
   const [openGroups, setOpenGroups] = React.useState(() => {
     const activeGroup = menuGroups.find((group) => group.items.some((item) => item.key === initialKey && !item.href));
     return { view: !activeGroup || activeGroup.key === "view", change: activeGroup && activeGroup.key === "change" };
   });
-  const [loading, setLoading] = React.useState(true);
-  const [dataLoading, setDataLoading] = React.useState({
-    articles: true,
-    comments: true,
-    payments: true,
-    connection: true
+  const [loading, setLoading] = React.useState(() => myInfoShouldLoadUser(active) || myInfoShouldLoadGender(active) || myInfoShouldLoadGoogle(active));
+  const [dataLoading, setDataLoading] = React.useState(() => {
+    const keys = new Set(myInfoSectionDataKeys(active));
+    return {
+      articles: keys.has("articles"),
+      comments: keys.has("comments"),
+      payments: keys.has("payments"),
+      connection: keys.has("connection")
+    };
   });
   const [user, setUser] = React.useState({});
   const [googleIdentity, setGoogleIdentity] = React.useState({});
@@ -1344,16 +1362,26 @@ function MyInfoApp() {
   function patchDataLoading(key, value) {
     setDataLoading((prev) => ({ ...prev, [key]: value }));
   }
-  function loadAccount() {
+  function loadAccountData(section = active) {
+    const loadUser = myInfoShouldLoadUser(section);
+    const loadGender = myInfoShouldLoadGender(section);
+    const loadGoogle = myInfoShouldLoadGoogle(section);
+    if (!loadUser && !loadGender && !loadGoogle) {
+      setLoading(false);
+      return Promise.resolve();
+    }
     setLoading(true);
-    Promise.all([
-      myInfoFetchJSON("/account/ajax_get_myinfo/"),
-      myInfoFetchJSON("/account/ajax_get_gender_options/"),
-      myInfoFetchJSON("/account/ajax_get_google_identity/")
+    return Promise.all([
+      loadUser ? myInfoFetchJSON("/account/ajax_get_myinfo/") : Promise.resolve(null),
+      loadGender ? myInfoFetchJSON("/account/ajax_get_gender_options/") : Promise.resolve(null),
+      loadGoogle ? myInfoFetchJSON("/account/ajax_get_google_identity/") : Promise.resolve(null)
     ]).then(([nextUser, genderPayload, googlePayload]) => {
-      setUser(nextUser || {});
-      setGenderOptions(myInfoResolvedGenderOptions((genderPayload || {}).options));
-      setGoogleIdentity(googlePayload || {});
+      if (loadUser)
+        setUser(nextUser || {});
+      if (loadGender)
+        setGenderOptions(myInfoResolvedGenderOptions((genderPayload || {}).options));
+      if (loadGoogle)
+        setGoogleIdentity(googlePayload || {});
     }).finally(() => setLoading(false));
   }
   function loadPanelData(key, url, setter) {
@@ -1362,62 +1390,46 @@ function MyInfoApp() {
       setter(payload || {});
     }).finally(() => patchDataLoading(key, false));
   }
-  function loadActivityData() {
-    loadPanelData("articles", "/account/ajax_get_myinfo_article/", setArticles);
-    loadPanelData("comments", "/account/ajax_get_myinfo_comment/", setComments);
-    loadPanelData("payments", "/account/ajax_get_myinfo_payment/", setPayments);
-    loadPanelData("connection", "/account/ajax_get_myinfo_connection/", setConnection);
+  function loadSectionData(section = active) {
+    setDataLoading({ articles: false, comments: false, payments: false, connection: false });
+    const loaders = {
+      articles: () => loadPanelData("articles", "/account/ajax_get_myinfo_article/", setArticles),
+      comments: () => loadPanelData("comments", "/account/ajax_get_myinfo_comment/", setComments),
+      payments: () => loadPanelData("payments", "/account/ajax_get_myinfo_payment/", setPayments),
+      connection: () => loadPanelData("connection", "/account/ajax_get_myinfo_connection/", setConnection)
+    };
+    myInfoSectionDataKeys(section).forEach((key) => loaders[key]());
   }
-  function load() {
-    loadAccount();
-    loadActivityData();
+  function loadPage(section = active) {
+    loadAccountData(section);
+    loadSectionData(section);
   }
   React.useEffect(() => {
-    load();
-    myInfoReplaceLegacyHashURL(myInfoLocationSectionKey());
-    const onPop = () => {
-      const key = myInfoLocationSectionKey();
-      const nextGroup = menuGroups.find((group) => group.items.some((item) => item.key === key && !item.href));
-      if (nextGroup) {
-        setActive(key);
-        setOpenGroups((prev) => ({ ...prev, [nextGroup.key]: true }));
-      }
-    };
+    const legacyURL = myInfoLegacyHashRedirectURL();
+    if (legacyURL) {
+      window.location.replace(legacyURL);
+      return;
+    }
+    loadPage(active);
     const onHash = () => {
-      const key = myInfoHashSectionKey();
-      const nextGroup = menuGroups.find((group) => group.items.some((item) => item.key === key && !item.href));
-      if (!nextGroup)
-        return;
-      setActive(key);
-      setOpenGroups((prev) => ({ ...prev, [nextGroup.key]: true }));
-      myInfoReplaceLegacyHashURL(key);
+      const legacyURL2 = myInfoLegacyHashRedirectURL();
+      if (legacyURL2)
+        window.location.replace(legacyURL2);
     };
-    window.addEventListener("popstate", onPop);
     window.addEventListener("hashchange", onHash);
     return () => {
-      window.removeEventListener("popstate", onPop);
       window.removeEventListener("hashchange", onHash);
     };
   }, []);
-  function activate(key) {
-    const nextGroup = menuGroups.find((group) => group.items.some((item) => item.key === key && !item.href));
-    setActive(key);
-    if (nextGroup)
-      setOpenGroups((prev) => ({ ...prev, [nextGroup.key]: true }));
-    const nextURL = myInfoSectionURL(key);
-    if (`${window.location.pathname}${window.location.search}` !== nextURL) {
-      window.history.pushState({ myinfoSection: key }, "", nextURL);
-    }
-  }
   function toggleGroup(key) {
     setOpenGroups((prev) => ({ ...prev, [key]: !prev[key] }));
   }
   const content = {
     overview: /* @__PURE__ */ React.createElement(MyInfoOverview, { user, googleIdentity, genderOptions, articles, comments, payments, loadingArticles: dataLoading.articles, loadingComments: dataLoading.comments, loadingPayments: dataLoading.payments }),
-    email: /* @__PURE__ */ React.createElement(MyInfoEmailForm, { user, reload: loadAccount }),
+    email: /* @__PURE__ */ React.createElement(MyInfoEmailForm, { user, reload: () => loadAccountData(active) }),
     password: /* @__PURE__ */ React.createElement(MyInfoPasswordForm, null),
-    profile: /* @__PURE__ */ React.createElement(MyInfoProfileForm, { user, genderOptions, reload: loadAccount }),
-    google: /* @__PURE__ */ React.createElement(MyInfoGooglePanel, { identity: googleIdentity, onLinked: (identity) => setGoogleIdentity(identity), reload: loadAccount }),
+    profile: /* @__PURE__ */ React.createElement(MyInfoProfileForm, { user, genderOptions, reload: () => loadAccountData(active) }),
+    google: /* @__PURE__ */ React.createElement(MyInfoGooglePanel, { identity: googleIdentity, onLinked: (identity) => setGoogleIdentity(identity), reload: () => loadAccountData(active) }),
     articles: /* @__PURE__ */ React.createElement(MyInfoArticles, { data: articles, loading: dataLoading.articles }),
     comments: /* @__PURE__ */ React.createElement(MyInfoComments, { data: comments, loading: dataLoading.comments }),
     payments: /* @__PURE__ */ React.createElement(MyInfoPayments, { data: payments, loading: dataLoading.payments, user }),
@@ -1469,10 +1481,6 @@ function MyInfoApp() {
                   {
                     key: item.key,
                     href: myInfoSectionPath(item.key),
-                    onClick: (event) => {
-                      event.preventDefault();
-                      activate(item.key);
-                    },
                     className: `block w-full rounded-lg px-4 py-3 text-left text-sm font-semibold transition ${selected ? "bg-slate-950 text-white" : "text-slate-700 hover:bg-slate-100"}`
                   },
                   item.label
