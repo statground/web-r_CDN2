@@ -173,11 +173,20 @@ function HamburgerIcon() {
   );
 }
 
+function UserCircleIcon() {
+  return h("svg", { className: "h-4 w-4 text-gray-500 transition group-hover:text-blue-700 group-focus-visible:text-blue-700", fill: "none", stroke: "currentColor", viewBox: "0 0 24 24", "aria-hidden": "true" },
+    h("path", { strokeLinecap: "round", strokeLinejoin: "round", strokeWidth: "2", d: "M15.75 7.5a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0z" }),
+    h("path", { strokeLinecap: "round", strokeLinejoin: "round", strokeWidth: "2", d: "M4.5 20.25a7.5 7.5 0 0115 0" })
+  );
+}
+
 function UtilityLink(props) {
   return h("a", {
     href: props.href,
     target: props.target || undefined,
     rel: props.target ? "noopener noreferrer" : undefined,
+    title: props.title || undefined,
+    "aria-label": props["aria-label"] || undefined,
     className: props.className || "inline-flex min-h-[32px] items-center whitespace-nowrap px-2 text-sm font-medium text-gray-700 hover:text-blue-700 hover:underline"
   }, props.children);
 }
@@ -208,7 +217,15 @@ function AccountLinks(props) {
   const teamMenu = data.team_menu || data.teamMenu || null;
   const showTeamMenu = teamMenu && teamMenu.visible !== false && teamMenu.href;
   return h("div", { className: "flex flex-row flex-wrap items-center gap-1" },
-    h(UtilityLink, { href: "/account/myinfo/", className: "inline-flex min-h-[36px] items-center rounded-lg px-3 text-sm font-semibold text-gray-900 hover:bg-gray-50 hover:text-blue-700" }, name),
+    h(UtilityLink, {
+      href: "/account/myinfo/profile/",
+      title: "내 정보 수정",
+      "aria-label": name + " 내 정보 수정",
+      className: "group relative inline-flex min-h-[36px] items-center gap-1.5 rounded-lg px-3 text-sm font-semibold text-gray-900 hover:bg-gray-50 hover:text-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
+    },
+      h(UserCircleIcon),
+      h("span", null, name),
+      h("span", { className: "pointer-events-none absolute left-1/2 top-full z-50 mt-2 hidden -translate-x-1/2 whitespace-nowrap rounded-md bg-gray-950 px-2 py-1 text-xs font-semibold text-white shadow-lg group-hover:block group-focus-within:block" }, "내 정보 수정")),
     role ? h(UtilityLink, { href: "/intro/membership/", className: "inline-flex min-h-[36px] items-center rounded-lg px-3 text-sm font-semibold text-blue-700 hover:bg-blue-50" }, role) : null,
     showTeamMenu ? h(UtilityLink, { href: teamMenu.href, className: "inline-flex min-h-[36px] items-center rounded-lg px-3 text-sm font-semibold text-emerald-700 hover:bg-emerald-50" }, teamMenu.label || "팀 관리") : null,
     role === "관리자" ? h(UtilityLink, { href: "/admin/", className: "inline-flex min-h-[36px] items-center rounded-lg px-3 text-sm font-semibold text-gray-700 hover:bg-gray-50 hover:text-blue-700" }, "Admin Page") : null,
