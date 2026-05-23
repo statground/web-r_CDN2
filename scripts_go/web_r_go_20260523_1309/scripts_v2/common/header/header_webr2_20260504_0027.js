@@ -3,6 +3,15 @@ const h = React.createElement;
 const WEBR_CDN = "https://cdn.jsdelivr.net/gh/statground/web-R_CDN@f3e464e95616fa13712baa6adbbb0b6cda7ee821/";
 const COMMON_CDN = "https://cdn.jsdelivr.net/gh/statground/Common_CDN/";
 
+function currentWebRCDN2Base() {
+  const fallback = "https://cdn.jsdelivr.net/gh/statground/web-r_CDN2@9391ee2fceef526234f9c21cb907dc01f3249339/";
+  const scriptURL = typeof document !== "undefined" && document.currentScript && document.currentScript.src ? document.currentScript.src : "";
+  const match = scriptURL.match(/gh\/statground\/web-r_CDN2@([^/,]+)\//);
+  return match ? "https://cdn.jsdelivr.net/gh/statground/web-r_CDN2@" + match[1] + "/" : fallback;
+}
+
+const WEBR_CDN2 = currentWebRCDN2Base();
+
 const socialLinks = [
   ["Facebook Group", "https://www.facebook.com/groups/statground", COMMON_CDN + "images/svg/footer_facebook_group.svg"],
   ["Facebook Page", "https://www.facebook.com/Statground", COMMON_CDN + "images/svg/footer_facebook_page.svg"],
@@ -16,34 +25,38 @@ const MENU_SECTIONS = {
   webr: {
     title: "Web-R 접속",
     icon: "r-logo",
+    image: WEBR_CDN2 + "images/svg/R_logo.svg",
     items: [
-      { href: "/webr/", title: "무료 서버 접속", description: "가입 여부와 무관하게 기본 Web-R 서버에 접속합니다.", icon: "r-logo-dark" },
-      { href: "/webr/member/", title: "정회원 서버 접속", description: "정회원 전용 서버와 분석 환경으로 이동합니다.", icon: "r-logo" },
-      { href: "/webr/2.0/", title: "Web-R 2.0", description: "메타분석, ROC, 표본수 계산 등 새 Web-R 앱 모음입니다.", icon: "webr2" },
-      { href: "/webr/notebook/", title: "Web-R Notebook", description: "분석 노트북을 만들고 실행하고 공유합니다.", icon: "notebook" }
+      { href: "/webr/", title: "무료 서버 접속", description: "가입 여부와 무관하게 기본 Web-R 서버에 접속합니다.", icon: "r-logo-dark", image: WEBR_CDN2 + "images/svg/R_logo_black.svg" },
+      { href: "/webr/member/", title: "정회원 서버 접속", description: "정회원 전용 서버와 분석 환경으로 이동합니다.", icon: "r-logo", image: WEBR_CDN2 + "images/svg/R_logo.svg" },
+      { href: "/webr/2.0/", title: "Web-R 2.0", description: "메타분석, ROC, 표본수 계산 등 새 Web-R 앱 모음입니다.", icon: "webr2", image: WEBR_CDN2 + "images/svg/R_Logo_20.svg" },
+      { href: "/webr/notebook/", title: "Web-R Notebook", description: "분석 노트북을 만들고 실행하고 공유합니다.", icon: "notebook", image: WEBR_CDN2 + "images/svg/menu_webr_notebook2.svg" }
     ]
   },
   r_ecosystem: {
     title: "R 에코시스템",
     icon: "category",
+    image: WEBR_CDN2 + "images/svg/category.svg",
     items: [
-      { href: "/r-ecosystem/", title: "소식·글", description: "공식 발표, 블로그·해설, 저널·뉴스레터를 모아 봅니다.", icon: "notice" },
-      { href: "/r-ecosystem/packages/", title: "패키지", description: "CRAN, Bioconductor, R-universe 패키지와 dependency 신호를 탐색합니다.", icon: "package" }
+      { href: "/r-ecosystem/", title: "소식·글", description: "공식 발표, 블로그·해설, 저널·뉴스레터를 모아 봅니다.", icon: "notice", image: WEBR_CDN2 + "images/svg/menu_notice.svg" },
+      { href: "/r-ecosystem/packages/", title: "패키지", description: "CRAN, Bioconductor, R-universe 패키지와 dependency 신호를 탐색합니다.", icon: "package", image: WEBR_CDN2 + "images/svg/R-packages.svg" }
     ]
   },
   community: {
     title: "커뮤니티",
     directHref: "/community/",
     icon: "community",
+    image: WEBR_CDN2 + "images/svg/menu_free.svg",
     items: [
-      { href: "/community/", title: "Web-R 커뮤니티", description: "Web-R 이용자 게시판과 자유게시판으로 이동합니다.", icon: "community" },
-      { href: "/community/r-community/", title: "R 커뮤니티", description: "Reddit, Posit Community, Stack Overflow 등 외부 R 커뮤니티 글을 봅니다.", icon: "category" }
+      { href: "/community/", title: "Web-R 커뮤니티", description: "Web-R 이용자 게시판과 자유게시판으로 이동합니다.", icon: "community", image: WEBR_CDN2 + "images/svg/menu_free.svg" },
+      { href: "/community/r-community/", title: "R 커뮤니티", description: "Reddit, Posit Community, Stack Overflow 등 외부 R 커뮤니티 글을 봅니다.", icon: "category", image: WEBR_CDN2 + "images/svg/category.svg" }
     ]
   },
   book: {
     title: "도서",
     icon: "book",
-    hub: { href: "/book/", title: "R 도서 허브", description: "R 관련 도서, 번역서와 학습 자료를 한곳에서 탐색합니다.", icon: "book-hub" },
+    image: WEBR_CDN2 + "images/svg/menu_book.svg",
+    hub: { href: "/book/", title: "R 도서 허브", description: "R 관련 도서, 번역서와 학습 자료를 한곳에서 탐색합니다.", icon: "book-hub", image: WEBR_CDN2 + "images/svg/menu_book.svg" },
     items: [
       { href: "/book/001/", title: "의학논문 작성을 위한 R통계와 그래프", description: "의학 논문 작성과 R 그래프 실습 자료입니다.", icon: "book", image: WEBR_CDN + "images/book/book_001.jpg" },
       { href: "/book/002/", title: "R을 이용한 조건부과정분석", description: "조건부과정분석 예제와 보조 자료입니다.", icon: "book", image: WEBR_CDN + "images/book/book_002.jpg" },
@@ -58,21 +71,23 @@ const MENU_SECTIONS = {
   workshop: {
     title: "워크샵",
     icon: "workshop",
+    image: WEBR_CDN2 + "images/svg/menu_workshop.svg",
     items: [
-      { href: "/workshop/youtube/", title: "유튜브", description: "Web-R 공식 영상과 관련 자료를 봅니다.", icon: "youtube" },
-      { href: "/workshop/", title: "워크샵", description: "워크샵 안내와 강의 자료로 이동합니다.", icon: "workshop" }
+      { href: "/workshop/youtube/", title: "유튜브", description: "Web-R 공식 영상과 관련 자료를 봅니다.", icon: "youtube", image: WEBR_CDN2 + "images/svg/menu_youtube.svg" },
+      { href: "/workshop/", title: "워크샵", description: "워크샵 안내와 강의 자료로 이동합니다.", icon: "workshop", image: WEBR_CDN2 + "images/svg/menu_workshop.svg" }
     ]
   },
   intro: {
     title: "Web-R 소개",
     icon: "intro",
+    image: WEBR_CDN2 + "images/svg/menu_notice.svg",
     items: [
-      { href: "/intro/notice/", title: "공지사항", description: "서비스 공지와 업데이트 안내를 확인합니다.", icon: "notice" },
-      { href: "/intro/membership/", title: "정회원 가입", description: "정회원과 기관/팀 회원 상품을 확인합니다.", icon: "membership" },
-      { href: "/intro/", title: "회사 소개", description: "Web-R과 통계마당 소개 페이지입니다.", icon: "company" },
-      { href: "/intro/terms/", title: "이용 약관", description: "서비스 이용 약관으로 이동합니다.", icon: "terms" },
-      { href: "/intro/privates/", title: "개인정보 보호 방침", description: "개인정보 처리 기준을 확인합니다.", icon: "privacy" },
-      { href: "/intro/refund/", title: "환불 규정", description: "환불 및 결제 취소 기준을 확인합니다.", icon: "refund" }
+      { href: "/intro/notice/", title: "공지사항", description: "서비스 공지와 업데이트 안내를 확인합니다.", icon: "notice", image: WEBR_CDN2 + "images/svg/menu_notice.svg" },
+      { href: "/intro/membership/", title: "정회원 가입", description: "정회원과 기관/팀 회원 상품을 확인합니다.", icon: "membership", image: WEBR_CDN2 + "images/svg/menu_membership.svg" },
+      { href: "/intro/", title: "회사 소개", description: "Web-R과 통계마당 소개 페이지입니다.", icon: "company", image: WEBR_CDN2 + "images/svg/R_logo_gray.svg" },
+      { href: "/intro/terms/", title: "이용 약관", description: "서비스 이용 약관으로 이동합니다.", icon: "terms", image: WEBR_CDN2 + "images/svg/menu_notice.svg" },
+      { href: "/intro/privates/", title: "개인정보 보호 방침", description: "개인정보 처리 기준을 확인합니다.", icon: "privacy", image: WEBR_CDN2 + "images/svg/category.svg" },
+      { href: "/intro/refund/", title: "환불 규정", description: "환불 및 결제 취소 기준을 확인합니다.", icon: "refund", image: WEBR_CDN2 + "images/svg/menu_membership.svg" }
     ]
   }
 };
@@ -286,6 +301,32 @@ function MenuIconBadge(props) {
   );
 }
 
+function MenuImageIcon(props) {
+  const icon = props.icon || "category";
+  const image = props.image || "";
+  const className = props.className || "h-6 w-6";
+  const imageClassName = props.imageClassName || className + " shrink-0 object-contain";
+  const fallbackClassName = (image ? "hidden " : "flex ") + "shrink-0 items-center justify-center " + iconToneClass(icon);
+  return h("span", { className: "inline-flex shrink-0 items-center justify-center" },
+    image ? h("img", {
+      src: image,
+      className: imageClassName,
+      alt: "",
+      onError: function(event) {
+        event.currentTarget.style.display = "none";
+        const fallback = event.currentTarget.parentNode ? event.currentTarget.parentNode.querySelector("[data-menu-icon-fallback='true']") : null;
+        if (fallback) {
+          fallback.classList.remove("hidden");
+          fallback.classList.add("flex");
+        }
+      }
+    }) : null,
+    h("span", { "data-menu-icon-fallback": "true", className: fallbackClassName },
+      h(MenuIcon, { icon, className })
+    )
+  );
+}
+
 function UserCircleIcon() {
   return h("svg", { className: "h-4 w-4 text-gray-500 transition group-hover:text-blue-700 group-focus-visible:text-blue-700", fill: "none", stroke: "currentColor", viewBox: "0 0 24 24", "aria-hidden": "true" },
     h("path", { strokeLinecap: "round", strokeLinejoin: "round", strokeWidth: "2", d: "M15.75 7.5a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0z" }),
@@ -445,7 +486,7 @@ function MegaFeaturePanel(props) {
   const hub = props.section.hub;
   if (!hub) return null;
   return h("aside", { className: "border-t border-gray-200 p-3 md:border-t-0" },
-    h(MenuIconBadge, { icon: hub.icon, className: "mb-2 h-8 w-8" }),
+    h(MenuImageIcon, { icon: hub.icon, image: hub.image, className: "mb-2 h-8 w-8", imageClassName: "mb-2 h-8 w-8 object-contain" }),
     h("h3", { className: "mb-2 text-base font-semibold text-gray-900" }, hub.title),
     h("p", { className: "mb-3 text-sm leading-6 text-gray-500" }, hub.description),
     h("a", {
@@ -509,7 +550,7 @@ function MegaItem(props) {
       href: item.href,
       className: "flex min-h-[92px] gap-3 rounded-lg p-3 text-gray-900 hover:bg-gray-50 hover:text-blue-700"
     },
-      h(MenuIconBadge, { icon: item.icon, className: "mt-0.5 h-7 w-7" }),
+      h(MenuImageIcon, { icon: item.icon, image: item.image, className: "mt-0.5 h-7 w-7", imageClassName: "mt-0.5 h-7 w-7 rounded object-contain" }),
       h("span", { className: "min-w-0" },
         h("span", { className: "block text-base font-semibold leading-6" }, item.title),
         h("span", { className: "mt-1 block text-sm font-normal leading-6 text-gray-500" }, item.description)
@@ -582,7 +623,7 @@ function MobileMenuItem(props) {
       className: "flex min-h-[44px] w-full items-center justify-between rounded-lg px-3 text-left text-sm font-semibold text-gray-900 hover:bg-blue-50"
     },
       h("span", { className: "inline-flex items-center gap-2" },
-        h(MenuIconBadge, { icon: section.icon, className: "h-5 w-5" }),
+        h(MenuImageIcon, { icon: section.icon, image: section.image, className: "h-5 w-5" }),
         section.title
       )
     );
@@ -598,7 +639,7 @@ function MobileMenuItem(props) {
       onClick: function() { setOpen(!open); }
     },
       h("span", { className: "inline-flex items-center gap-2" },
-        h(MenuIconBadge, { icon: section.icon, className: "h-5 w-5" }),
+        h(MenuImageIcon, { icon: section.icon, image: section.image, className: "h-5 w-5" }),
         section.title
       ),
       h(DownIcon, null)
@@ -609,7 +650,7 @@ function MobileMenuItem(props) {
           href: hub.href,
           className: "mb-2 flex gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-700 hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700"
         },
-          h(MenuIconBadge, { icon: hub.icon, className: "mt-0.5 h-7 w-7" }),
+          h(MenuImageIcon, { icon: hub.icon, image: hub.image, className: "mt-0.5 h-7 w-7", imageClassName: "mt-0.5 h-7 w-7 object-contain" }),
           h("span", { className: "min-w-0" },
             h("span", { className: "block font-bold text-slate-950" }, hub.title),
             hub.description ? h("span", { className: "mt-1 block text-xs leading-5 text-slate-500" }, hub.description) : null
@@ -621,7 +662,7 @@ function MobileMenuItem(props) {
             href: item.href,
             className: "flex items-center gap-3 rounded-md px-3 py-2 text-sm text-gray-600 hover:bg-gray-50 hover:text-blue-700"
           },
-            h(MenuIconBadge, { icon: item.icon, className: "h-6 w-6" }),
+            h(MenuImageIcon, { icon: item.icon, image: item.image, className: "h-6 w-6", imageClassName: "h-6 w-6 rounded object-contain" }),
             h("span", { className: "min-w-0" }, item.title)
           );
         })
