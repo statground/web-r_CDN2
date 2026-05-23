@@ -1265,6 +1265,36 @@ function MyInfoConnection(props) {
   const trendOption = myInfoConnectionTrendOption(visitRows, shinyRows, trendGranularity);
   return /* @__PURE__ */ React.createElement(MyInfoPanel, { title: "\uACC4\uC815 \uD65C\uB3D9" }, /* @__PURE__ */ React.createElement("div", { className: "mb-7 grid grid-cols-1 gap-5" }, /* @__PURE__ */ React.createElement(MyInfoChart, { option: visitCalendarOption, loading: props.loading, className: "h-[290px] w-full", empty: "\uBC29\uBB38 \uCE98\uB9B0\uB354\uB97C \uD45C\uC2DC\uD560 \uB370\uC774\uD130\uAC00 \uC5C6\uC2B5\uB2C8\uB2E4." }), /* @__PURE__ */ React.createElement(MyInfoChart, { option: appCalendarOption, loading: props.loading, className: "h-[290px] w-full", empty: "\uC571 \uC811\uC18D \uCE98\uB9B0\uB354\uB97C \uD45C\uC2DC\uD560 \uB370\uC774\uD130\uAC00 \uC5C6\uC2B5\uB2C8\uB2E4." })), /* @__PURE__ */ React.createElement("div", { className: "mb-3 flex flex-row items-center justify-between gap-3 sm:flex-col sm:items-start" }, /* @__PURE__ */ React.createElement("h3", { className: "text-base font-bold text-slate-950" }, "\uD65C\uB3D9 \uCD94\uC774"), /* @__PURE__ */ React.createElement(MyInfoGranularityControl, { value: trendGranularity, onChange: setTrendGranularity })), /* @__PURE__ */ React.createElement("div", { className: "mb-7" }, /* @__PURE__ */ React.createElement(MyInfoChart, { option: trendOption, loading: props.loading, className: "h-[300px] w-full", empty: "\uD65C\uB3D9 \uCD94\uC774\uB97C \uD45C\uC2DC\uD560 \uB370\uC774\uD130\uAC00 \uC5C6\uC2B5\uB2C8\uB2E4." })));
 }
+const MYINFO_BASE_PATH = "/account/myinfo/";
+const MYINFO_SECTION_KEYS = ["overview", "articles", "comments", "payments", "connection", "email", "password", "profile", "google"];
+function myInfoNormalizeSectionKey(value) {
+  const key = myInfoText(value).replace(/^#/, "").replace(/^\/+|\/+$/g, "").toLowerCase();
+  return MYINFO_SECTION_KEYS.includes(key) ? key : "";
+}
+function myInfoPathSectionKey() {
+  const segments = window.location.pathname.replace(/^\/+|\/+$/g, "").split("/");
+  if (segments[0] !== "account" || segments[1] !== "myinfo")
+    return "";
+  return myInfoNormalizeSectionKey(segments[2] || "");
+}
+function myInfoHashSectionKey() {
+  return myInfoNormalizeSectionKey(window.location.hash || "");
+}
+function myInfoLocationSectionKey() {
+  return myInfoPathSectionKey() || myInfoHashSectionKey() || myInfoNormalizeSectionKey(window.myinfo_section) || "overview";
+}
+function myInfoSectionPath(key) {
+  const section = myInfoNormalizeSectionKey(key) || "overview";
+  return `${MYINFO_BASE_PATH}${section}/`;
+}
+function myInfoSectionURL(key) {
+  return `${myInfoSectionPath(key)}${window.location.search || ""}`;
+}
+function myInfoReplaceLegacyHashURL(key) {
+  if (!myInfoHashSectionKey())
+    return;
+  window.history.replaceState({ myinfoSection: key }, "", myInfoSectionURL(key));
+}
 function MyInfoApp() {
   const menuGroups = [
     {
@@ -1291,7 +1321,7 @@ function MyInfoApp() {
     }
   ];
   const menuItems = menuGroups.flatMap((group) => group.items);
-  const initialKey = (window.location.hash || "#overview").replace("#", "");
+  const initialKey = myInfoLocationSectionKey();
   const [active, setActive] = React.useState(menuItems.some((item) => item.key === initialKey && !item.href) ? initialKey : "overview");
   const [openGroups, setOpenGroups] = React.useState(() => {
     const activeGroup = menuGroups.find((group) => group.items.some((item) => item.key === initialKey && !item.href));
@@ -1344,23 +1374,40 @@ function MyInfoApp() {
   }
   React.useEffect(() => {
     load();
-    const onHash = () => {
-      const key = (window.location.hash || "#overview").replace("#", "");
+    myInfoReplaceLegacyHashURL(myInfoLocationSectionKey());
+    const onPop = () => {
+      const key = myInfoLocationSectionKey();
       const nextGroup = menuGroups.find((group) => group.items.some((item) => item.key === key && !item.href));
       if (nextGroup) {
         setActive(key);
         setOpenGroups((prev) => ({ ...prev, [nextGroup.key]: true }));
       }
     };
+    const onHash = () => {
+      const key = myInfoHashSectionKey();
+      const nextGroup = menuGroups.find((group) => group.items.some((item) => item.key === key && !item.href));
+      if (!nextGroup)
+        return;
+      setActive(key);
+      setOpenGroups((prev) => ({ ...prev, [nextGroup.key]: true }));
+      myInfoReplaceLegacyHashURL(key);
+    };
+    window.addEventListener("popstate", onPop);
     window.addEventListener("hashchange", onHash);
-    return () => window.removeEventListener("hashchange", onHash);
+    return () => {
+      window.removeEventListener("popstate", onPop);
+      window.removeEventListener("hashchange", onHash);
+    };
   }, []);
   function activate(key) {
     const nextGroup = menuGroups.find((group) => group.items.some((item) => item.key === key && !item.href));
     setActive(key);
     if (nextGroup)
       setOpenGroups((prev) => ({ ...prev, [nextGroup.key]: true }));
-    window.history.replaceState(null, "", `#${key}`);
+    const nextURL = myInfoSectionURL(key);
+    if (`${window.location.pathname}${window.location.search}` !== nextURL) {
+      window.history.pushState({ myinfoSection: key }, "", nextURL);
+    }
   }
   function toggleGroup(key) {
     setOpenGroups((prev) => ({ ...prev, [key]: !prev[key] }));
@@ -1418,12 +1465,15 @@ function MyInfoApp() {
                   return React.createElement("a", { key: item.key, href: item.href, className: "block w-full rounded-lg px-4 py-3 text-left text-sm font-semibold text-slate-700 transition hover:bg-slate-100" }, item.label);
                 }
                 return React.createElement(
-                  "button",
+                  "a",
                   {
                     key: item.key,
-                    type: "button",
-                    onClick: () => activate(item.key),
-                    className: `w-full rounded-lg px-4 py-3 text-left text-sm font-semibold transition ${selected ? "bg-slate-950 text-white" : "text-slate-700 hover:bg-slate-100"}`
+                    href: myInfoSectionPath(item.key),
+                    onClick: (event) => {
+                      event.preventDefault();
+                      activate(item.key);
+                    },
+                    className: `block w-full rounded-lg px-4 py-3 text-left text-sm font-semibold transition ${selected ? "bg-slate-950 text-white" : "text-slate-700 hover:bg-slate-100"}`
                   },
                   item.label
                 );
