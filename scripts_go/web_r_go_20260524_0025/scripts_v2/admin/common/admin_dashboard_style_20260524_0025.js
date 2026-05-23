@@ -37,18 +37,28 @@
     }
     @media (min-width: 768px) {
       :root[data-webr-admin-dashboard] #div_main > div {
+        display: grid !important;
         align-items: start !important;
         grid-template-columns: minmax(220px, 260px) minmax(0, 1fr) !important;
         padding: 18px 32px !important;
       }
+      :root[data-webr-admin-dashboard] #div_main > div > .webr-admin-menu,
+      :root[data-webr-admin-dashboard] #div_main > div > nav.webr-admin-menu {
+        grid-column: 1 / 2 !important;
+        max-width: 260px !important;
+        min-width: 0 !important;
+        width: 100% !important;
+      }
       :root[data-webr-admin-dashboard] #div_main > div > div:first-child {
-        grid-column: 1 !important;
+        grid-column: 1 / 2 !important;
+        max-width: 260px !important;
       }
       :root[data-webr-admin-dashboard] #div_main > div > div:first-child > div {
         width: 100% !important;
       }
       :root[data-webr-admin-dashboard] #div_main > div > div:nth-child(2) {
-        grid-column: 2 !important;
+        grid-column: 2 / 3 !important;
+        width: 100% !important;
       }
     }
     @media (min-width: 1280px) {
