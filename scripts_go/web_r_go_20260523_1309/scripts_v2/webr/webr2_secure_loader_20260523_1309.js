@@ -26,7 +26,7 @@
     const key = String(config.key || "").trim();
     const direct = String(config.asset || "").trim();
     const version = String(config.version || "20260523_1309").trim();
-    const url = direct || "/webr/2.0/assets/" + encodeURIComponent(key) + "/app.js";
+    const url = direct || "/webr/2.0/assets/" + encodeURIComponent(key) + "/payload";
     return url + (url.indexOf("?") === -1 ? "?" : "&") + "v=" + encodeURIComponent(version);
   }
 
