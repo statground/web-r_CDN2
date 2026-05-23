@@ -110,6 +110,30 @@
       margin-top: 4px !important;
       white-space: normal !important;
     }
+    :root[data-webr-admin-dashboard] #div_main .animate-pulse {
+      animation-duration: 1.5s;
+    }
+    :root[data-webr-admin-dashboard] #div_main .animate-pulse h5,
+    :root[data-webr-admin-dashboard] #div_main .animate-pulse h5 span {
+      color: #111827 !important;
+    }
+    :root[data-webr-admin-dashboard] #div_main .animate-pulse [class*="bg-gray-100"],
+    :root[data-webr-admin-dashboard] #div_main .animate-pulse [class*="bg-gray-200"] {
+      background: #e5e7eb !important;
+    }
+    :root[data-webr-admin-dashboard] #div_main .animate-pulse [class*="h-[350px]"] {
+      height: 96px !important;
+    }
+    :root[data-webr-admin-dashboard] #div_main .animate-pulse [class*="h-56"],
+    :root[data-webr-admin-dashboard] #div_main .animate-pulse [class*="h-64"],
+    :root[data-webr-admin-dashboard] #div_main .animate-pulse [class*="h-72"],
+    :root[data-webr-admin-dashboard] #div_main .animate-pulse [class*="h-80"] {
+      height: 180px !important;
+    }
+    :root[data-webr-admin-dashboard] #div_main .animate-pulse [class*="divide-y"] {
+      border-color: #e5e7eb !important;
+      padding: 8px !important;
+    }
     :root[data-webr-admin-dashboard] #div_main ul {
       border-color: #e2e8f0 !important;
     }
