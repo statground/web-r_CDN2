@@ -25,8 +25,14 @@
       background: #f8fafc;
       gap: 14px;
       justify-content: stretch !important;
+      margin-left: 0 !important;
+      margin-right: 0 !important;
       max-width: none !important;
       padding: 14px 12px !important;
+      width: 100% !important;
+    }
+    :root[data-webr-admin-dashboard] #div_main > div.webr-admin-shell {
+      max-width: none !important;
       width: 100% !important;
     }
     :root[data-webr-admin-dashboard] #div_main > div > div:first-child,
@@ -76,7 +82,10 @@
       margin-top: 0 !important;
     }
     :root[data-webr-admin-dashboard] #div_main > div > div:nth-child(2) > div {
+      justify-self: stretch !important;
+      max-width: none !important;
       min-width: 0;
+      width: 100% !important;
     }
     :root[data-webr-admin-dashboard] #div_main > div > div:nth-child(2) > div[class*="bg-white"][class*="border"] {
       background: transparent !important;
@@ -193,7 +202,10 @@
       border: 1px solid #e2e8f0;
       border-radius: 12px;
       box-shadow: 0 1px 2px rgba(15, 23, 42, 0.05);
+      justify-self: stretch !important;
+      max-width: none !important;
       padding: 12px;
+      width: 100% !important;
     }
     :root[data-webr-admin-dashboard] #div_select > div {
       flex-wrap: wrap;
@@ -238,6 +250,23 @@
       :root[data-webr-admin-dashboard="active_users"] #div_main > div > div:nth-child(2) > div,
       :root[data-webr-admin-dashboard="balance_account"] #div_main > div > div:nth-child(2) > div {
         grid-column: 1 / -1;
+      }
+      :root[data-webr-admin-dashboard="balance_account"] #div_main > div {
+        max-width: none !important;
+        width: 100% !important;
+      }
+      :root[data-webr-admin-dashboard="balance_account"] #div_main > div > div:nth-child(2) {
+        justify-items: stretch !important;
+        max-width: none !important;
+        width: 100% !important;
+      }
+      :root[data-webr-admin-dashboard="balance_account"] #div_main > div > div:nth-child(2) > div {
+        justify-self: stretch !important;
+        max-width: none !important;
+        width: 100% !important;
+      }
+      :root[data-webr-admin-dashboard="balance_account"] #div_main > div > div:nth-child(2) > div:nth-child(2) dl.grid {
+        grid-template-columns: repeat(3, minmax(220px, 1fr)) !important;
       }
     }
   `;
