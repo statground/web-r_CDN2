@@ -12,16 +12,29 @@ function set_footer(service) {
   const h = React.createElement;
 
   function FooterAddress() {
-    return h("div", { className: "flex flex-col space-y-4 text-sm text-gray-600" },
-      h("p", null, "통계마당의 모든 컨텐츠는 저작권법에 의거 보호받고 있습니다."),
-      h("div", { className: "flex flex-col gap-1" },
-        h("p", null, data_footer.company),
-        h("p", null, data_footer.representative),
-        data_footer.administrator != null ? h("p", null, data_footer.administrator) : null,
-        h("p", null, data_footer.registration_no),
-        h("p", null, data_footer.mail_order_no),
-        h("p", null, data_footer.address),
-        h("p", null, data_footer.phone + "　|　" + data_footer.email)
+    const footerItems = [
+      data_footer.company,
+      data_footer.representative
+    ];
+    if (data_footer.administrator != null && String(data_footer.administrator).trim() !== "") {
+      footerItems.push(data_footer.administrator);
+    }
+    footerItems.push(
+      data_footer.registration_no,
+      data_footer.mail_order_no,
+      data_footer.address,
+      data_footer.phone + "　|　" + data_footer.email
+    );
+
+    return h("div", { className: "flex flex-col gap-2 text-sm text-gray-600" },
+      h("p", { className: "leading-5" }, "통계마당의 모든 컨텐츠는 저작권법에 의거 보호받고 있습니다."),
+      h("div", { className: "flex flex-wrap items-center gap-y-1" },
+        footerItems.map(function(item, index) {
+          return h("span", {
+            key: item,
+            className: (index === 0 ? "" : "ml-3 border-l border-gray-300 pl-3 ") + "leading-5 whitespace-nowrap md:whitespace-normal"
+          }, item);
+        })
       )
     );
   }
@@ -51,7 +64,7 @@ function set_footer(service) {
           ["/intro/terms/", "서비스 이용약관", ""],
           ["/intro/privates/", "개인정보 보호 방침", ""]
         ];
-    return h("ul", { className: "flex flex-col items-start gap-3 text-left md:flex-row md:flex-wrap md:items-center md:justify-end md:gap-x-6 md:gap-y-2 md:text-right" },
+    return h("ul", { className: "flex flex-wrap items-center justify-start gap-x-5 gap-y-1 text-left" },
       links.map(function(link) {
         return h(FooterLink, { key: link[0], href: link[0], target: link[2] || undefined }, link[1]);
       })
@@ -59,10 +72,10 @@ function set_footer(service) {
   }
 
   function Div_footer() {
-    return h("div", { className: "w-full bg-white py-10" },
-      h("div", { className: "mx-auto flex max-w-screen-xl flex-col gap-8 px-6 md:flex-row md:items-start md:justify-between md:px-4" },
+    return h("div", { className: "w-full bg-white py-6 md:py-5" },
+      h("div", { className: "mx-auto flex max-w-screen-xl flex-row items-center justify-between gap-4 px-4 md:flex-col md:items-start" },
         h(FooterAddress, null),
-        h("div", { className: "pt-2" }, h(FooterMenu, null))
+        h("div", null, h(FooterMenu, null))
       )
     );
   }

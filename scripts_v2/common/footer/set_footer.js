@@ -11,38 +11,34 @@ let data_footer = {
 function set_footer(service) {
 	function Div_footer(props) {
 		function Div_footer_address(props) {
+			let footer_items = [
+				data_footer.company,
+				data_footer.representative,
+			]
+			if (data_footer.administrator != null && String(data_footer.administrator).trim() !== "") {
+				footer_items.push(data_footer.administrator)
+			}
+			footer_items = footer_items.concat([
+				data_footer.registration_no,
+				data_footer.mail_order_no,
+				data_footer.address,
+				data_footer.phone + "　|　" + data_footer.email,
+			])
+
 			return (
-				<div class="flex flex-col space-y-4">
-					<p class="text-sm">
+				<div class="flex flex-col gap-2 text-sm text-gray-600">
+					<p class="leading-5">
 						통계마당의 모든 컨텐츠는 저작권법에 의거 보호받고 있습니다.
 					</p>
 
-					<div class="flex flex-col">
-						<p class="text-sm">{data_footer.company}</p>
-						<div class="flex flex-row space-x-2 md:flex-col md:space-x-0">
-							<p class="text-sm">{data_footer.representative}</p>
-							{
-								data_footer.administrator != null
-								?   <p class="flex text-sm md:hidden">　|　{data_footer.administrator}</p>
-								:   ""
-							}
-							{
-								data_footer.administrator != null
-								?   <p class="hidden text-sm md:flex md:visible">{data_footer.administrator}</p>
-								:   ""
-							}
-						</div>
-						<div class="flex flex-row space-x-2 md:flex-col md:space-x-0">
-							<p class="text-sm">{data_footer.registration_no}</p>
-							<p class="flex text-sm md:hidden">　|　{data_footer.mail_order_no}</p>
-							<p class="hidden text-sm md:flex md:visible">{data_footer.mail_order_no}</p>
-						</div>
-						<p class="text-sm">{data_footer.address}</p>
-						<div class="flex flex-row space-x-2 md:flex-col md:space-x-0">
-							<p class="text-sm">{data_footer.phone}</p>
-							<p class="flex text-sm md:hidden">　|　{data_footer.email}</p>
-							<p class="hidden text-sm md:flex md:visible">{data_footer.email}</p>
-						</div>
+					<div class="flex flex-wrap items-center gap-y-1">
+						{
+							footer_items.map((item, index) => (
+								<span key={item} class={(index === 0 ? "" : "ml-3 border-l border-gray-300 pl-3 ") + "leading-5 whitespace-nowrap md:whitespace-normal"}>
+									{item}
+								</span>
+							))
+						}
 					</div>
 				</div>
 			)
@@ -51,7 +47,7 @@ function set_footer(service) {
 		function Div_footer_sub_menu(props) {
 			let class_sub_menu = "mr-4 hover:underline hover:decoration-gray-900 hover:decoration-wavy md:mr-6"
 			return (
-				<ul class="flex flex-wrap items-center mb-6 text-center text-sm sm:mb-0 pt-8">
+				<ul class="flex flex-wrap items-center justify-start gap-x-5 gap-y-1 text-left text-sm">
 					<li>
 						<a href="/intro/notice/" class={class_sub_menu}>공지사항</a>
 					</li>
@@ -71,7 +67,7 @@ function set_footer(service) {
 		function Div_footer_sub_menu_webr(props) {
 			let class_sub_menu = "mr-4 hover:underline hover:decoration-gray-900 hover:decoration-wavy md:mr-6"
 			return (
-				<ul class="flex flex-wrap items-center mb-6 text-center text-sm sm:mb-0 pt-8">
+				<ul class="flex flex-wrap items-center justify-start gap-x-5 gap-y-1 text-left text-sm">
 					<li>
 						<a href="https://web-r.org/notice" target="_blank" class={class_sub_menu}>공지사항</a>
 					</li>
@@ -121,8 +117,8 @@ function set_footer(service) {
 		}
 
 		return (
-			<div class="py-24 bg-white rounded-lg md:py-8 w-full">
-				<div class="flex flex-row justify-between items-center md:flex-col">
+			<div class="py-6 bg-white rounded-lg md:py-5 w-full">
+				<div class="mx-auto flex max-w-screen-xl flex-row justify-between items-center gap-4 px-4 md:flex-col md:items-start">
 					<Div_footer_address />
 					{
 						service == null
@@ -136,7 +132,7 @@ function set_footer(service) {
 					}
 				</div>
 		
-				<hr class="my-6 border-gray-200 lg:my-8" />
+				<hr class="my-4 border-gray-200" />
 				
 				<div class="flex flex-row justify-center items-center w-full">
 					<Div_footer_icons />
