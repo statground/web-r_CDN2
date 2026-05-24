@@ -216,7 +216,7 @@
       }
       carousel.dataset.webrCarouselBound = "1";
       function scrollBy(direction) {
-        var amount = Math.max(260, Math.floor(track.clientWidth * 0.8));
+        var amount = track.offsetWidth || track.clientWidth || 0;
         track.scrollBy({ left: amount * direction, behavior: "smooth" });
       }
       if (prev) {
