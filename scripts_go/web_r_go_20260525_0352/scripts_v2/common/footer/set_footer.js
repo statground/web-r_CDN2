@@ -25,37 +25,19 @@ function set_footer(service) {
       data_footer.address,
       data_footer.phone + "　|　" + data_footer.email
     );
-    const footerLinks = service === "webr"
-      ? [
-          ["https://web-r.org/notice", "공지사항", "_blank"],
-          ["/intro", "회사 소개", ""],
-          ["https://web-r.org/foot_info", "서비스 이용약관", "_blank"],
-          ["https://web-r.org/privates", "개인정보 보호 방침", "_blank"]
-        ]
-      : [
-          ["/intro/notice/", "공지사항", ""],
-          ["/intro/", "회사 소개", ""],
-          ["/intro/terms/", "서비스 이용약관", ""],
-          ["/intro/privates/", "개인정보 보호 방침", ""]
-        ];
 
     return h("div", { className: "flex flex-col gap-2 text-sm text-gray-600" },
-      h("p", { className: "leading-5" }, "통계마당의 모든 컨텐츠는 저작권법에 의거 보호받고 있습니다."),
+      h("div", { className: "flex flex-row items-start justify-between gap-4 md:flex-col md:gap-1" },
+        h("p", { className: "leading-5" }, "통계마당의 모든 컨텐츠는 저작권법에 의거 보호받고 있습니다."),
+        h("nav", { className: "shrink-0 md:w-full" }, h(FooterMenu, null))
+      ),
       h("div", { className: "flex flex-wrap items-center gap-x-5 gap-y-1" },
         footerItems.map(function(item) {
           return h("span", {
             key: item,
             className: "leading-5 whitespace-nowrap md:whitespace-normal"
           }, item);
-        }).concat(footerLinks.map(function(link) {
-          return h("a", {
-            key: link[0],
-            href: link[0],
-            target: link[2] || undefined,
-            rel: link[2] ? "noopener noreferrer" : undefined,
-            className: "leading-5 whitespace-nowrap text-gray-700 hover:text-blue-700 hover:underline"
-          }, link[1]);
-        }))
+        })
       )
     );
   }
@@ -85,7 +67,7 @@ function set_footer(service) {
           ["/intro/terms/", "서비스 이용약관", ""],
           ["/intro/privates/", "개인정보 보호 방침", ""]
         ];
-    return h("ul", { className: "flex flex-wrap items-center justify-start gap-x-5 gap-y-1 text-left" },
+    return h("ul", { className: "flex flex-wrap items-center justify-end gap-x-5 gap-y-1 text-right md:justify-start md:text-left" },
       links.map(function(link) {
         return h(FooterLink, { key: link[0], href: link[0], target: link[2] || undefined }, link[1]);
       })
