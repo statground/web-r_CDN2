@@ -25,16 +25,37 @@ function set_footer(service) {
       data_footer.address,
       data_footer.phone + "　|　" + data_footer.email
     );
+    const footerLinks = service === "webr"
+      ? [
+          ["https://web-r.org/notice", "공지사항", "_blank"],
+          ["/intro", "회사 소개", ""],
+          ["https://web-r.org/foot_info", "서비스 이용약관", "_blank"],
+          ["https://web-r.org/privates", "개인정보 보호 방침", "_blank"]
+        ]
+      : [
+          ["/intro/notice/", "공지사항", ""],
+          ["/intro/", "회사 소개", ""],
+          ["/intro/terms/", "서비스 이용약관", ""],
+          ["/intro/privates/", "개인정보 보호 방침", ""]
+        ];
 
     return h("div", { className: "flex flex-col gap-2 text-sm text-gray-600" },
       h("p", { className: "leading-5" }, "통계마당의 모든 컨텐츠는 저작권법에 의거 보호받고 있습니다."),
-      h("div", { className: "flex flex-wrap items-center gap-y-1" },
-        footerItems.map(function(item, index) {
+      h("div", { className: "flex flex-wrap items-center gap-x-5 gap-y-1" },
+        footerItems.map(function(item) {
           return h("span", {
             key: item,
-            className: (index === 0 ? "" : "ml-3 border-l border-gray-300 pl-3 ") + "leading-5 whitespace-nowrap md:whitespace-normal"
+            className: "leading-5 whitespace-nowrap md:whitespace-normal"
           }, item);
-        })
+        }).concat(footerLinks.map(function(link) {
+          return h("a", {
+            key: link[0],
+            href: link[0],
+            target: link[2] || undefined,
+            rel: link[2] ? "noopener noreferrer" : undefined,
+            className: "leading-5 whitespace-nowrap text-gray-700 hover:text-blue-700 hover:underline"
+          }, link[1]);
+        }))
       )
     );
   }
@@ -72,11 +93,8 @@ function set_footer(service) {
   }
 
   function Div_footer() {
-    return h("div", { className: "w-full bg-white py-6 md:py-5" },
-      h("div", { className: "mx-auto flex max-w-screen-xl flex-row items-center justify-between gap-4 px-4 md:flex-col md:items-start" },
-        h(FooterAddress, null),
-        h("div", null, h(FooterMenu, null))
-      )
+    return h("div", { className: "w-full bg-white py-5 md:py-4" },
+      h("div", { className: "w-full px-4" }, h(FooterAddress, null))
     );
   }
 

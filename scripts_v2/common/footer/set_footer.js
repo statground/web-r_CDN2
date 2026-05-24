@@ -24,6 +24,19 @@ function set_footer(service) {
 				data_footer.address,
 				data_footer.phone + "　|　" + data_footer.email,
 			])
+			let footer_links = service === "webr"
+				? [
+					["https://web-r.org/notice", "공지사항", "_blank"],
+					["/intro", "회사 소개", ""],
+					["https://web-r.org/foot_info", "서비스 이용약관", "_blank"],
+					["https://web-r.org/privates", "개인정보 보호 방침", "_blank"],
+				]
+				: [
+					["/intro/notice/", "공지사항", ""],
+					["/intro/", "회사 소개", ""],
+					["/intro/terms/", "서비스 이용약관", ""],
+					["/intro/privates/", "개인정보 보호 방침", ""],
+				]
 
 			return (
 				<div class="flex flex-col gap-2 text-sm text-gray-600">
@@ -31,12 +44,19 @@ function set_footer(service) {
 						통계마당의 모든 컨텐츠는 저작권법에 의거 보호받고 있습니다.
 					</p>
 
-					<div class="flex flex-wrap items-center gap-y-1">
+					<div class="flex flex-wrap items-center gap-x-5 gap-y-1">
 						{
-							footer_items.map((item, index) => (
-								<span key={item} class={(index === 0 ? "" : "ml-3 border-l border-gray-300 pl-3 ") + "leading-5 whitespace-nowrap md:whitespace-normal"}>
+							footer_items.map((item) => (
+								<span key={item} class="leading-5 whitespace-nowrap md:whitespace-normal">
 									{item}
 								</span>
+							))
+						}
+						{
+							footer_links.map((link) => (
+								<a key={link[0]} href={link[0]} target={link[2] || undefined} rel={link[2] ? "noopener noreferrer" : undefined} class="leading-5 whitespace-nowrap text-gray-700 hover:text-blue-700 hover:underline">
+									{link[1]}
+								</a>
 							))
 						}
 					</div>
@@ -117,19 +137,9 @@ function set_footer(service) {
 		}
 
 		return (
-			<div class="py-6 bg-white rounded-lg md:py-5 w-full">
-				<div class="mx-auto flex max-w-screen-xl flex-row justify-between items-center gap-4 px-4 md:flex-col md:items-start">
+			<div class="py-5 bg-white rounded-lg md:py-4 w-full">
+				<div class="w-full px-4">
 					<Div_footer_address />
-					{
-						service == null
-						?   <Div_footer_sub_menu />
-						:   ""
-					}
-					{
-						service == "webr"
-						?   <Div_footer_sub_menu_webr />
-						:   ""
-					}
 				</div>
 		
 				<hr class="my-4 border-gray-200" />
