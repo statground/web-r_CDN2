@@ -12,6 +12,18 @@ function set_footer(service) {
   const h = React.createElement;
 
   function FooterAddress() {
+    const footerTopStyle = {
+      alignItems: "flex-start",
+      display: "flex",
+      gap: "16px",
+      justifyContent: "space-between",
+      width: "100%"
+    };
+    const footerNavStyle = {
+      flexShrink: 0,
+      marginLeft: "auto",
+      maxWidth: "60%"
+    };
     const footerItems = [
       data_footer.company,
       data_footer.representative
@@ -27,9 +39,9 @@ function set_footer(service) {
     );
 
     return h("div", { className: "flex flex-col gap-2 text-sm text-gray-600" },
-      h("div", { className: "flex flex-row items-start justify-between gap-4 md:flex-col md:gap-1" },
+      h("div", { className: "footer-top-row", style: footerTopStyle },
         h("p", { className: "leading-5" }, "통계마당의 모든 컨텐츠는 저작권법에 의거 보호받고 있습니다."),
-        h("nav", { className: "shrink-0 md:w-full" }, h(FooterMenu, null))
+        h("nav", { className: "footer-menu-nav", style: footerNavStyle }, h(FooterMenu, null))
       ),
       h("div", { className: "flex flex-wrap items-center gap-x-5 gap-y-1" },
         footerItems.map(function(item) {
@@ -54,6 +66,17 @@ function set_footer(service) {
   }
 
   function FooterMenu() {
+    const footerMenuStyle = {
+      alignItems: "center",
+      display: "flex",
+      flexWrap: "wrap",
+      gap: "4px 20px",
+      justifyContent: "flex-end",
+      listStyle: "none",
+      margin: 0,
+      padding: 0,
+      textAlign: "right"
+    };
     const links = service === "webr"
       ? [
           ["https://web-r.org/notice", "공지사항", "_blank"],
@@ -67,7 +90,7 @@ function set_footer(service) {
           ["/intro/terms/", "서비스 이용약관", ""],
           ["/intro/privates/", "개인정보 보호 방침", ""]
         ];
-    return h("ul", { className: "flex flex-wrap items-center justify-end gap-x-5 gap-y-1 text-right md:justify-start md:text-left" },
+    return h("ul", { className: "footer-menu-list", style: footerMenuStyle },
       links.map(function(link) {
         return h(FooterLink, { key: link[0], href: link[0], target: link[2] || undefined }, link[1]);
       })

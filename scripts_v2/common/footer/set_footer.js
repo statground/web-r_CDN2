@@ -11,6 +11,18 @@ let data_footer = {
 function set_footer(service) {
 	function Div_footer(props) {
 		function Div_footer_address(props) {
+			let footer_top_style = {
+				alignItems: "flex-start",
+				display: "flex",
+				gap: "16px",
+				justifyContent: "space-between",
+				width: "100%",
+			}
+			let footer_nav_style = {
+				flexShrink: 0,
+				marginLeft: "auto",
+				maxWidth: "60%",
+			}
 			let footer_items = [
 				data_footer.company,
 				data_footer.representative,
@@ -27,12 +39,12 @@ function set_footer(service) {
 
 			return (
 				<div class="flex flex-col gap-2 text-sm text-gray-600">
-					<div class="flex flex-row items-start justify-between gap-4 md:flex-col md:gap-1">
+					<div class="footer-top-row" style={footer_top_style}>
 						<p class="leading-5">
 							통계마당의 모든 컨텐츠는 저작권법에 의거 보호받고 있습니다.
 						</p>
 
-						<nav class="shrink-0 md:w-full">
+						<nav class="footer-menu-nav" style={footer_nav_style}>
 							{
 								service == null
 								?   <Div_footer_sub_menu />
@@ -61,8 +73,19 @@ function set_footer(service) {
 
 		function Div_footer_sub_menu(props) {
 			let class_sub_menu = "hover:underline hover:decoration-gray-900 hover:decoration-wavy"
+			let footer_menu_style = {
+				alignItems: "center",
+				display: "flex",
+				flexWrap: "wrap",
+				gap: "4px 20px",
+				justifyContent: "flex-end",
+				listStyle: "none",
+				margin: 0,
+				padding: 0,
+				textAlign: "right",
+			}
 			return (
-				<ul class="flex flex-wrap items-center justify-end gap-x-5 gap-y-1 text-right text-sm md:justify-start md:text-left">
+				<ul class="footer-menu-list" style={footer_menu_style}>
 					<li>
 						<a href="/intro/notice/" class={class_sub_menu}>공지사항</a>
 					</li>
@@ -81,8 +104,19 @@ function set_footer(service) {
 
 		function Div_footer_sub_menu_webr(props) {
 			let class_sub_menu = "hover:underline hover:decoration-gray-900 hover:decoration-wavy"
+			let footer_menu_style = {
+				alignItems: "center",
+				display: "flex",
+				flexWrap: "wrap",
+				gap: "4px 20px",
+				justifyContent: "flex-end",
+				listStyle: "none",
+				margin: 0,
+				padding: 0,
+				textAlign: "right",
+			}
 			return (
-				<ul class="flex flex-wrap items-center justify-end gap-x-5 gap-y-1 text-right text-sm md:justify-start md:text-left">
+				<ul class="footer-menu-list" style={footer_menu_style}>
 					<li>
 						<a href="https://web-r.org/notice" target="_blank" class={class_sub_menu}>공지사항</a>
 					</li>
