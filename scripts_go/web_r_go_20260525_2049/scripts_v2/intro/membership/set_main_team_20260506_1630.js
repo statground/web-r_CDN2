@@ -26,6 +26,28 @@ const MembershipPage = (() => {
     if (!isSeatPriced(product)) return Number(product.price) || 0;
     return (Number(product.unit_price || product.price) || 0) * normalizeQuantity(product, teamQuantity);
   }
+  function testPaymentMode(tempdata) {
+    const clientKey = String(tempdata && tempdata.client_key || "");
+    const mId = String(tempdata && tempdata.mId || "");
+    return Boolean(tempdata && tempdata.test_mode) || clientKey.indexOf("test_") === 0 || /_test$/i.test(mId);
+  }
+  function tossPaymentsForOrder(tempdata) {
+    const clientKey = String(tempdata && tempdata.client_key || "");
+    const isTestPayment = testPaymentMode(tempdata);
+    if (isTestPayment && clientKey.indexOf("test_") !== 0) {
+      alert("테스트 계정인데 테스트 결제 키가 아닙니다. 관리자에게 문의해주세요.");
+      return null;
+    }
+    if (isTestPayment) {
+      return TossPayments(clientKey, { clientUrl: "https://payment-gateway-sandbox.tosspayments.com" });
+    }
+    return TossPayments(clientKey);
+  }
+  function tossOrderName(tempdata) {
+    const name = String(tempdata && tempdata.product_name || "");
+    if (!testPaymentMode(tempdata) || name.indexOf("[테스트]") === 0) return name;
+    return "[테스트] " + name;
+  }
   function membershipSortRank(product) {
     const title = cleanRole(product && product.title);
     if (title === "\uC815\uD68C\uC6D0") return 10;
@@ -280,11 +302,12 @@ const MembershipPage = (() => {
         alert(tempdata.message || "결제 요청을 준비할 수 없습니다.");
         return;
       }
-      const tossPayments = TossPayments(tempdata.client_key);
+      const tossPayments = tossPaymentsForOrder(tempdata);
+      if (!tossPayments) return;
       const options = {
         amount: Number(tempdata.amount),
         orderId: tempdata.orderID,
-        orderName: tempdata.product_name,
+        orderName: tossOrderName(tempdata),
         customerName: userinfo.realname || userinfo.name,
         customerEmail: userinfo.email,
         successUrl: resultURL,
