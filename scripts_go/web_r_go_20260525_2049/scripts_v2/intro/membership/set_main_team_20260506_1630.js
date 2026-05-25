@@ -295,7 +295,7 @@ const MembershipPage = (() => {
         options.cashReceipt = { type: "소득공제" };
       }
       if (method === "계좌이체" || method === "가상계좌") {
-        options.windowTarget = "self";
+        options.windowTarget = "iframe";
       }
       await tossPayments.requestPayment(method, options);
     } catch (err) {

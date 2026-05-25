@@ -213,7 +213,7 @@ const MembershipPage = /* @__PURE__ */ (() => {
         options.cashReceipt = { type: "\uC18C\uB4DD\uACF5\uC81C" };
       }
       if (method === "\uACC4\uC88C\uC774\uCCB4" || method === "\uAC00\uC0C1\uACC4\uC88C") {
-        options.windowTarget = "self";
+        options.windowTarget = "iframe";
       }
       await tossPayments.requestPayment(method, options);
     } catch (err) {
