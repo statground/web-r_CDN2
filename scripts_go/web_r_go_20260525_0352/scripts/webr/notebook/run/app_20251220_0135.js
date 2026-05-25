@@ -26,7 +26,8 @@ function Notebook() {
   const [webrInstance, setWebrInstance] = useState(null);
   const [ready, setReady] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [status, setStatus] = useState("Initializing...");
+  const [status, setStatus] = useState(isViewMode && notebookIdFromUrlRef.current ? "Loading..." : "Initializing...");
+  const [notebookLoadState, setNotebookLoadState] = useState(isViewMode && notebookIdFromUrlRef.current ? "loading" : "idle");
   const [runtimeSessionInfo, setRuntimeSessionInfo] = useState(isViewMode ? "View mode (runtime not started)." : "Loading runtime info...");
   const [runtimeSessionInfoError, setRuntimeSessionInfoError] = useState("");
   const darkMode = false;
@@ -211,7 +212,7 @@ function Notebook() {
     } catch (e) {
     }
   }
-  const [cells, setCells] = useState([
+  const [cells, setCells] = useState(isViewMode && notebookIdFromUrlRef.current ? [] : [
     {
       id: 1,
       mode: "markdown",
@@ -321,7 +322,8 @@ function Notebook() {
     if (isViewMode) {
       setShowOverlay(false);
       setReady(false);
-      setStatus("View mode");
+      if (!notebookIdFromUrlRef.current)
+        setStatus("View mode");
       return;
     }
     let cancelled = false;
@@ -1160,14 +1162,21 @@ ${varName}`;
     })();
   }, [webrInstance]);
   async function loadNotebookFromDB(nbid, { setStatusText = true } = {}) {
-    if (!nbid)
+    if (!nbid) {
+      if (isViewMode)
+        setNotebookLoadState("error");
       return false;
+    }
     try {
       setBusy(true);
+      if (isViewMode)
+        setNotebookLoadState("loading");
       if (setStatusText)
         setStatus("Loading...");
       const res = await apiLoadNotebook(nbid);
       if (!res || res.ok !== true || !res.item) {
+        if (isViewMode)
+          setNotebookLoadState("error");
         if (setStatusText)
           setStatus("Load failed");
         return false;
@@ -1202,10 +1211,14 @@ ${varName}`;
       }
       if (setStatusText)
         setStatus("Loaded");
+      if (isViewMode)
+        setNotebookLoadState("loaded");
       showToast("\uBD88\uB7EC\uC624\uAE30 \uC644\uB8CC!");
       return true;
     } catch (e) {
       console.error(e);
+      if (isViewMode)
+        setNotebookLoadState("error");
       if (setStatusText)
         setStatus("Load error");
       return false;
@@ -1230,6 +1243,10 @@ ${varName}`;
   const statusBadgeText = isViewMode ? "\uC77D\uAE30 \uBAA8\uB4DC" : ready ? "Ready" : "Starting WebR...";
   const canOpenEditMode = isViewMode && canEdit && !!notebookIdFromUrlRef.current;
   const editModeHref = canOpenEditMode ? "/webr/notebook/run/" + encodeURIComponent(notebookIdFromUrlRef.current) + "/" + (isSiteMode ? "" : "?mode=focus") : "";
+  const notebookLoadBlocking = isViewMode && !!notebookIdFromUrlRef.current && notebookLoadState !== "loaded";
+  const notebookLoadFailed = notebookLoadState === "error";
+  const notebookLoadTitle = notebookLoadFailed ? "Notebook\uC744 \uBD88\uB7EC\uC624\uC9C0 \uBABB\uD588\uC2B5\uB2C8\uB2E4" : "Notebook \uBCF8\uBB38\uC744 \uBD88\uB7EC\uC624\uB294 \uC911\uC785\uB2C8\uB2E4";
+  const notebookLoadText = notebookLoadFailed ? "\uC7A0\uC2DC \uD6C4 \uB2E4\uC2DC \uC2DC\uB3C4\uD574 \uC8FC\uC138\uC694." : "\uC800\uC7A5\uB41C \uB0B4\uC6A9\uC744 \uD655\uC778\uD558\uB294 \uB3D9\uC548 \uAE30\uBCF8 \uB370\uBAA8 \uB178\uD2B8\uB294 \uD45C\uC2DC\uD558\uC9C0 \uC54A\uC2B5\uB2C8\uB2E4.";
   return /* @__PURE__ */ React.createElement("div", { className: rootClass }, /* @__PURE__ */ React.createElement("header", { ref: headerRef, className: headerClass }, /* @__PURE__ */ React.createElement("div", { className: "flex w-full flex-col gap-2 lg:flex-row lg:items-center lg:justify-between" }, /* @__PURE__ */ React.createElement("div", { className: "flex w-full items-center justify-between gap-2 lg:w-auto lg:justify-start" }, /* @__PURE__ */ React.createElement("div", { className: "flex min-w-0 items-center gap-3" }, !isSiteMode && /* @__PURE__ */ React.createElement(
     "a",
     {
@@ -1394,7 +1411,7 @@ ${varName}`;
       className: "rounded-xl border px-4 py-2 text-sm shadow-lg backdrop-blur " + (toast.kind === "ok" ? darkMode ? "border-emerald-700 bg-emerald-900/60 text-emerald-100" : "border-emerald-200 bg-emerald-50 text-emerald-800" : darkMode ? "border-rose-700 bg-rose-900/60 text-rose-100" : "border-rose-200 bg-rose-50 text-rose-800")
     },
     toast.message
-  )), /* @__PURE__ */ React.createElement("div", { className: contentLayoutClass }, /* @__PURE__ */ React.createElement("main", { className: mainClass }, /* @__PURE__ */ React.createElement("div", { className: "mb-3 flex items-center justify-between" }, /* @__PURE__ */ React.createElement("div", { className: "flex min-w-0 flex-1 items-center gap-2" }, /* @__PURE__ */ React.createElement(
+  )), notebookLoadBlocking && /* @__PURE__ */ React.createElement("div", { className: (isSiteMode ? "absolute" : "fixed") + " inset-0 z-30 flex items-center justify-center bg-slate-100/90 px-4 backdrop-blur-sm" }, /* @__PURE__ */ React.createElement("div", { className: "w-full max-w-md rounded-2xl border border-slate-200 bg-white px-6 py-5 text-center shadow-xl" }, /* @__PURE__ */ React.createElement("div", { className: "mx-auto mb-4 h-9 w-9 animate-spin rounded-full border-4 border-blue-100 border-t-blue-600" }), /* @__PURE__ */ React.createElement("div", { className: "text-base font-semibold text-slate-950" }, notebookLoadTitle), /* @__PURE__ */ React.createElement("div", { className: "mt-2 text-sm leading-6 text-slate-500" }, notebookLoadText))), /* @__PURE__ */ React.createElement("div", { className: contentLayoutClass }, /* @__PURE__ */ React.createElement("main", { className: mainClass }, /* @__PURE__ */ React.createElement("div", { className: "mb-3 flex items-center justify-between" }, /* @__PURE__ */ React.createElement("div", { className: "flex min-w-0 flex-1 items-center gap-2" }, /* @__PURE__ */ React.createElement(
     "input",
     {
       type: "text",
