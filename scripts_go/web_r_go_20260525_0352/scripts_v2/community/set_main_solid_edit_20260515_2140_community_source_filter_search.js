@@ -736,6 +736,19 @@ function RCommunitySourceChip(props) {
   }
   return /* @__PURE__ */ React.createElement("span", { class: "rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-xs font-semibold text-slate-600" }, label);
 }
+function communityNotebookViewHref(href) {
+  try {
+    const url = new URL(href, location.origin);
+    if (url.origin === location.origin && url.pathname.indexOf("/webr/notebook/view/") === 0) {
+      if (!url.searchParams.has("from")) {
+        url.searchParams.set("from", "community");
+      }
+      return url.pathname + url.search + url.hash;
+    }
+  } catch (e) {
+  }
+  return href;
+}
 function articleHrefFromData(data) {
   if (!data) {
     return "/community/";
@@ -743,7 +756,7 @@ function articleHrefFromData(data) {
   const uuid = String(data.uuid || data.uuid_article || "").trim();
   const cu = String(data.category_url || data.article_category_url || "free").trim().toLowerCase();
   if ((cu === "notebook" || cu === "rcommunity") && data.url) {
-    return data.url;
+    return cu === "notebook" ? communityNotebookViewHref(data.url) : data.url;
   }
   if (uuid === "") {
     return "/community/";

@@ -1246,7 +1246,7 @@ ${varName}`;
   const notebookLoadBlocking = isViewMode && !!notebookIdFromUrlRef.current && notebookLoadState !== "loaded";
   const notebookLoadFailed = notebookLoadState === "error";
   const notebookLoadTitle = notebookLoadFailed ? "Notebook\uC744 \uBD88\uB7EC\uC624\uC9C0 \uBABB\uD588\uC2B5\uB2C8\uB2E4" : "Notebook \uBCF8\uBB38\uC744 \uBD88\uB7EC\uC624\uB294 \uC911\uC785\uB2C8\uB2E4";
-  const notebookLoadText = notebookLoadFailed ? "\uC7A0\uC2DC \uD6C4 \uB2E4\uC2DC \uC2DC\uB3C4\uD574 \uC8FC\uC138\uC694." : "\uC800\uC7A5\uB41C \uB0B4\uC6A9\uC744 \uD655\uC778\uD558\uB294 \uB3D9\uC548 \uAE30\uBCF8 \uB370\uBAA8 \uB178\uD2B8\uB294 \uD45C\uC2DC\uD558\uC9C0 \uC54A\uC2B5\uB2C8\uB2E4.";
+  const notebookLoadText = notebookLoadFailed ? "\uC7A0\uC2DC \uD6C4 \uB2E4\uC2DC \uC2DC\uB3C4\uD574 \uC8FC\uC138\uC694." : "\uC800\uC7A5\uB41C Notebook \uB0B4\uC6A9\uC744 \uC900\uBE44\uD558\uACE0 \uC788\uC2B5\uB2C8\uB2E4.";
   return /* @__PURE__ */ React.createElement("div", { className: rootClass }, /* @__PURE__ */ React.createElement("header", { ref: headerRef, className: headerClass }, /* @__PURE__ */ React.createElement("div", { className: "flex w-full flex-col gap-2 lg:flex-row lg:items-center lg:justify-between" }, /* @__PURE__ */ React.createElement("div", { className: "flex w-full items-center justify-between gap-2 lg:w-auto lg:justify-start" }, /* @__PURE__ */ React.createElement("div", { className: "flex min-w-0 items-center gap-3" }, !isSiteMode && /* @__PURE__ */ React.createElement(
     "a",
     {
