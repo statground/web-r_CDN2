@@ -422,7 +422,7 @@ function Div_home_update_dashboard() {
   const activityItems = homeState.events.filter((item) => {
     const nickname = String(item.nickname || "").trim();
     return nickname && !["탈퇴한 유저", "탈퇴한 회원", "Unknown", "unknown", "null", "None", "undefined"].includes(nickname);
-  }).slice(0, 6);
+  }).slice(0, 3);
   const noticeItems = homeState.notices.slice(0, 3).map((row) => {
     const preview = homeArticlePreview(row);
     return {
