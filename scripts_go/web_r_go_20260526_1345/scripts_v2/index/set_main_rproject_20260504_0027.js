@@ -195,7 +195,7 @@ function homeCategoryLabel(category) {
 function homeArticlePreview(row) {
   const category = row.category_url || row.article_category_url || row.category || "";
   return {
-    title: homeShortText(row.title || row.article_title || row.name || "새 글", 60),
+    title: homeShortText(homePlainText(row.title || row.article_title || row.name || "새 글"), 60),
     meta: [homeCategoryLabel(category), homeFormatDate(row.created_at || row.published_at || row.updated_at)].filter(Boolean).join(" · "),
     href: getIndexArticleHref(row)
   };
@@ -212,11 +212,12 @@ function homeBookPreview(row) {
 }
 function homeWorkshopPreview(row) {
   const identifier = row.uuid || row.slug || row.board_key || "";
+  const image = row.cover_image_url || row.image || row.url_image || row.thumbnail_url || row.thumbnail || row.youtube_thumbnail || "";
   return {
     title: homeShortText(row.title || row.name || "워크샵", 54),
     meta: [row.source_name || row.venue || "워크샵", homeFormatDate(row.starts_at || row.created_at)].filter(Boolean).join(" · "),
     href: identifier ? "/workshop/read/" + identifier + "/" : row.canonical_url || "/workshop/",
-    image: row.cover_image_url || ""
+    image
   };
 }
 function homeActivityMessage(event, nickname) {
@@ -238,151 +239,6 @@ function homeActivityMessage(event, nickname) {
     return displayNickname + "님이 " + appName + "을(를) 실행하고 있습니다.";
   }
   return displayNickname + "님의 활동이 있습니다.";
-}
-function Div_home_service_hub() {
-  const [homeState, setHomeState] = React.useState({
-    loading: true,
-    articles: [],
-    events: [],
-    books: [],
-    workshops: [],
-    youtube: []
-  });
-  React.useEffect(() => {
-    let mounted = true;
-    Promise.all([
-      homePostJSON("/ajax_index_board/"),
-      homePostJSON("/ajax_index_event/"),
-      homePostJSON("/book/ajax_get_book_list/"),
-      homePostJSON("/workshop/ajax_list/"),
-      homePostJSON("/ajax_index_youtube/")
-    ]).then(([board, events, books, workshops, youtube]) => {
-      if (!mounted)
-        return;
-      setHomeState({
-        loading: false,
-        articles: homeArray(board).sort((a, b) => homeDateValue(b) - homeDateValue(a)),
-        events: homeArray(events).sort((a, b) => homeDateValue(b) - homeDateValue(a)),
-        books: homeArray(books).sort((a, b) => homeDateValue(b) - homeDateValue(a)),
-        workshops: homeArray(workshops && workshops.workshops ? workshops.workshops : workshops).sort((a, b) => homeDateValue(b) - homeDateValue(a)),
-        youtube: homeArray(youtube).sort((a, b) => homeDateValue(b) - homeDateValue(a))
-      });
-    });
-    return () => {
-      mounted = false;
-    };
-  }, []);
-  const rEcosystemPreviews = homeState.articles.filter((row) => ["rcommunity", "rproject", "rblogger"].includes(row.category_url || row.article_category_url || row.category || "")).slice(0, 3).map(homeArticlePreview);
-  const communityPreviews = homeState.articles.filter((row) => ["free", "notebook", "visitor"].includes(row.category_url || row.article_category_url || row.category || "")).slice(0, 3).map(homeArticlePreview);
-  const webRPreviews = homeState.events.filter((row) => String(row.event || "").startsWith("Web-R - ")).slice(0, 3).map((row) => ({
-    title: homeShortText(homeActivityMessage(row.event, row.nickname), 60),
-    meta: homeRelativeTime(row.created_at || row.updated_at),
-    href: "/webr/2.0/"
-  }));
-  const bookPreviews = homeState.books.slice(0, 3).map(homeBookPreview);
-  const workshopPreviews = homeState.workshops.slice(0, 2).map(homeWorkshopPreview);
-  const youtubePreviews = homeState.youtube.slice(0, 1).map((row) => ({
-    title: homeShortText(row.title || "YouTube 강의", 54),
-    meta: "YouTube · " + homeFormatDate(row.created_at || row.published_at),
-    href: row.uuid ? "/workshop/youtube/read/" + row.uuid + "/" : "/workshop/youtube/",
-    image: row.youtube_thumbnail || ""
-  }));
-  const activityItems = homeState.events.filter((item) => {
-    const nickname = String(item.nickname || "").trim();
-    return nickname && !["탈퇴한 유저", "탈퇴한 회원", "Unknown", "unknown", "null", "None", "undefined"].includes(nickname);
-  }).slice(0, 7);
-  const services = [
-    {
-      title: "Web-R 접속",
-      label: "실행과 분석",
-      description: "브라우저에서 R 앱과 Notebook, Web-R 2.0 분석 도구로 바로 이어집니다.",
-      href: "/webr/2.0/",
-      icon: WEBR_HOME_ASSET_BASE + "images/webr/advanced_webR.png",
-      accent: "border-blue-200 bg-blue-50 text-blue-700",
-      previews: webRPreviews,
-      links: [
-        { title: "Web-R 2.0", href: "/webr/2.0/" },
-        { title: "Notebook", href: "/webr/notebook/" }
-      ]
-    },
-    {
-      title: "R 에코시스템",
-      label: "소식과 패키지",
-      description: "R 공식 발표, 블로그, 저널, package news와 패키지 상세 정보를 한 흐름으로 봅니다.",
-      href: "/r-ecosystem/",
-      icon: WEBR_HOME_ASSET_BASE + "images/svg/R-packages.svg",
-      accent: "border-emerald-200 bg-emerald-50 text-emerald-700",
-      previews: rEcosystemPreviews,
-      links: [
-        { title: "소식·글", href: "/r-ecosystem/" },
-        { title: "패키지", href: "/r-ecosystem/packages/" }
-      ]
-    },
-    {
-      title: "커뮤니티",
-      label: "게시판과 요약",
-      description: "Web-R 게시판, R Community daily digest, Notebook 공개 글을 같은 읽기 흐름으로 모읍니다.",
-      href: "/community/",
-      icon: WEBR_HOME_ASSET_BASE + "images/svg/menu_free.svg",
-      accent: "border-sky-200 bg-sky-50 text-sky-700",
-      previews: communityPreviews,
-      links: [
-        { title: "커뮤니티", href: "/community/" },
-        { title: "공지사항", href: "/intro/notice/" }
-      ]
-    },
-    {
-      title: "도서",
-      label: "R 도서 허브",
-      description: "R 언어와 통계 학습에 맞는 도서를 표지 중심 목록과 상세 화면으로 살펴봅니다.",
-      href: "/book/",
-      icon: WEBR_HOME_ASSET_BASE + "images/svg/menu_book.svg",
-      accent: "border-amber-200 bg-amber-50 text-amber-700",
-      previews: bookPreviews,
-      links: [
-        { title: "도서 허브", href: "/book/" }
-      ]
-    },
-    {
-      title: "워크샵",
-      label: "강의와 행사",
-      description: "Web-R 워크샵, R Project conference, YouTube 강의 콘텐츠를 행사 단위로 연결합니다.",
-      href: "/workshop/",
-      icon: WEBR_HOME_ASSET_BASE + "images/svg/menu_workshop.svg",
-      accent: "border-indigo-200 bg-indigo-50 text-indigo-700",
-      previews: workshopPreviews.concat(youtubePreviews).slice(0, 3),
-      links: [
-        { title: "워크샵", href: "/workshop/" },
-        { title: "YouTube", href: "/workshop/youtube/" }
-      ]
-    }
-  ];
-  function PreviewSkeleton() {
-    return /* @__PURE__ */ React.createElement("div", { class: "space-y-2" }, [0, 1].map((idx) => /* @__PURE__ */ React.createElement("div", { key: idx, class: "rounded-md bg-slate-100 p-2" }, /* @__PURE__ */ React.createElement("div", { class: "h-2.5 w-4/5 rounded-full bg-slate-300 animate-pulse" }), /* @__PURE__ */ React.createElement("div", { class: "mt-2 h-2 w-2/5 rounded-full bg-slate-200 animate-pulse" }))));
-  }
-  function PreviewList(props) {
-    const previews = props.items || [];
-    if (homeState.loading)
-      return /* @__PURE__ */ React.createElement(PreviewSkeleton, null);
-    if (!previews.length)
-      return /* @__PURE__ */ React.createElement("a", { href: props.href, class: "block rounded-md border border-dashed border-slate-200 px-3 py-2 text-xs font-semibold text-slate-500 hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700" }, "최근 업데이트 보러가기");
-    return /* @__PURE__ */ React.createElement("div", { class: "space-y-2" }, previews.map((preview, idx) => /* @__PURE__ */ React.createElement("a", { key: preview.href + idx, href: preview.href || props.href, class: "group flex min-h-[48px] items-start gap-2 rounded-md border border-slate-100 bg-slate-50 px-3 py-2 hover:border-blue-200 hover:bg-blue-50" }, preview.image ? /* @__PURE__ */ React.createElement("img", { src: preview.image, alt: "", class: "mt-0.5 h-9 w-9 shrink-0 rounded object-cover", loading: "lazy" }) : /* @__PURE__ */ React.createElement("span", { class: "mt-1 h-2 w-2 shrink-0 rounded-full bg-blue-500 group-hover:animate-pulse" }), /* @__PURE__ */ React.createElement("span", { class: "min-w-0" }, /* @__PURE__ */ React.createElement("span", { class: "block truncate text-xs font-bold text-slate-800 group-hover:text-blue-700" }, preview.title), /* @__PURE__ */ React.createElement("span", { class: "mt-1 block truncate text-[11px] text-slate-500" }, preview.meta || "최근 업데이트")))));
-  }
-  function ActivityRail() {
-    return /* @__PURE__ */ React.createElement("aside", { class: "rounded-lg border border-slate-200 bg-slate-950 p-4 text-white shadow-sm" }, /* @__PURE__ */ React.createElement("div", { class: "flex items-center justify-between gap-3" }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("p", { class: "text-xs font-semibold text-blue-200" }, "Live Activity"), /* @__PURE__ */ React.createElement("h3", { class: "text-lg font-extrabold" }, "지금 이용 중인 흐름")), /* @__PURE__ */ React.createElement("span", { class: "relative flex h-3 w-3" }, /* @__PURE__ */ React.createElement("span", { class: "absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" }), /* @__PURE__ */ React.createElement("span", { class: "relative inline-flex h-3 w-3 rounded-full bg-emerald-300" }))), /* @__PURE__ */ React.createElement("div", { class: "mt-4 space-y-3" }, homeState.loading ? [0, 1, 2, 3].map((idx) => /* @__PURE__ */ React.createElement("div", { key: idx, class: "rounded-md bg-white/10 p-3" }, /* @__PURE__ */ React.createElement("div", { class: "h-2.5 w-4/5 rounded-full bg-white/30 animate-pulse" }), /* @__PURE__ */ React.createElement("div", { class: "mt-2 h-2 w-1/3 rounded-full bg-white/20 animate-pulse" }))) : activityItems.length ? activityItems.map((item, idx) => /* @__PURE__ */ React.createElement("div", { key: item.uuid || item.created_at || idx, class: "group flex items-start gap-3 rounded-md bg-white/5 p-3 transition hover:bg-white/10" }, /* @__PURE__ */ React.createElement("span", { class: "mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full bg-emerald-300 shadow-[0_0_0_4px_rgba(110,231,183,0.12)] group-hover:animate-pulse" }), /* @__PURE__ */ React.createElement("span", { class: "min-w-0" }, /* @__PURE__ */ React.createElement("span", { class: "block text-sm font-semibold leading-5 text-white" }, homeShortText(homeActivityMessage(item.event, item.nickname), 66)), /* @__PURE__ */ React.createElement("span", { class: "mt-1 block text-xs text-slate-300" }, homeRelativeTime(item.created_at || item.updated_at))))) : /* @__PURE__ */ React.createElement("a", { href: "/community/", class: "block rounded-md bg-white/10 p-3 text-sm font-semibold text-slate-100 hover:bg-white/15" }, "최근 활동 보러가기")));
-  }
-  function ServiceCard(props) {
-    const item = props.item;
-    return /* @__PURE__ */ React.createElement(
-      "article",
-      {
-        class: "flex min-h-[320px] flex-col justify-between rounded-lg border border-slate-200 bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:border-blue-300 hover:shadow-md"
-      },
-      /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { class: "flex items-center gap-3" }, /* @__PURE__ */ React.createElement("span", { class: "flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border " + item.accent }, /* @__PURE__ */ React.createElement("img", { src: item.icon, alt: "", class: "h-7 w-7 object-contain", loading: "lazy" })), /* @__PURE__ */ React.createElement("div", { class: "min-w-0" }, /* @__PURE__ */ React.createElement("p", { class: "text-xs font-semibold uppercase text-slate-500" }, item.label), /* @__PURE__ */ React.createElement("h2", { class: "text-lg font-extrabold text-slate-950" }, item.title))), /* @__PURE__ */ React.createElement("p", { class: "mt-4 text-sm leading-6 text-slate-600" }, item.description), /* @__PURE__ */ React.createElement("div", { class: "mt-4 border-t border-slate-100 pt-3" }, /* @__PURE__ */ React.createElement("p", { class: "mb-2 text-xs font-extrabold text-slate-900" }, "최근 업데이트"), /* @__PURE__ */ React.createElement(PreviewList, { items: item.previews, href: item.href }))),
-      /* @__PURE__ */ React.createElement("div", { class: "mt-5 flex flex-wrap items-center gap-2" }, /* @__PURE__ */ React.createElement("a", { href: item.href, class: "inline-flex h-9 items-center gap-2 rounded-md bg-slate-950 px-3 text-sm font-semibold text-white hover:bg-blue-700" }, item.title, /* @__PURE__ */ React.createElement("span", { "aria-hidden": "true" }, ">")), item.links.map((link) => /* @__PURE__ */ React.createElement("a", { key: link.href, href: link.href, class: "inline-flex h-8 items-center rounded-md border border-slate-200 px-2.5 text-xs font-semibold text-slate-600 hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700" }, link.title)))
-    );
-  }
-  return /* @__PURE__ */ React.createElement("section", { class: "w-full max-w-7xl" }, /* @__PURE__ */ React.createElement("div", { class: "mb-4 flex flex-col gap-1 md:flex-row md:items-end md:justify-between" }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("p", { class: "text-sm font-semibold text-blue-700" }, "Web-R Home"), /* @__PURE__ */ React.createElement("h2", { class: "text-2xl font-extrabold text-slate-950" }, "최근 업데이트로 보는 Web-R")), /* @__PURE__ */ React.createElement("p", { class: "text-sm text-slate-500" }, "접속, 에코시스템, 커뮤니티, 도서, 워크샵")), /* @__PURE__ */ React.createElement("div", { class: "grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-5" }, services.map((item) => /* @__PURE__ */ React.createElement(ServiceCard, { key: item.href, item }))), /* @__PURE__ */ React.createElement("div", { class: "mt-3 grid grid-cols-1 gap-3 lg:grid-cols-[minmax(0,1fr)_360px]" }, /* @__PURE__ */ React.createElement("div", { class: "rounded-lg border border-blue-100 bg-blue-50 p-4" }, /* @__PURE__ */ React.createElement("div", { class: "flex flex-col gap-1 md:flex-row md:items-center md:justify-between" }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("p", { class: "text-xs font-semibold text-blue-700" }, "Recent Contents"), /* @__PURE__ */ React.createElement("h3", { class: "text-lg font-extrabold text-slate-950" }, "새로 올라온 내용을 영역별로 바로 확인하세요")), /* @__PURE__ */ React.createElement("a", { href: "/r-ecosystem/", class: "inline-flex h-9 w-fit items-center rounded-md border border-blue-200 bg-white px-3 text-sm font-semibold text-blue-700 hover:bg-blue-100" }, "전체 흐름 보기")), /* @__PURE__ */ React.createElement("div", { class: "mt-3 grid grid-cols-1 gap-2 md:grid-cols-3" }, services.slice(0, 3).map((item) => /* @__PURE__ */ React.createElement("a", { key: "summary-" + item.href, href: item.href, class: "rounded-md bg-white px-3 py-3 text-sm font-semibold text-slate-800 shadow-sm hover:text-blue-700" }, /* @__PURE__ */ React.createElement("span", { class: "block text-xs text-slate-500" }, item.title), /* @__PURE__ */ React.createElement("span", { class: "mt-1 block truncate" }, item.previews && item.previews[0] ? item.previews[0].title : "최근 업데이트 확인"))))), /* @__PURE__ */ React.createElement(ActivityRail, null)));
 }
 function Div_home_update_dashboard() {
   const [homeState, setHomeState] = React.useState({
@@ -484,10 +340,10 @@ function Div_home_update_dashboard() {
   });
   homeState.workshops.slice(0, 4).forEach((row) => {
     const preview = homeWorkshopPreview(row);
-    feed.push(feedItem("workshops", "워크샵", row, preview.title, preview.meta, preview.href, row.summary || row.description || "", homeDateValue({ starts_at: row.starts_at, created_at: row.created_at })));
+    feed.push(feedItem("workshops", "워크샵", row, preview.title, preview.meta, preview.href, row.summary || row.description || "", homeDateValue({ starts_at: row.starts_at, created_at: row.created_at }), preview.image));
   });
   homeState.youtube.slice(0, 2).forEach((row) => {
-    feed.push(feedItem("workshops", "YouTube", row, row.title || "YouTube 강의", ["YouTube", homeFormatDate(row.created_at || row.published_at)].join(" · "), row.uuid ? "/workshop/youtube/read/" + row.uuid + "/" : "/workshop/youtube/", "", homeDateValue(row)));
+    feed.push(feedItem("workshops", "YouTube", row, row.title || "YouTube 강의", ["YouTube", homeFormatDate(row.created_at || row.published_at)].join(" · "), row.uuid ? "/workshop/youtube/read/" + row.uuid + "/" : "/workshop/youtube/", "", homeDateValue(row), row.youtube_thumbnail || row.thumbnail_url || row.thumbnail || row.image || row.url_image || ""));
   });
   const dedupedFeed = [];
   const seen = /* @__PURE__ */ new Set();
@@ -518,6 +374,14 @@ function Div_home_update_dashboard() {
     const nickname = String(item.nickname || "").trim();
     return nickname && !["탈퇴한 유저", "탈퇴한 회원", "Unknown", "unknown", "null", "None", "undefined"].includes(nickname);
   }).slice(0, 6);
+  const noticeItems = homeState.articles.filter((row) => categoryOf(row) === "notice").slice(0, 3).map((row) => {
+    const preview = homeArticlePreview(row);
+    return {
+      title: preview.title,
+      href: preview.href,
+      meta: homeFormatDate(row.created_at || row.published_at || row.updated_at)
+    };
+  });
   const quickLinks = [
     { title: "Web-R", href: "/webr/2.0/", icon: "webr", tone: "bg-blue-50 text-blue-700 border-blue-100" },
     { title: "패키지", href: "/r-ecosystem/packages/", icon: "package", tone: "bg-emerald-50 text-emerald-700 border-emerald-100" },
@@ -546,13 +410,19 @@ function Div_home_update_dashboard() {
   }
   function FeedRow(props) {
     const item = props.item;
-    return /* @__PURE__ */ React.createElement("a", { href: item.href, class: "group block border-t border-slate-100 px-4 py-3 first:border-t-0 hover:bg-slate-50" }, /* @__PURE__ */ React.createElement("span", { class: "flex items-start gap-3" }, item.image ? /* @__PURE__ */ React.createElement("img", { src: item.image, alt: "", class: "h-20 w-14 shrink-0 rounded border border-slate-200 bg-slate-100 object-cover", loading: "lazy", onError: (event) => {
+    const isLandscapeImage = item.lane === "workshops";
+    const imageClass = isLandscapeImage ? "h-20 w-28 shrink-0 rounded border border-slate-200 bg-slate-100 object-cover" : "h-20 w-14 shrink-0 rounded border border-slate-200 bg-slate-100 object-cover";
+    const metaClass = (item.image ? isLandscapeImage ? "ml-[124px] " : "ml-[68px] " : "") + "mt-2 flex flex-wrap items-center gap-2 text-xs font-semibold text-slate-400";
+    return /* @__PURE__ */ React.createElement("a", { href: item.href, class: "group block border-t border-slate-100 px-4 py-3 first:border-t-0 hover:bg-slate-50" }, /* @__PURE__ */ React.createElement("span", { class: "flex items-start gap-3" }, item.image ? /* @__PURE__ */ React.createElement("img", { src: item.image, alt: "", class: imageClass, loading: "lazy", onError: (event) => {
       event.currentTarget.style.display = "none";
-    } }) : null, /* @__PURE__ */ React.createElement("span", { class: "flex min-w-0 flex-1 items-start justify-between gap-3" }, /* @__PURE__ */ React.createElement("span", { class: "min-w-0" }, /* @__PURE__ */ React.createElement("span", { class: "block text-sm font-extrabold leading-5 text-slate-950 group-hover:text-blue-700" }, item.title), item.detail ? /* @__PURE__ */ React.createElement("span", { class: "mt-1 block truncate text-sm text-slate-500" }, item.detail) : null), /* @__PURE__ */ React.createElement("span", { class: "shrink-0 text-xs font-extrabold text-blue-600" }, "열기"))), /* @__PURE__ */ React.createElement("span", { class: (item.image ? "ml-[68px] " : "") + "mt-2 flex flex-wrap items-center gap-2 text-xs font-semibold text-slate-400" }, /* @__PURE__ */ React.createElement("span", { class: "rounded border border-slate-200 bg-white px-1.5 py-0.5 text-slate-600" }, item.source), /* @__PURE__ */ React.createElement("span", null, item.meta)));
+    } }) : null, /* @__PURE__ */ React.createElement("span", { class: "flex min-w-0 flex-1 items-start justify-between gap-3" }, /* @__PURE__ */ React.createElement("span", { class: "min-w-0" }, /* @__PURE__ */ React.createElement("span", { class: "block text-sm font-extrabold leading-5 text-slate-950 group-hover:text-blue-700" }, item.title), item.detail ? /* @__PURE__ */ React.createElement("span", { class: "mt-1 block truncate text-sm text-slate-500" }, item.detail) : null), /* @__PURE__ */ React.createElement("span", { class: "shrink-0 text-xs font-extrabold text-blue-600" }, "열기"))), /* @__PURE__ */ React.createElement("span", { class: metaClass }, /* @__PURE__ */ React.createElement("span", { class: "rounded border border-slate-200 bg-white px-1.5 py-0.5 text-slate-600" }, item.source), /* @__PURE__ */ React.createElement("span", null, item.meta)));
   }
   function CategorySection(props) {
     const section = props.section;
     return /* @__PURE__ */ React.createElement("article", { class: "overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm" }, /* @__PURE__ */ React.createElement("div", { class: "flex items-start justify-between gap-3 border-b border-slate-100 px-4 py-3" }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("span", { class: "inline-flex h-7 items-center rounded-md border px-2 text-xs font-extrabold " + section.tone }, section.label), /* @__PURE__ */ React.createElement("p", { class: "mt-2 text-xs font-semibold text-slate-500" }, "최근 항목 최대 ", CATEGORY_ITEM_LIMIT, "개")), /* @__PURE__ */ React.createElement("a", { href: section.href, class: "shrink-0 text-xs font-extrabold text-blue-700 hover:text-blue-900" }, "더 보기")), homeState.loading ? /* @__PURE__ */ React.createElement("div", { class: "p-4" }, /* @__PURE__ */ React.createElement(DashboardSkeleton, null)) : section.items.length ? /* @__PURE__ */ React.createElement("div", { class: "bg-white" }, section.items.map((item, idx) => /* @__PURE__ */ React.createElement(FeedRow, { key: section.id + item.href + item.title + idx, item }))) : /* @__PURE__ */ React.createElement("a", { href: section.href, class: "block px-4 py-5 text-sm font-semibold text-slate-500 hover:bg-slate-50 hover:text-blue-700" }, "최근 항목 확인하기"));
+  }
+  function NoticePanel() {
+    return /* @__PURE__ */ React.createElement("aside", { class: "rounded-lg border border-slate-200 bg-white p-4 shadow-sm" }, /* @__PURE__ */ React.createElement("div", { class: "flex items-center justify-between gap-3" }, /* @__PURE__ */ React.createElement("h3", { class: "text-base font-extrabold text-slate-950" }, "공지사항"), /* @__PURE__ */ React.createElement("a", { href: "/intro/notice/", class: "text-xs font-extrabold text-blue-700 hover:text-blue-900" }, "더 보기")), /* @__PURE__ */ React.createElement("div", { class: "mt-3 space-y-2" }, homeState.loading ? [0, 1, 2].map((idx) => /* @__PURE__ */ React.createElement("div", { key: idx, class: "rounded-md border border-slate-100 bg-slate-50 p-3" }, /* @__PURE__ */ React.createElement("div", { class: "h-3 w-4/5 rounded-full bg-slate-300 animate-pulse" }), /* @__PURE__ */ React.createElement("div", { class: "mt-2 h-2 w-1/3 rounded-full bg-slate-200 animate-pulse" }))) : noticeItems.length ? noticeItems.map((item, idx) => /* @__PURE__ */ React.createElement("a", { key: item.href + item.title + idx, href: item.href, class: "block rounded-md border border-slate-100 bg-slate-50 px-3 py-2 hover:border-blue-200 hover:bg-blue-50" }, /* @__PURE__ */ React.createElement("span", { class: "block truncate text-sm font-extrabold text-slate-950" }, item.title), /* @__PURE__ */ React.createElement("span", { class: "mt-1 block text-xs font-semibold text-slate-400" }, item.meta || "공지사항"))) : /* @__PURE__ */ React.createElement("a", { href: "/intro/notice/", class: "block rounded-md border border-dashed border-slate-200 px-3 py-3 text-sm font-semibold text-slate-500 hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700" }, "공지사항 보기")));
   }
   function LivePanel() {
     return /* @__PURE__ */ React.createElement("aside", { class: "rounded-lg border border-slate-200 bg-slate-950 p-4 text-white" }, /* @__PURE__ */ React.createElement("div", { class: "flex items-center justify-between gap-3" }, /* @__PURE__ */ React.createElement("h3", { class: "text-base font-extrabold" }, "지금 Web-R"), /* @__PURE__ */ React.createElement("span", { class: "relative flex h-3 w-3" }, /* @__PURE__ */ React.createElement("span", { class: "absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" }), /* @__PURE__ */ React.createElement("span", { class: "relative inline-flex h-3 w-3 rounded-full bg-emerald-300" }))), /* @__PURE__ */ React.createElement("div", { class: "mt-4 space-y-3" }, activityItems.length ? activityItems.map((item, idx) => /* @__PURE__ */ React.createElement("div", { key: item.uuid || item.created_at || idx, class: "rounded-md bg-white/5 p-3" }, /* @__PURE__ */ React.createElement("p", { class: "text-sm font-semibold leading-5" }, homeShortText(homeActivityMessage(item.event, item.nickname), 70)), /* @__PURE__ */ React.createElement("p", { class: "mt-1 text-xs text-slate-300" }, homeRelativeTime(item.created_at || item.updated_at)))) : /* @__PURE__ */ React.createElement("a", { href: "/community/", class: "block rounded-md bg-white/10 p-3 text-sm font-semibold text-slate-100 hover:bg-white/15" }, "최근 활동 보기")));
@@ -569,7 +439,7 @@ function Div_home_update_dashboard() {
     ];
     return /* @__PURE__ */ React.createElement("aside", { class: "rounded-lg border border-slate-200 bg-white p-4 shadow-sm" }, /* @__PURE__ */ React.createElement("h3", { class: "text-base font-extrabold text-slate-950" }, "Web-R 현황"), /* @__PURE__ */ React.createElement("div", { class: "mt-3 grid grid-cols-1 gap-2" }, rows.map((row) => /* @__PURE__ */ React.createElement("div", { key: row.label, class: "flex min-h-[72px] items-center gap-3 rounded-md border border-slate-100 bg-slate-50 px-3 py-2" }, /* @__PURE__ */ React.createElement("img", { src: row.icon, alt: "", class: "h-7 w-7 shrink-0", loading: "lazy" }), /* @__PURE__ */ React.createElement("span", { class: "min-w-0" }, /* @__PURE__ */ React.createElement("span", { class: "block text-xs font-bold text-slate-500" }, row.label), /* @__PURE__ */ React.createElement("span", { class: "mt-1 block text-xl font-extrabold text-slate-950" }, homeState.loading ? "..." : formattedStat(row.value, row.unit)))))));
   }
-  return /* @__PURE__ */ React.createElement("section", { class: "mx-auto w-full max-w-[1360px]" }, /* @__PURE__ */ React.createElement("div", { class: "rounded-lg border border-slate-200 bg-white p-4 shadow-sm md:p-5" }, /* @__PURE__ */ React.createElement("div", { class: "flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between" }, /* @__PURE__ */ React.createElement("div", { class: "max-w-2xl" }, /* @__PURE__ */ React.createElement("p", { class: "text-sm font-extrabold text-blue-700" }, "영역별 새 소식"), /* @__PURE__ */ React.createElement("h2", { class: "text-2xl font-extrabold text-slate-950" }, "지금 Web-R에서 이어지는 업데이트"), /* @__PURE__ */ React.createElement("p", { class: "mt-2 text-sm leading-6 text-slate-500" }, "각 영역의 최신 항목을 최대 ", CATEGORY_ITEM_LIMIT, "개씩 모았습니다.")), /* @__PURE__ */ React.createElement("div", { class: "grid grid-cols-3 gap-2 sm:grid-cols-6" }, quickLinks.map((link) => /* @__PURE__ */ React.createElement("a", { key: link.href, href: link.href, class: "flex h-[74px] flex-col items-center justify-center gap-1 rounded-lg border px-2 text-xs font-extrabold " + link.tone }, /* @__PURE__ */ React.createElement(QuickIcon, { icon: link.icon }), link.title))))), /* @__PURE__ */ React.createElement("div", { class: "mt-3 grid grid-cols-1 items-start gap-3 lg:grid-cols-[minmax(0,1fr)_320px]" }, /* @__PURE__ */ React.createElement("div", { class: "grid grid-cols-1 gap-3 xl:grid-cols-2" }, categories.map((section) => /* @__PURE__ */ React.createElement(CategorySection, { key: section.id, section }))), /* @__PURE__ */ React.createElement("div", { class: "space-y-3" }, /* @__PURE__ */ React.createElement(StatPanel, null), /* @__PURE__ */ React.createElement(LivePanel, null))));
+  return /* @__PURE__ */ React.createElement("section", { class: "mx-auto w-full max-w-[1360px]" }, /* @__PURE__ */ React.createElement("div", { class: "rounded-lg border border-slate-200 bg-white p-4 shadow-sm md:p-5" }, /* @__PURE__ */ React.createElement("div", { class: "flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between" }, /* @__PURE__ */ React.createElement("div", { class: "max-w-2xl" }, /* @__PURE__ */ React.createElement("p", { class: "text-sm font-extrabold text-blue-700" }, "영역별 새 소식"), /* @__PURE__ */ React.createElement("h2", { class: "text-2xl font-extrabold text-slate-950" }, "지금 Web-R에서 이어지는 업데이트"), /* @__PURE__ */ React.createElement("p", { class: "mt-2 text-sm leading-6 text-slate-500" }, "각 영역의 최신 항목을 최대 ", CATEGORY_ITEM_LIMIT, "개씩 모았습니다.")), /* @__PURE__ */ React.createElement("div", { class: "grid grid-cols-3 gap-2 sm:grid-cols-6" }, quickLinks.map((link) => /* @__PURE__ */ React.createElement("a", { key: link.href, href: link.href, class: "flex h-[74px] flex-col items-center justify-center gap-1 rounded-lg border px-2 text-xs font-extrabold " + link.tone }, /* @__PURE__ */ React.createElement(QuickIcon, { icon: link.icon }), link.title))))), /* @__PURE__ */ React.createElement("div", { class: "mt-3 grid grid-cols-1 items-start gap-3 lg:grid-cols-[minmax(0,1fr)_320px]" }, /* @__PURE__ */ React.createElement("div", { class: "grid grid-cols-1 gap-3 xl:grid-cols-2" }, categories.map((section) => /* @__PURE__ */ React.createElement(CategorySection, { key: section.id, section }))), /* @__PURE__ */ React.createElement("div", { class: "space-y-3" }, /* @__PURE__ */ React.createElement(StatPanel, null), /* @__PURE__ */ React.createElement(NoticePanel, null), /* @__PURE__ */ React.createElement(LivePanel, null))));
 }
 function Div_main_statistics_skeleton() {
   function Div_Sub(props) {
