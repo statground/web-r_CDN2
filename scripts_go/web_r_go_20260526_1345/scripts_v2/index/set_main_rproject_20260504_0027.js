@@ -242,7 +242,16 @@ function homeActivityMessage(event, nickname) {
 }
 function Div_home_update_dashboard() {
   const [homeState, setHomeState] = React.useState({
-    loading: true,
+    loading: {
+      board: true,
+      events: true,
+      books: true,
+      ecosystem: true,
+      workshops: true,
+      youtube: true,
+      packages: true,
+      statistics: true
+    },
     articles: [],
     events: [],
     books: [],
@@ -254,29 +263,36 @@ function Div_home_update_dashboard() {
   });
   React.useEffect(() => {
     let mounted = true;
-    Promise.all([
-      homePostJSON("/ajax_index_board/"),
-      homePostJSON("/ajax_index_event/"),
-      homePostJSON("/ajax_index_books/"),
-      homePostJSON("/ajax_index_r_ecosystem/"),
-      homePostJSON("/workshop/ajax_list/"),
-      homePostJSON("/ajax_index_youtube/"),
-      homePostJSON("/ajax_index_packages/"),
-      homePostJSON("/ajax_index_statistics/")
-    ]).then(([board, events, books, ecosystem, workshops, youtube, packages, statistics]) => {
+    function finishSlice(loadingKey, patch) {
       if (!mounted)
         return;
-      setHomeState({
-        loading: false,
-        articles: homeArray(board).sort((a, b) => homeDateValue(b) - homeDateValue(a)),
-        events: homeArray(events).sort((a, b) => homeDateValue(b) - homeDateValue(a)),
-        books: homeArray(books && books.books ? books.books : books).sort((a, b) => homeDateValue(b) - homeDateValue(a)),
-        ecosystem: homeArray(ecosystem && ecosystem.items ? ecosystem.items : ecosystem).sort((a, b) => homeDateValue(b) - homeDateValue(a)),
-        workshops: homeArray(workshops && workshops.workshops ? workshops.workshops : workshops).sort((a, b) => homeDateValue(b) - homeDateValue(a)),
-        youtube: homeArray(youtube).sort((a, b) => homeDateValue(b) - homeDateValue(a)),
-        packages: packages || {},
-        statistics: statistics || {}
-      });
+      setHomeState((prev) => Object.assign({}, prev, patch, {
+        loading: Object.assign({}, prev.loading, { [loadingKey]: false })
+      }));
+    }
+    homePostJSON("/ajax_index_board/").then((board) => {
+      finishSlice("board", { articles: homeArray(board).sort((a, b) => homeDateValue(b) - homeDateValue(a)) });
+    });
+    homePostJSON("/ajax_index_event/").then((events) => {
+      finishSlice("events", { events: homeArray(events).sort((a, b) => homeDateValue(b) - homeDateValue(a)) });
+    });
+    homePostJSON("/ajax_index_books/").then((books) => {
+      finishSlice("books", { books: homeArray(books && books.books ? books.books : books).sort((a, b) => homeDateValue(b) - homeDateValue(a)) });
+    });
+    homePostJSON("/ajax_index_r_ecosystem/").then((ecosystem) => {
+      finishSlice("ecosystem", { ecosystem: homeArray(ecosystem && ecosystem.items ? ecosystem.items : ecosystem).sort((a, b) => homeDateValue(b) - homeDateValue(a)) });
+    });
+    homePostJSON("/workshop/ajax_list/").then((workshops) => {
+      finishSlice("workshops", { workshops: homeArray(workshops && workshops.workshops ? workshops.workshops : workshops).sort((a, b) => homeDateValue(b) - homeDateValue(a)) });
+    });
+    homePostJSON("/ajax_index_youtube/").then((youtube) => {
+      finishSlice("youtube", { youtube: homeArray(youtube).sort((a, b) => homeDateValue(b) - homeDateValue(a)) });
+    });
+    homePostJSON("/ajax_index_packages/").then((packages) => {
+      finishSlice("packages", { packages: packages || {} });
+    });
+    homePostJSON("/ajax_index_statistics/").then((statistics) => {
+      finishSlice("statistics", { statistics: statistics || {} });
     });
     return () => {
       mounted = false;
@@ -325,6 +341,16 @@ function Div_home_update_dashboard() {
   packageNews.slice(0, 5).forEach((row) => {
     feed.push(feedItem("packages", "패키지 소식", row, row.title || "Package news", [row.source_name || "Package news", homeFormatDate(row.published_at || row.collected_at)].filter(Boolean).join(" · "), packageNewsHref(row), row.summary || "", homeDateValue({ published_at: row.published_at, collected_at: row.collected_at })));
   });
+  const randomBooks = React.useMemo(() => {
+    const list = homeState.books.slice();
+    for (let idx = list.length - 1; idx > 0; idx -= 1) {
+      const swapIdx = Math.floor(Math.random() * (idx + 1));
+      const tmp = list[idx];
+      list[idx] = list[swapIdx];
+      list[swapIdx] = tmp;
+    }
+    return list.slice(0, 3);
+  }, [homeState.books]);
   homeState.articles.filter((row) => categoryOf(row) === "rcommunity").slice(0, 7).forEach((row) => {
     feed.push(feedItem("rcommunity", "R Community", row, row.title || "R Community", [row.source_name || "R Community", homeFormatDate(row.created_at || row.published_at)].filter(Boolean).join(" · "), homeArticlePreview(row).href, row.summary || row.content || "", homeDateValue(row)));
   });
@@ -334,16 +360,13 @@ function Div_home_update_dashboard() {
   homeState.articles.filter((row) => ["free", "notebook", "visitor"].includes(categoryOf(row))).slice(0, 6).forEach((row) => {
     feed.push(feedItem("community", homeCategoryLabel(categoryOf(row)), row, row.title || "커뮤니티", [homeCategoryLabel(categoryOf(row)), homeFormatDate(row.created_at || row.updated_at)].join(" · "), homeArticlePreview(row).href, row.summary || row.content || "", homeDateValue(row)));
   });
-  homeState.books.slice(0, 5).forEach((row) => {
+  randomBooks.forEach((row) => {
     const preview = homeBookPreview(row);
     feed.push(feedItem("books", "도서", row, preview.title, preview.meta, preview.href, row.description || row.contents || "", homeDateValue(row), preview.image));
   });
   homeState.workshops.slice(0, 4).forEach((row) => {
     const preview = homeWorkshopPreview(row);
     feed.push(feedItem("workshops", "워크샵", row, preview.title, preview.meta, preview.href, row.summary || row.description || "", homeDateValue({ starts_at: row.starts_at, created_at: row.created_at }), preview.image));
-  });
-  homeState.youtube.slice(0, 2).forEach((row) => {
-    feed.push(feedItem("workshops", "YouTube", row, row.title || "YouTube 강의", ["YouTube", homeFormatDate(row.created_at || row.published_at)].join(" · "), row.uuid ? "/workshop/youtube/read/" + row.uuid + "/" : "/workshop/youtube/", "", homeDateValue(row), row.youtube_thumbnail || row.thumbnail_url || row.thumbnail || row.image || row.url_image || ""));
   });
   const dedupedFeed = [];
   const seen = /* @__PURE__ */ new Set();
@@ -356,12 +379,12 @@ function Div_home_update_dashboard() {
   });
   const CATEGORY_ITEM_LIMIT = 3;
   const categoryDefs = [
-    { id: "packages", label: "R 패키지", href: "/r-ecosystem/packages/", tone: "border-emerald-200 bg-emerald-50 text-emerald-700" },
-    { id: "rcommunity", label: "R Community", href: "/community/", tone: "border-blue-200 bg-blue-50 text-blue-700" },
-    { id: "ecosystem", label: "R 에코시스템", href: "/r-ecosystem/", tone: "border-cyan-200 bg-cyan-50 text-cyan-700" },
-    { id: "community", label: "커뮤니티", href: "/community/", tone: "border-sky-200 bg-sky-50 text-sky-700" },
-    { id: "books", label: "도서", href: "/book/", tone: "border-amber-200 bg-amber-50 text-amber-700" },
-    { id: "workshops", label: "워크샵", href: "/workshop/", tone: "border-indigo-200 bg-indigo-50 text-indigo-700" }
+    { id: "packages", label: "R 패키지", href: "/r-ecosystem/packages/", tone: "border-emerald-200 bg-emerald-50 text-emerald-700", loading: homeState.loading.packages },
+    { id: "rcommunity", label: "R Community", href: "/community/", tone: "border-blue-200 bg-blue-50 text-blue-700", loading: homeState.loading.board },
+    { id: "ecosystem", label: "R 에코시스템", href: "/r-ecosystem/", tone: "border-cyan-200 bg-cyan-50 text-cyan-700", loading: homeState.loading.ecosystem },
+    { id: "community", label: "커뮤니티", href: "/community/", tone: "border-sky-200 bg-sky-50 text-sky-700", loading: homeState.loading.board },
+    { id: "books", label: "도서", href: "/book/", tone: "border-amber-200 bg-amber-50 text-amber-700", loading: homeState.loading.books },
+    { id: "workshops", label: "워크샵", href: "/workshop/", tone: "border-indigo-200 bg-indigo-50 text-indigo-700", loading: homeState.loading.workshops }
   ];
   const categories = categoryDefs.map((section) => {
     const items = dedupedFeed.filter((item) => item.lane === section.id);
@@ -382,6 +405,12 @@ function Div_home_update_dashboard() {
       meta: homeFormatDate(row.created_at || row.published_at || row.updated_at)
     };
   });
+  const randomYoutube = React.useMemo(() => {
+    const list = homeState.youtube.filter((row) => row && (row.uuid || row.title || row.youtube_thumbnail));
+    if (!list.length)
+      return null;
+    return list[Math.floor(Math.random() * list.length)];
+  }, [homeState.youtube]);
   const quickLinks = [
     { title: "Web-R", href: "/webr/2.0/", icon: "webr", tone: "bg-blue-50 text-blue-700 border-blue-100" },
     { title: "패키지", href: "/r-ecosystem/packages/", icon: "package", tone: "bg-emerald-50 text-emerald-700 border-emerald-100" },
@@ -412,20 +441,27 @@ function Div_home_update_dashboard() {
     const item = props.item;
     const isLandscapeImage = item.lane === "workshops";
     const imageClass = isLandscapeImage ? "h-20 w-28 shrink-0 rounded border border-slate-200 bg-slate-100 object-cover" : "h-20 w-14 shrink-0 rounded border border-slate-200 bg-slate-100 object-cover";
-    const metaClass = (item.image ? isLandscapeImage ? "ml-[124px] " : "ml-[68px] " : "") + "mt-2 flex flex-wrap items-center gap-2 text-xs font-semibold text-slate-400";
     return /* @__PURE__ */ React.createElement("a", { href: item.href, class: "group block border-t border-slate-100 px-4 py-3 first:border-t-0 hover:bg-slate-50" }, /* @__PURE__ */ React.createElement("span", { class: "flex items-start gap-3" }, item.image ? /* @__PURE__ */ React.createElement("img", { src: item.image, alt: "", class: imageClass, loading: "lazy", onError: (event) => {
       event.currentTarget.style.display = "none";
-    } }) : null, /* @__PURE__ */ React.createElement("span", { class: "flex min-w-0 flex-1 items-start justify-between gap-3" }, /* @__PURE__ */ React.createElement("span", { class: "min-w-0" }, /* @__PURE__ */ React.createElement("span", { class: "block text-sm font-extrabold leading-5 text-slate-950 group-hover:text-blue-700" }, item.title), item.detail ? /* @__PURE__ */ React.createElement("span", { class: "mt-1 block truncate text-sm text-slate-500" }, item.detail) : null), /* @__PURE__ */ React.createElement("span", { class: "shrink-0 text-xs font-extrabold text-blue-600" }, "열기"))), /* @__PURE__ */ React.createElement("span", { class: metaClass }, /* @__PURE__ */ React.createElement("span", { class: "rounded border border-slate-200 bg-white px-1.5 py-0.5 text-slate-600" }, item.source), /* @__PURE__ */ React.createElement("span", null, item.meta)));
+    } }) : null, /* @__PURE__ */ React.createElement("span", { class: "flex min-w-0 flex-1 items-start justify-between gap-3" }, /* @__PURE__ */ React.createElement("span", { class: "min-w-0" }, /* @__PURE__ */ React.createElement("span", { class: "block text-sm font-extrabold leading-5 text-slate-950 group-hover:text-blue-700" }, item.title), item.detail ? /* @__PURE__ */ React.createElement("span", { class: "mt-1 block truncate text-sm text-slate-500" }, item.detail) : null, /* @__PURE__ */ React.createElement("span", { class: "mt-2 flex flex-wrap items-center gap-2 text-xs font-semibold text-slate-400" }, /* @__PURE__ */ React.createElement("span", { class: "rounded border border-slate-200 bg-white px-1.5 py-0.5 text-slate-600" }, item.source), /* @__PURE__ */ React.createElement("span", null, item.meta))), /* @__PURE__ */ React.createElement("span", { class: "shrink-0 text-xs font-extrabold text-blue-600" }, "열기"))));
   }
   function CategorySection(props) {
     const section = props.section;
-    return /* @__PURE__ */ React.createElement("article", { class: "overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm" }, /* @__PURE__ */ React.createElement("div", { class: "flex items-start justify-between gap-3 border-b border-slate-100 px-4 py-3" }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("span", { class: "inline-flex h-7 items-center rounded-md border px-2 text-xs font-extrabold " + section.tone }, section.label), /* @__PURE__ */ React.createElement("p", { class: "mt-2 text-xs font-semibold text-slate-500" }, "최근 항목 최대 ", CATEGORY_ITEM_LIMIT, "개")), /* @__PURE__ */ React.createElement("a", { href: section.href, class: "shrink-0 text-xs font-extrabold text-blue-700 hover:text-blue-900" }, "더 보기")), homeState.loading ? /* @__PURE__ */ React.createElement("div", { class: "p-4" }, /* @__PURE__ */ React.createElement(DashboardSkeleton, null)) : section.items.length ? /* @__PURE__ */ React.createElement("div", { class: "bg-white" }, section.items.map((item, idx) => /* @__PURE__ */ React.createElement(FeedRow, { key: section.id + item.href + item.title + idx, item }))) : /* @__PURE__ */ React.createElement("a", { href: section.href, class: "block px-4 py-5 text-sm font-semibold text-slate-500 hover:bg-slate-50 hover:text-blue-700" }, "최근 항목 확인하기"));
+    const countLabel = section.id === "books" ? "랜덤 항목 3개" : "최근 항목 최대 " + CATEGORY_ITEM_LIMIT + "개";
+    return /* @__PURE__ */ React.createElement("article", { class: "overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm" }, /* @__PURE__ */ React.createElement("div", { class: "flex items-start justify-between gap-3 border-b border-slate-100 px-4 py-3" }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("span", { class: "inline-flex h-7 items-center rounded-md border px-2 text-xs font-extrabold " + section.tone }, section.label), /* @__PURE__ */ React.createElement("p", { class: "mt-2 text-xs font-semibold text-slate-500" }, countLabel)), /* @__PURE__ */ React.createElement("a", { href: section.href, class: "shrink-0 text-xs font-extrabold text-blue-700 hover:text-blue-900" }, "더 보기")), section.loading && !section.items.length ? /* @__PURE__ */ React.createElement("div", { class: "p-4" }, /* @__PURE__ */ React.createElement(DashboardSkeleton, null)) : section.items.length ? /* @__PURE__ */ React.createElement("div", { class: "bg-white" }, section.items.map((item, idx) => /* @__PURE__ */ React.createElement(FeedRow, { key: section.id + item.href + item.title + idx, item }))) : /* @__PURE__ */ React.createElement("a", { href: section.href, class: "block px-4 py-5 text-sm font-semibold text-slate-500 hover:bg-slate-50 hover:text-blue-700" }, "최근 항목 확인하기"));
   }
   function NoticePanel() {
-    return /* @__PURE__ */ React.createElement("aside", { class: "rounded-lg border border-slate-200 bg-white p-4 shadow-sm" }, /* @__PURE__ */ React.createElement("div", { class: "flex items-center justify-between gap-3" }, /* @__PURE__ */ React.createElement("h3", { class: "text-base font-extrabold text-slate-950" }, "공지사항"), /* @__PURE__ */ React.createElement("a", { href: "/intro/notice/", class: "text-xs font-extrabold text-blue-700 hover:text-blue-900" }, "더 보기")), /* @__PURE__ */ React.createElement("div", { class: "mt-3 space-y-2" }, homeState.loading ? [0, 1, 2].map((idx) => /* @__PURE__ */ React.createElement("div", { key: idx, class: "rounded-md border border-slate-100 bg-slate-50 p-3" }, /* @__PURE__ */ React.createElement("div", { class: "h-3 w-4/5 rounded-full bg-slate-300 animate-pulse" }), /* @__PURE__ */ React.createElement("div", { class: "mt-2 h-2 w-1/3 rounded-full bg-slate-200 animate-pulse" }))) : noticeItems.length ? noticeItems.map((item, idx) => /* @__PURE__ */ React.createElement("a", { key: item.href + item.title + idx, href: item.href, class: "block rounded-md border border-slate-100 bg-slate-50 px-3 py-2 hover:border-blue-200 hover:bg-blue-50" }, /* @__PURE__ */ React.createElement("span", { class: "block truncate text-sm font-extrabold text-slate-950" }, item.title), /* @__PURE__ */ React.createElement("span", { class: "mt-1 block text-xs font-semibold text-slate-400" }, item.meta || "공지사항"))) : /* @__PURE__ */ React.createElement("a", { href: "/intro/notice/", class: "block rounded-md border border-dashed border-slate-200 px-3 py-3 text-sm font-semibold text-slate-500 hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700" }, "공지사항 보기")));
+    return /* @__PURE__ */ React.createElement("aside", { class: "rounded-lg border border-slate-200 bg-white p-4 shadow-sm" }, /* @__PURE__ */ React.createElement("div", { class: "flex items-center justify-between gap-3" }, /* @__PURE__ */ React.createElement("h3", { class: "text-base font-extrabold text-slate-950" }, "공지사항"), /* @__PURE__ */ React.createElement("a", { href: "/intro/notice/", class: "text-xs font-extrabold text-blue-700 hover:text-blue-900" }, "더 보기")), /* @__PURE__ */ React.createElement("div", { class: "mt-3 space-y-2" }, homeState.loading.board && !noticeItems.length ? [0, 1, 2].map((idx) => /* @__PURE__ */ React.createElement("div", { key: idx, class: "rounded-md border border-slate-100 bg-slate-50 p-3" }, /* @__PURE__ */ React.createElement("div", { class: "h-3 w-4/5 rounded-full bg-slate-300 animate-pulse" }), /* @__PURE__ */ React.createElement("div", { class: "mt-2 h-2 w-1/3 rounded-full bg-slate-200 animate-pulse" }))) : noticeItems.length ? noticeItems.map((item, idx) => /* @__PURE__ */ React.createElement("a", { key: item.href + item.title + idx, href: item.href, class: "block rounded-md border border-slate-100 bg-slate-50 px-3 py-2 hover:border-blue-200 hover:bg-blue-50" }, /* @__PURE__ */ React.createElement("span", { class: "block truncate text-sm font-extrabold text-slate-950" }, item.title), /* @__PURE__ */ React.createElement("span", { class: "mt-1 block text-xs font-semibold text-slate-400" }, item.meta || "공지사항"))) : /* @__PURE__ */ React.createElement("a", { href: "/intro/notice/", class: "block rounded-md border border-dashed border-slate-200 px-3 py-3 text-sm font-semibold text-slate-500 hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700" }, "공지사항 보기")));
+  }
+  function YoutubePanel() {
+    const href = randomYoutube && randomYoutube.uuid ? "/workshop/youtube/read/" + randomYoutube.uuid + "/" : "/workshop/youtube/";
+    const image = randomYoutube ? randomYoutube.youtube_thumbnail || randomYoutube.thumbnail_url || randomYoutube.thumbnail || randomYoutube.image || randomYoutube.url_image || "" : "";
+    return /* @__PURE__ */ React.createElement("aside", { class: "overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm" }, /* @__PURE__ */ React.createElement("div", { class: "flex items-center justify-between gap-3 px-4 py-3" }, /* @__PURE__ */ React.createElement("h3", { class: "text-base font-extrabold text-slate-950" }, "YouTube"), /* @__PURE__ */ React.createElement("a", { href: "/workshop/youtube/", class: "text-xs font-extrabold text-blue-700 hover:text-blue-900" }, "더 보기")), homeState.loading.youtube && !randomYoutube ? /* @__PURE__ */ React.createElement("div", { class: "px-4 pb-4" }, /* @__PURE__ */ React.createElement("div", { class: "aspect-video rounded-md bg-slate-200 animate-pulse" }), /* @__PURE__ */ React.createElement("div", { class: "mt-3 h-3 w-4/5 rounded-full bg-slate-300 animate-pulse" }), /* @__PURE__ */ React.createElement("div", { class: "mt-2 h-2 w-1/3 rounded-full bg-slate-200 animate-pulse" })) : randomYoutube ? /* @__PURE__ */ React.createElement("a", { href, class: "block px-4 pb-4 hover:bg-slate-50" }, image ? /* @__PURE__ */ React.createElement("img", { src: image, alt: "", class: "aspect-video w-full rounded-md border border-slate-200 bg-slate-100 object-cover", loading: "lazy", onError: (event) => {
+      event.currentTarget.style.display = "none";
+    } }) : /* @__PURE__ */ React.createElement("div", { class: "flex aspect-video w-full items-center justify-center rounded-md border border-slate-200 bg-slate-100 text-sm font-extrabold text-slate-500" }, "YouTube"), /* @__PURE__ */ React.createElement("span", { class: "mt-3 block text-sm font-extrabold leading-5 text-slate-950" }, homeShortText(homePlainText(randomYoutube.title || "YouTube 강의"), 70)), /* @__PURE__ */ React.createElement("span", { class: "mt-1 block text-xs font-semibold text-slate-400" }, homeFormatDate(randomYoutube.created_at || randomYoutube.published_at))) : /* @__PURE__ */ React.createElement("a", { href: "/workshop/youtube/", class: "mx-4 mb-4 block rounded-md border border-dashed border-slate-200 px-3 py-3 text-sm font-semibold text-slate-500 hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700" }, "YouTube 보기"));
   }
   function LivePanel() {
-    return /* @__PURE__ */ React.createElement("aside", { class: "rounded-lg border border-slate-200 bg-slate-950 p-4 text-white" }, /* @__PURE__ */ React.createElement("div", { class: "flex items-center justify-between gap-3" }, /* @__PURE__ */ React.createElement("h3", { class: "text-base font-extrabold" }, "지금 Web-R"), /* @__PURE__ */ React.createElement("span", { class: "relative flex h-3 w-3" }, /* @__PURE__ */ React.createElement("span", { class: "absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" }), /* @__PURE__ */ React.createElement("span", { class: "relative inline-flex h-3 w-3 rounded-full bg-emerald-300" }))), /* @__PURE__ */ React.createElement("div", { class: "mt-4 space-y-3" }, activityItems.length ? activityItems.map((item, idx) => /* @__PURE__ */ React.createElement("div", { key: item.uuid || item.created_at || idx, class: "rounded-md bg-white/5 p-3" }, /* @__PURE__ */ React.createElement("p", { class: "text-sm font-semibold leading-5" }, homeShortText(homeActivityMessage(item.event, item.nickname), 70)), /* @__PURE__ */ React.createElement("p", { class: "mt-1 text-xs text-slate-300" }, homeRelativeTime(item.created_at || item.updated_at)))) : /* @__PURE__ */ React.createElement("a", { href: "/community/", class: "block rounded-md bg-white/10 p-3 text-sm font-semibold text-slate-100 hover:bg-white/15" }, "최근 활동 보기")));
+    return /* @__PURE__ */ React.createElement("aside", { class: "rounded-lg border border-slate-200 bg-slate-950 p-4 text-white" }, /* @__PURE__ */ React.createElement("div", { class: "flex items-center justify-between gap-3" }, /* @__PURE__ */ React.createElement("h3", { class: "text-base font-extrabold" }, "지금 Web-R"), /* @__PURE__ */ React.createElement("span", { class: "relative flex h-3 w-3" }, /* @__PURE__ */ React.createElement("span", { class: "absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" }), /* @__PURE__ */ React.createElement("span", { class: "relative inline-flex h-3 w-3 rounded-full bg-emerald-300" }))), /* @__PURE__ */ React.createElement("div", { class: "mt-4 space-y-3" }, homeState.loading.events && !activityItems.length ? [0, 1, 2].map((idx) => /* @__PURE__ */ React.createElement("div", { key: idx, class: "rounded-md bg-white/5 p-3" }, /* @__PURE__ */ React.createElement("div", { class: "h-3 w-5/6 rounded-full bg-white/30 animate-pulse" }), /* @__PURE__ */ React.createElement("div", { class: "mt-2 h-2 w-1/3 rounded-full bg-white/20 animate-pulse" }))) : activityItems.length ? activityItems.map((item, idx) => /* @__PURE__ */ React.createElement("div", { key: item.uuid || item.created_at || idx, class: "rounded-md bg-white/5 p-3" }, /* @__PURE__ */ React.createElement("p", { class: "text-sm font-semibold leading-5" }, homeShortText(homeActivityMessage(item.event, item.nickname), 70)), /* @__PURE__ */ React.createElement("p", { class: "mt-1 text-xs text-slate-300" }, homeRelativeTime(item.created_at || item.updated_at)))) : /* @__PURE__ */ React.createElement("a", { href: "/community/", class: "block rounded-md bg-white/10 p-3 text-sm font-semibold text-slate-100 hover:bg-white/15" }, "최근 활동 보기")));
   }
   function formattedStat(value, unit) {
     const numeric = Number(value);
@@ -437,9 +473,9 @@ function Div_home_update_dashboard() {
       { label: "오늘의 방문자 수", value: homeState.statistics.cnt_visitor, unit: "명", icon: "https://cdn.jsdelivr.net/gh/statground/Statground_CDN/assets3/images/svg/visitors.svg" },
       { label: "오늘의 페이지 뷰", value: homeState.statistics.cnt_pageview, unit: "건", icon: "https://cdn.jsdelivr.net/gh/statground/Statground_CDN/assets3/images/svg/pageview.svg" }
     ];
-    return /* @__PURE__ */ React.createElement("aside", { class: "rounded-lg border border-slate-200 bg-white p-4 shadow-sm" }, /* @__PURE__ */ React.createElement("h3", { class: "text-base font-extrabold text-slate-950" }, "Web-R 현황"), /* @__PURE__ */ React.createElement("div", { class: "mt-3 grid grid-cols-1 gap-2" }, rows.map((row) => /* @__PURE__ */ React.createElement("div", { key: row.label, class: "flex min-h-[72px] items-center gap-3 rounded-md border border-slate-100 bg-slate-50 px-3 py-2" }, /* @__PURE__ */ React.createElement("img", { src: row.icon, alt: "", class: "h-7 w-7 shrink-0", loading: "lazy" }), /* @__PURE__ */ React.createElement("span", { class: "min-w-0" }, /* @__PURE__ */ React.createElement("span", { class: "block text-xs font-bold text-slate-500" }, row.label), /* @__PURE__ */ React.createElement("span", { class: "mt-1 block text-xl font-extrabold text-slate-950" }, homeState.loading ? "..." : formattedStat(row.value, row.unit)))))));
+    return /* @__PURE__ */ React.createElement("aside", { class: "rounded-lg border border-slate-200 bg-white p-4 shadow-sm" }, /* @__PURE__ */ React.createElement("h3", { class: "text-base font-extrabold text-slate-950" }, "Web-R 현황"), /* @__PURE__ */ React.createElement("div", { class: "mt-3 grid grid-cols-1 gap-2" }, rows.map((row) => /* @__PURE__ */ React.createElement("div", { key: row.label, class: "flex min-h-[72px] items-center gap-3 rounded-md border border-slate-100 bg-slate-50 px-3 py-2" }, /* @__PURE__ */ React.createElement("img", { src: row.icon, alt: "", class: "h-7 w-7 shrink-0", loading: "lazy" }), /* @__PURE__ */ React.createElement("span", { class: "min-w-0" }, /* @__PURE__ */ React.createElement("span", { class: "block text-xs font-bold text-slate-500" }, row.label), homeState.loading.statistics ? /* @__PURE__ */ React.createElement("span", { class: "mt-2 block h-5 w-24 rounded-full bg-slate-300 animate-pulse" }) : /* @__PURE__ */ React.createElement("span", { class: "mt-1 block text-xl font-extrabold text-slate-950" }, formattedStat(row.value, row.unit)))))));
   }
-  return /* @__PURE__ */ React.createElement("section", { class: "mx-auto w-full max-w-[1360px]" }, /* @__PURE__ */ React.createElement("div", { class: "rounded-lg border border-slate-200 bg-white p-4 shadow-sm md:p-5" }, /* @__PURE__ */ React.createElement("div", { class: "flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between" }, /* @__PURE__ */ React.createElement("div", { class: "max-w-2xl" }, /* @__PURE__ */ React.createElement("p", { class: "text-sm font-extrabold text-blue-700" }, "영역별 새 소식"), /* @__PURE__ */ React.createElement("h2", { class: "text-2xl font-extrabold text-slate-950" }, "지금 Web-R에서 이어지는 업데이트"), /* @__PURE__ */ React.createElement("p", { class: "mt-2 text-sm leading-6 text-slate-500" }, "각 영역의 최신 항목을 최대 ", CATEGORY_ITEM_LIMIT, "개씩 모았습니다.")), /* @__PURE__ */ React.createElement("div", { class: "grid grid-cols-3 gap-2 sm:grid-cols-6" }, quickLinks.map((link) => /* @__PURE__ */ React.createElement("a", { key: link.href, href: link.href, class: "flex h-[74px] flex-col items-center justify-center gap-1 rounded-lg border px-2 text-xs font-extrabold " + link.tone }, /* @__PURE__ */ React.createElement(QuickIcon, { icon: link.icon }), link.title))))), /* @__PURE__ */ React.createElement("div", { class: "mt-3 grid grid-cols-1 items-start gap-3 lg:grid-cols-[minmax(0,1fr)_320px]" }, /* @__PURE__ */ React.createElement("div", { class: "grid grid-cols-1 gap-3 xl:grid-cols-2" }, categories.map((section) => /* @__PURE__ */ React.createElement(CategorySection, { key: section.id, section }))), /* @__PURE__ */ React.createElement("div", { class: "space-y-3" }, /* @__PURE__ */ React.createElement(StatPanel, null), /* @__PURE__ */ React.createElement(NoticePanel, null), /* @__PURE__ */ React.createElement(LivePanel, null))));
+  return /* @__PURE__ */ React.createElement("section", { class: "mx-auto w-full max-w-[1360px]" }, /* @__PURE__ */ React.createElement("div", { class: "rounded-lg border border-slate-200 bg-white p-4 shadow-sm md:p-5" }, /* @__PURE__ */ React.createElement("div", { class: "flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between" }, /* @__PURE__ */ React.createElement("div", { class: "max-w-2xl" }, /* @__PURE__ */ React.createElement("p", { class: "text-sm font-extrabold text-blue-700" }, "Web-R 브리핑"), /* @__PURE__ */ React.createElement("h2", { class: "text-2xl font-extrabold text-slate-950" }, "새로 올라온 R 자료 모아보기"), /* @__PURE__ */ React.createElement("p", { class: "mt-2 text-sm leading-6 text-slate-500" }, "패키지, R Community, 도서, 워크샵의 최근 항목을 영역별로 확인하세요.")), /* @__PURE__ */ React.createElement("div", { class: "grid grid-cols-3 gap-2 sm:grid-cols-6" }, quickLinks.map((link) => /* @__PURE__ */ React.createElement("a", { key: link.href, href: link.href, class: "flex h-[74px] flex-col items-center justify-center gap-1 rounded-lg border px-2 text-xs font-extrabold " + link.tone }, /* @__PURE__ */ React.createElement(QuickIcon, { icon: link.icon }), link.title))))), /* @__PURE__ */ React.createElement("div", { class: "mt-3 grid grid-cols-1 items-start gap-3 lg:grid-cols-[minmax(0,1fr)_320px]" }, /* @__PURE__ */ React.createElement("div", { class: "grid grid-cols-1 gap-3 xl:grid-cols-2" }, categories.map((section) => /* @__PURE__ */ React.createElement(CategorySection, { key: section.id, section }))), /* @__PURE__ */ React.createElement("div", { class: "space-y-3" }, /* @__PURE__ */ React.createElement(StatPanel, null), /* @__PURE__ */ React.createElement(NoticePanel, null), /* @__PURE__ */ React.createElement(YoutubePanel, null), /* @__PURE__ */ React.createElement(LivePanel, null))));
 }
 function Div_main_statistics_skeleton() {
   function Div_Sub(props) {
