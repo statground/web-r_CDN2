@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 360" role="img" aria-labelledby="title desc">
+  <title id="title">R conference</title>
+  <desc id="desc">Generic R conference banner for useR, DSC, and R Summit items</desc>
+  <rect width="640" height="360" fill="#f8fafc"/>
+  <rect x="0" y="0" width="640" height="360" fill="#eef6ff"/>
+  <path d="M0 280C90 238 164 244 244 278C338 318 446 322 640 250V360H0Z" fill="#dbeafe"/>
+  <path d="M0 302C112 260 196 276 282 304C386 338 486 328 640 276V360H0Z" fill="#bfdbfe" opacity="0.9"/>
+  <circle cx="510" cy="112" r="70" fill="#ffffff" opacity="0.95"/>
+  <circle cx="510" cy="112" r="48" fill="#2563eb"/>
+  <text x="510" y="132" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="54" font-weight="800" fill="#ffffff">R</text>
+  <text x="44" y="72" font-family="Arial, Helvetica, sans-serif" font-size="34" font-weight="800" fill="#0f172a">R Conference</text>
+  <text x="44" y="112" font-family="Arial, Helvetica, sans-serif" font-size="22" font-weight="700" fill="#2563eb">useR! / DSC / R Summit</text>
+  <text x="44" y="154" font-family="Arial, Helvetica, sans-serif" font-size="18" font-weight="600" fill="#475569">R community events and conference updates</text>
+  <g transform="translate(48 206)" fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="0" y="0" width="132" height="86" rx="14" fill="#ffffff" stroke="#bfdbfe" stroke-width="3"/>
+    <path d="M28 58V34M60 58V24M92 58V40" stroke="#2563eb" stroke-width="8"/>
+    <path d="M24 66H108" stroke="#94a3b8" stroke-width="4"/>
+  </g>
+  <g transform="translate(220 206)" fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="0" y="0" width="132" height="86" rx="14" fill="#ffffff" stroke="#c7d2fe" stroke-width="3"/>
+    <path d="M28 50c18-24 58-24 76 0" stroke="#4f46e5" stroke-width="7"/>
+    <path d="M40 64c12-12 40-12 52 0" stroke="#60a5fa" stroke-width="7"/>
+    <circle cx="66" cy="30" r="8" fill="#4f46e5" stroke="none"/>
+  </g>
+  <g transform="translate(392 206)" fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="0" y="0" width="132" height="86" rx="14" fill="#ffffff" stroke="#bbf7d0" stroke-width="3"/>
+    <path d="M30 34h72M30 52h52M30 70h72" stroke="#16a34a" stroke-width="6"/>
+  </g>
+</svg>
