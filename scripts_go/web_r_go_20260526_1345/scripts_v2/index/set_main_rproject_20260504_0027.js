@@ -247,6 +247,7 @@ function Div_home_update_dashboard() {
       events: true,
       books: true,
       ecosystem: true,
+      notice: true,
       workshops: true,
       youtube: true,
       packages: true,
@@ -256,6 +257,7 @@ function Div_home_update_dashboard() {
     events: [],
     books: [],
     ecosystem: [],
+    notices: [],
     workshops: [],
     youtube: [],
     packages: {},
@@ -281,6 +283,9 @@ function Div_home_update_dashboard() {
     });
     homePostJSON("/ajax_index_r_ecosystem/").then((ecosystem) => {
       finishSlice("ecosystem", { ecosystem: homeArray(ecosystem && ecosystem.items ? ecosystem.items : ecosystem).sort((a, b) => homeDateValue(b) - homeDateValue(a)) });
+    });
+    homePostJSON("/ajax_index_notice/").then((notices) => {
+      finishSlice("notice", { notices: homeArray(notices).sort((a, b) => homeDateValue(b) - homeDateValue(a)) });
     });
     homePostJSON("/workshop/ajax_list/").then((workshops) => {
       finishSlice("workshops", { workshops: homeArray(workshops && workshops.workshops ? workshops.workshops : workshops).sort((a, b) => homeDateValue(b) - homeDateValue(a)) });
@@ -342,7 +347,21 @@ function Div_home_update_dashboard() {
     feed.push(feedItem("packages", "패키지 소식", row, row.title || "Package news", [row.source_name || "Package news", homeFormatDate(row.published_at || row.collected_at)].filter(Boolean).join(" · "), packageNewsHref(row), row.summary || "", homeDateValue({ published_at: row.published_at, collected_at: row.collected_at })));
   });
   const randomBooks = React.useMemo(() => {
-    const list = homeState.books.slice();
+    const seenBooks = /* @__PURE__ */ new Set();
+    const list = [];
+    homeState.books.forEach((row) => {
+      const signature = [
+        homePlainText(row.title || row.book_title || ""),
+        homePlainText(row.publisher || ""),
+        homePlainText(row.description || row.contents || "")
+      ].join("|").replace(/\s+/g, " ").trim().toLowerCase();
+      const key = signature || String(row.isbn || row.href || row.url || row.image || row.url_image || "").trim();
+      if (key && seenBooks.has(key))
+        return;
+      if (key)
+        seenBooks.add(key);
+      list.push(row);
+    });
     for (let idx = list.length - 1; idx > 0; idx -= 1) {
       const swapIdx = Math.floor(Math.random() * (idx + 1));
       const tmp = list[idx];
@@ -397,7 +416,7 @@ function Div_home_update_dashboard() {
     const nickname = String(item.nickname || "").trim();
     return nickname && !["탈퇴한 유저", "탈퇴한 회원", "Unknown", "unknown", "null", "None", "undefined"].includes(nickname);
   }).slice(0, 6);
-  const noticeItems = homeState.articles.filter((row) => categoryOf(row) === "notice").slice(0, 3).map((row) => {
+  const noticeItems = homeState.notices.slice(0, 3).map((row) => {
     const preview = homeArticlePreview(row);
     return {
       title: preview.title,
@@ -451,7 +470,7 @@ function Div_home_update_dashboard() {
     return /* @__PURE__ */ React.createElement("article", { class: "overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm" }, /* @__PURE__ */ React.createElement("div", { class: "flex items-start justify-between gap-3 border-b border-slate-100 px-4 py-3" }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("span", { class: "inline-flex h-7 items-center rounded-md border px-2 text-xs font-extrabold " + section.tone }, section.label), /* @__PURE__ */ React.createElement("p", { class: "mt-2 text-xs font-semibold text-slate-500" }, countLabel)), /* @__PURE__ */ React.createElement("a", { href: section.href, class: "shrink-0 text-xs font-extrabold text-blue-700 hover:text-blue-900" }, "더 보기")), section.loading && !section.items.length ? /* @__PURE__ */ React.createElement("div", { class: "p-4" }, /* @__PURE__ */ React.createElement(DashboardSkeleton, null)) : section.items.length ? /* @__PURE__ */ React.createElement("div", { class: "bg-white" }, section.items.map((item, idx) => /* @__PURE__ */ React.createElement(FeedRow, { key: section.id + item.href + item.title + idx, item }))) : /* @__PURE__ */ React.createElement("a", { href: section.href, class: "block px-4 py-5 text-sm font-semibold text-slate-500 hover:bg-slate-50 hover:text-blue-700" }, "최근 항목 확인하기"));
   }
   function NoticePanel() {
-    return /* @__PURE__ */ React.createElement("aside", { class: "rounded-lg border border-slate-200 bg-white p-4 shadow-sm" }, /* @__PURE__ */ React.createElement("div", { class: "flex items-center justify-between gap-3" }, /* @__PURE__ */ React.createElement("h3", { class: "text-base font-extrabold text-slate-950" }, "공지사항"), /* @__PURE__ */ React.createElement("a", { href: "/intro/notice/", class: "text-xs font-extrabold text-blue-700 hover:text-blue-900" }, "더 보기")), /* @__PURE__ */ React.createElement("div", { class: "mt-3 space-y-2" }, homeState.loading.board && !noticeItems.length ? [0, 1, 2].map((idx) => /* @__PURE__ */ React.createElement("div", { key: idx, class: "rounded-md border border-slate-100 bg-slate-50 p-3" }, /* @__PURE__ */ React.createElement("div", { class: "h-3 w-4/5 rounded-full bg-slate-300 animate-pulse" }), /* @__PURE__ */ React.createElement("div", { class: "mt-2 h-2 w-1/3 rounded-full bg-slate-200 animate-pulse" }))) : noticeItems.length ? noticeItems.map((item, idx) => /* @__PURE__ */ React.createElement("a", { key: item.href + item.title + idx, href: item.href, class: "block rounded-md border border-slate-100 bg-slate-50 px-3 py-2 hover:border-blue-200 hover:bg-blue-50" }, /* @__PURE__ */ React.createElement("span", { class: "block truncate text-sm font-extrabold text-slate-950" }, item.title), /* @__PURE__ */ React.createElement("span", { class: "mt-1 block text-xs font-semibold text-slate-400" }, item.meta || "공지사항"))) : /* @__PURE__ */ React.createElement("a", { href: "/intro/notice/", class: "block rounded-md border border-dashed border-slate-200 px-3 py-3 text-sm font-semibold text-slate-500 hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700" }, "공지사항 보기")));
+    return /* @__PURE__ */ React.createElement("aside", { class: "rounded-lg border border-slate-200 bg-white p-4 shadow-sm" }, /* @__PURE__ */ React.createElement("div", { class: "flex items-center justify-between gap-3" }, /* @__PURE__ */ React.createElement("h3", { class: "text-base font-extrabold text-slate-950" }, "공지사항"), /* @__PURE__ */ React.createElement("a", { href: "/intro/notice/", class: "text-xs font-extrabold text-blue-700 hover:text-blue-900" }, "더 보기")), /* @__PURE__ */ React.createElement("div", { class: "mt-3 space-y-2" }, homeState.loading.notice && !noticeItems.length ? [0, 1, 2].map((idx) => /* @__PURE__ */ React.createElement("div", { key: idx, class: "rounded-md border border-slate-100 bg-slate-50 p-3" }, /* @__PURE__ */ React.createElement("div", { class: "h-3 w-4/5 rounded-full bg-slate-300 animate-pulse" }), /* @__PURE__ */ React.createElement("div", { class: "mt-2 h-2 w-1/3 rounded-full bg-slate-200 animate-pulse" }))) : noticeItems.length ? noticeItems.map((item, idx) => /* @__PURE__ */ React.createElement("a", { key: item.href + item.title + idx, href: item.href, class: "block rounded-md border border-slate-100 bg-slate-50 px-3 py-2 hover:border-blue-200 hover:bg-blue-50" }, /* @__PURE__ */ React.createElement("span", { class: "block truncate text-sm font-extrabold text-slate-950" }, item.title), /* @__PURE__ */ React.createElement("span", { class: "mt-1 block text-xs font-semibold text-slate-400" }, item.meta || "공지사항"))) : /* @__PURE__ */ React.createElement("a", { href: "/intro/notice/", class: "block rounded-md border border-dashed border-slate-200 px-3 py-3 text-sm font-semibold text-slate-500 hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700" }, "공지사항 보기")));
   }
   function YoutubePanel() {
     const href = randomYoutube && randomYoutube.uuid ? "/workshop/youtube/read/" + randomYoutube.uuid + "/" : "/workshop/youtube/";
