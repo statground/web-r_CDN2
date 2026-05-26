@@ -493,13 +493,13 @@ function Div_home_update_dashboard() {
     if (link.icon !== "webr") {
       return /* @__PURE__ */ React.createElement("a", { href: link.href, class: tileClass }, /* @__PURE__ */ React.createElement(QuickIcon, { icon: link.icon }), link.title);
     }
-    return /* @__PURE__ */ React.createElement("div", { ref: webRMenuRef, class: "relative" }, /* @__PURE__ */ React.createElement("button", {
+    return /* @__PURE__ */ React.createElement("div", { ref: webRMenuRef, class: "relative w-full" }, /* @__PURE__ */ React.createElement("button", {
       type: "button",
       class: tileClass + " w-full",
       "aria-haspopup": "menu",
       "aria-expanded": isWebRMenuOpen ? "true" : "false",
       onClick: () => setIsWebRMenuOpen((open) => !open)
-    }, /* @__PURE__ */ React.createElement(QuickIcon, { icon: link.icon }), link.title), isWebRMenuOpen ? /* @__PURE__ */ React.createElement("div", { class: "absolute left-1/2 top-[82px] z-30 w-56 -translate-x-1/2 rounded-lg border border-blue-100 bg-white p-2 text-left shadow-lg", role: "menu" }, /* @__PURE__ */ React.createElement("span", { class: "absolute -top-1 left-1/2 h-3 w-3 -translate-x-1/2 rotate-45 border-l border-t border-blue-100 bg-white" }), webROptions.map((option) => /* @__PURE__ */ React.createElement("a", { key: option.href, href: option.href, class: "relative block rounded-md px-3 py-2 hover:bg-blue-50", role: "menuitem" }, /* @__PURE__ */ React.createElement("span", { class: "block text-sm font-extrabold text-slate-950" }, option.title), /* @__PURE__ */ React.createElement("span", { class: "mt-0.5 block text-xs font-semibold text-slate-500" }, option.desc)))) : null);
+    }, /* @__PURE__ */ React.createElement(QuickIcon, { icon: link.icon }), link.title), isWebRMenuOpen ? /* @__PURE__ */ React.createElement("div", { class: "absolute left-0 top-full z-30 mt-2 w-56 rounded-lg border border-blue-100 bg-white p-2 text-left shadow-lg", role: "menu" }, /* @__PURE__ */ React.createElement("span", { class: "absolute -top-1 left-8 h-3 w-3 rotate-45 border-l border-t border-blue-100 bg-white" }), webROptions.map((option) => /* @__PURE__ */ React.createElement("a", { key: option.href, href: option.href, class: "relative block rounded-md px-3 py-2 hover:bg-blue-50", role: "menuitem" }, /* @__PURE__ */ React.createElement("span", { class: "block text-sm font-extrabold text-slate-950" }, option.title), /* @__PURE__ */ React.createElement("span", { class: "mt-0.5 block text-xs font-semibold text-slate-500" }, option.desc)))) : null);
   }
   function DashboardSkeleton() {
     return /* @__PURE__ */ React.createElement("div", { class: "space-y-3" }, [0, 1, 2].map((idx) => /* @__PURE__ */ React.createElement("div", { key: idx, class: "rounded-md border border-slate-100 bg-white p-3" }, /* @__PURE__ */ React.createElement("div", { class: "h-3 w-2/3 rounded-full bg-slate-300 animate-pulse" }), /* @__PURE__ */ React.createElement("div", { class: "mt-3 h-2 w-4/5 rounded-full bg-slate-200 animate-pulse" }), /* @__PURE__ */ React.createElement("div", { class: "mt-2 h-2 w-1/3 rounded-full bg-slate-200 animate-pulse" }))));
