@@ -270,6 +270,27 @@ function Div_home_update_dashboard() {
     packages: {},
     statistics: {}
   });
+  const [isWebRMenuOpen, setIsWebRMenuOpen] = React.useState(false);
+  const webRMenuRef = React.useRef(null);
+  React.useEffect(() => {
+    if (!isWebRMenuOpen)
+      return;
+    function handlePointerDown(event) {
+      if (webRMenuRef.current && !webRMenuRef.current.contains(event.target)) {
+        setIsWebRMenuOpen(false);
+      }
+    }
+    function handleKeyDown(event) {
+      if (event.key === "Escape")
+        setIsWebRMenuOpen(false);
+    }
+    document.addEventListener("mousedown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [isWebRMenuOpen]);
   React.useEffect(() => {
     let mounted = true;
     function finishSlice(loadingKey, patch) {
@@ -438,12 +459,18 @@ function Div_home_update_dashboard() {
     return list[Math.floor(Math.random() * list.length)];
   }, [homeState.youtube]);
   const quickLinks = [
-    { title: "Web-R", href: "/webr/2.0/", icon: "webr", tone: "bg-blue-50 text-blue-700 border-blue-100" },
+    { title: "Web-R", href: "/webr/", icon: "webr", tone: "bg-blue-50 text-blue-700 border-blue-100" },
     { title: "패키지", href: "/r-ecosystem/packages/", icon: "package", tone: "bg-emerald-50 text-emerald-700 border-emerald-100" },
     { title: "R 에코", href: "/r-ecosystem/", icon: "ecosystem", tone: "bg-cyan-50 text-cyan-700 border-cyan-100" },
     { title: "커뮤니티", href: "/community/", icon: "community", tone: "bg-sky-50 text-sky-700 border-sky-100" },
     { title: "도서", href: "/book/", icon: "book", tone: "bg-amber-50 text-amber-700 border-amber-100" },
     { title: "워크샵", href: "/workshop/", icon: "workshop", tone: "bg-violet-50 text-violet-700 border-violet-100" }
+  ];
+  const webROptions = [
+    { title: "Web-R 무료 서버", href: "/webr/", desc: "기본 서버로 접속" },
+    { title: "Web-R 정회원 서버", href: "/webr/member/", desc: "정회원 전용 서버" },
+    { title: "Web-R 2.0", href: "/webr/2.0/", desc: "새 앱 실행 환경" },
+    { title: "Web-R Notebook", href: "/webr/notebook/", desc: "노트북 목록" }
   ];
   function QuickIcon(props) {
     const icon = props.icon;
@@ -459,6 +486,20 @@ function Div_home_update_dashboard() {
     if (icon === "book")
       return /* @__PURE__ */ React.createElement("svg", common, /* @__PURE__ */ React.createElement("path", { d: "M7 5h8a4 4 0 0 1 4 4v14H9a2 2 0 0 1-2-2V5Z" }), /* @__PURE__ */ React.createElement("path", { d: "M10 5v16" }), /* @__PURE__ */ React.createElement("path", { d: "M12 9h4" }));
     return /* @__PURE__ */ React.createElement("svg", common, /* @__PURE__ */ React.createElement("rect", { x: "5", y: "7", width: "18", height: "13", rx: "2" }), /* @__PURE__ */ React.createElement("path", { d: "M10 23h8" }), /* @__PURE__ */ React.createElement("path", { d: "M14 20v3" }), /* @__PURE__ */ React.createElement("path", { d: "m10 12 3 3 5-6" }));
+  }
+  function QuickLink(props) {
+    const link = props.link;
+    const tileClass = "flex h-[74px] flex-col items-center justify-center gap-1 rounded-lg border px-2 text-xs font-extrabold " + link.tone;
+    if (link.icon !== "webr") {
+      return /* @__PURE__ */ React.createElement("a", { href: link.href, class: tileClass }, /* @__PURE__ */ React.createElement(QuickIcon, { icon: link.icon }), link.title);
+    }
+    return /* @__PURE__ */ React.createElement("div", { ref: webRMenuRef, class: "relative" }, /* @__PURE__ */ React.createElement("button", {
+      type: "button",
+      class: tileClass + " w-full",
+      "aria-haspopup": "menu",
+      "aria-expanded": isWebRMenuOpen ? "true" : "false",
+      onClick: () => setIsWebRMenuOpen((open) => !open)
+    }, /* @__PURE__ */ React.createElement(QuickIcon, { icon: link.icon }), link.title), isWebRMenuOpen ? /* @__PURE__ */ React.createElement("div", { class: "absolute left-1/2 top-[82px] z-30 w-56 -translate-x-1/2 rounded-lg border border-blue-100 bg-white p-2 text-left shadow-lg", role: "menu" }, /* @__PURE__ */ React.createElement("span", { class: "absolute -top-1 left-1/2 h-3 w-3 -translate-x-1/2 rotate-45 border-l border-t border-blue-100 bg-white" }), webROptions.map((option) => /* @__PURE__ */ React.createElement("a", { key: option.href, href: option.href, class: "relative block rounded-md px-3 py-2 hover:bg-blue-50", role: "menuitem" }, /* @__PURE__ */ React.createElement("span", { class: "block text-sm font-extrabold text-slate-950" }, option.title), /* @__PURE__ */ React.createElement("span", { class: "mt-0.5 block text-xs font-semibold text-slate-500" }, option.desc)))) : null);
   }
   function DashboardSkeleton() {
     return /* @__PURE__ */ React.createElement("div", { class: "space-y-3" }, [0, 1, 2].map((idx) => /* @__PURE__ */ React.createElement("div", { key: idx, class: "rounded-md border border-slate-100 bg-white p-3" }, /* @__PURE__ */ React.createElement("div", { class: "h-3 w-2/3 rounded-full bg-slate-300 animate-pulse" }), /* @__PURE__ */ React.createElement("div", { class: "mt-3 h-2 w-4/5 rounded-full bg-slate-200 animate-pulse" }), /* @__PURE__ */ React.createElement("div", { class: "mt-2 h-2 w-1/3 rounded-full bg-slate-200 animate-pulse" }))));
@@ -501,7 +542,7 @@ function Div_home_update_dashboard() {
     ];
     return /* @__PURE__ */ React.createElement("aside", { class: "rounded-lg border border-slate-200 bg-white p-4 shadow-sm" }, /* @__PURE__ */ React.createElement("h3", { class: "text-base font-extrabold text-slate-950" }, "Web-R 현황"), /* @__PURE__ */ React.createElement("div", { class: "mt-3 grid grid-cols-1 gap-2" }, rows.map((row) => /* @__PURE__ */ React.createElement("div", { key: row.label, class: "flex min-h-[72px] items-center gap-3 rounded-md border border-slate-100 bg-slate-50 px-3 py-2" }, /* @__PURE__ */ React.createElement("img", { src: row.icon, alt: "", class: "h-7 w-7 shrink-0", loading: "lazy" }), /* @__PURE__ */ React.createElement("span", { class: "min-w-0" }, /* @__PURE__ */ React.createElement("span", { class: "block text-xs font-bold text-slate-500" }, row.label), homeState.loading.statistics ? /* @__PURE__ */ React.createElement("span", { class: "mt-2 block h-5 w-24 rounded-full bg-slate-300 animate-pulse" }) : /* @__PURE__ */ React.createElement("span", { class: "mt-1 block text-xl font-extrabold text-slate-950" }, formattedStat(row.value, row.unit)))))));
   }
-  return /* @__PURE__ */ React.createElement("section", { class: "mx-auto w-full max-w-[1360px]" }, /* @__PURE__ */ React.createElement("div", { class: "rounded-lg border border-slate-200 bg-white p-4 shadow-sm md:p-5" }, /* @__PURE__ */ React.createElement("div", { class: "flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between" }, /* @__PURE__ */ React.createElement("div", { class: "max-w-2xl" }, /* @__PURE__ */ React.createElement("p", { class: "text-sm font-extrabold text-blue-700" }, "Web-R 브리핑"), /* @__PURE__ */ React.createElement("h2", { class: "text-2xl font-extrabold text-slate-950" }, "새로 올라온 R 자료 모아보기"), /* @__PURE__ */ React.createElement("p", { class: "mt-2 text-sm leading-6 text-slate-500" }, "패키지, R Community, 도서, 워크샵의 최근 항목을 영역별로 확인하세요.")), /* @__PURE__ */ React.createElement("div", { class: "grid grid-cols-3 gap-2 sm:grid-cols-6" }, quickLinks.map((link) => /* @__PURE__ */ React.createElement("a", { key: link.href, href: link.href, class: "flex h-[74px] flex-col items-center justify-center gap-1 rounded-lg border px-2 text-xs font-extrabold " + link.tone }, /* @__PURE__ */ React.createElement(QuickIcon, { icon: link.icon }), link.title))))), /* @__PURE__ */ React.createElement("div", { class: "mt-3 grid grid-cols-1 items-start gap-3 lg:grid-cols-[minmax(0,1fr)_320px]" }, /* @__PURE__ */ React.createElement("div", { class: "grid grid-cols-1 gap-3 xl:grid-cols-2" }, categories.map((section) => /* @__PURE__ */ React.createElement(CategorySection, { key: section.id, section }))), /* @__PURE__ */ React.createElement("div", { class: "space-y-3" }, /* @__PURE__ */ React.createElement(StatPanel, null), /* @__PURE__ */ React.createElement(NoticePanel, null), /* @__PURE__ */ React.createElement(YoutubePanel, null), /* @__PURE__ */ React.createElement(LivePanel, null))));
+  return /* @__PURE__ */ React.createElement("section", { class: "mx-auto w-full max-w-[1360px]" }, /* @__PURE__ */ React.createElement("div", { class: "rounded-lg border border-slate-200 bg-white p-4 shadow-sm md:p-5" }, /* @__PURE__ */ React.createElement("div", { class: "flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between" }, /* @__PURE__ */ React.createElement("div", { class: "max-w-2xl" }, /* @__PURE__ */ React.createElement("p", { class: "text-sm font-extrabold text-blue-700" }, "Web-R 브리핑"), /* @__PURE__ */ React.createElement("h2", { class: "text-2xl font-extrabold text-slate-950" }, "새로 올라온 R 자료 모아보기"), /* @__PURE__ */ React.createElement("p", { class: "mt-2 text-sm leading-6 text-slate-500" }, "패키지, R Community, 도서, 워크샵의 최근 항목을 영역별로 확인하세요.")), /* @__PURE__ */ React.createElement("div", { class: "grid grid-cols-3 gap-2 sm:grid-cols-6" }, quickLinks.map((link) => /* @__PURE__ */ React.createElement(QuickLink, { key: link.href, link }))))), /* @__PURE__ */ React.createElement("div", { class: "mt-3 grid grid-cols-1 items-start gap-3 lg:grid-cols-[minmax(0,1fr)_320px]" }, /* @__PURE__ */ React.createElement("div", { class: "grid grid-cols-1 gap-3 xl:grid-cols-2" }, categories.map((section) => /* @__PURE__ */ React.createElement(CategorySection, { key: section.id, section }))), /* @__PURE__ */ React.createElement("div", { class: "space-y-3" }, /* @__PURE__ */ React.createElement(StatPanel, null), /* @__PURE__ */ React.createElement(NoticePanel, null), /* @__PURE__ */ React.createElement(YoutubePanel, null), /* @__PURE__ */ React.createElement(LivePanel, null))));
 }
 function Div_main_statistics_skeleton() {
   function Div_Sub(props) {
