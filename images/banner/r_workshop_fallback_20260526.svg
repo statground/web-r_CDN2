@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 360" role="img" aria-labelledby="title desc">
+  <title id="title">R workshop</title>
+  <desc id="desc">Generic Web-R workshop banner</desc>
+  <rect width="640" height="360" fill="#f8fafc"/>
+  <rect x="0" y="0" width="640" height="86" fill="#1d4ed8"/>
+  <rect x="448" y="0" width="192" height="360" fill="#dbeafe"/>
+  <circle cx="512" cy="108" r="70" fill="#ffffff" opacity="0.9"/>
+  <circle cx="512" cy="108" r="48" fill="#2563eb"/>
+  <text x="512" y="128" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="54" font-weight="800" fill="#ffffff">R</text>
+  <text x="44" y="54" font-family="Arial, Helvetica, sans-serif" font-size="30" font-weight="800" fill="#ffffff">Web-R Workshop</text>
+  <text x="44" y="138" font-family="Arial, Helvetica, sans-serif" font-size="34" font-weight="800" fill="#0f172a">R community events</text>
+  <text x="44" y="174" font-family="Arial, Helvetica, sans-serif" font-size="20" font-weight="700" fill="#475569">Talks, conferences, and practical sessions</text>
+  <g transform="translate(48 224)" fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="0" y="0" width="112" height="72" rx="12" fill="#ffffff" stroke="#bfdbfe" stroke-width="3"/>
+    <path d="M24 48V30M52 48V20M80 48V36" stroke="#2563eb" stroke-width="8"/>
+    <path d="M20 54H92" stroke="#94a3b8" stroke-width="4"/>
+  </g>
+  <g transform="translate(192 224)" fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="0" y="0" width="112" height="72" rx="12" fill="#ffffff" stroke="#bbf7d0" stroke-width="3"/>
+    <path d="M26 46l18-18 18 10 24-26" stroke="#16a34a" stroke-width="7"/>
+    <circle cx="44" cy="28" r="5" fill="#16a34a" stroke="none"/>
+    <circle cx="62" cy="38" r="5" fill="#16a34a" stroke="none"/>
+    <circle cx="86" cy="12" r="5" fill="#16a34a" stroke="none"/>
+  </g>
+  <g transform="translate(336 224)" fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="0" y="0" width="112" height="72" rx="12" fill="#ffffff" stroke="#fde68a" stroke-width="3"/>
+    <path d="M30 24h52M30 40h38M30 56h52" stroke="#d97706" stroke-width="6"/>
+  </g>
+  <path d="M486 248c26-28 78-28 104 0" fill="none" stroke="#60a5fa" stroke-width="10" stroke-linecap="round"/>
+  <path d="M498 278c18-18 62-18 80 0" fill="none" stroke="#2563eb" stroke-width="10" stroke-linecap="round"/>
+</svg>

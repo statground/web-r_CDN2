@@ -95,6 +95,13 @@ function Div_main_header() {
   return /* @__PURE__ */ React.createElement("div", { class: "flex flex-col justify-center items-center text-center w-full" }, /* @__PURE__ */ React.createElement("h1", { class: "mb-4 text-2xl font-extrabold leading-none tracking-tight text-gray-900 md:text-5xl" }, "\uC6F9\uC5D0\uC11C \uD558\uB294 ", /* @__PURE__ */ React.createElement("mark", { class: "px-2 text-white bg-blue-600 rounded" }, "R"), " \uD1B5\uACC4"), /* @__PURE__ */ React.createElement("p", { class: "text-base font-normal text-gray-500 md:text-lg lg:text-xl" }, '"\uC6F9\uC5D0\uC11C \uD558\uB294 R\uD1B5\uACC4"\uB294, \uD1B5\uACC4\uC5D0\uB294 \uAD00\uC2EC\uC774 \uC788\uC73C\uB098 R\uC744 \uC5B4\uB824\uC6CC\uD558\uB294 \uC5EC\uB7EC \uC5F0\uAD6C\uC790\uB4E4\uC744 \uC704\uD55C \uD504\uB85C\uC81D\uD2B8\uC785\uB2C8\uB2E4.', /* @__PURE__ */ React.createElement("br", null), "R\uC124\uCE58\uC5C6\uC774 \uD074\uB9AD\uB9CC\uC73C\uB85C \uC6F9\uC5D0 \uC788\uB294 \uC11C\uBC84\uB97C \uC774\uC6A9\uD558\uC5EC \uD1B5\uACC4\uBD84\uC11D\uC744 \uD558\uACE0 \uBCF4\uB2E4 R\uC744 \uC27D\uAC8C \uC0AC\uC6A9\uD558\uAE30 \uC704\uD55C \uD328\uD0A4\uC9C0 \uBC0F \uC571 \uACF5\uB3D9\uAC1C\uBC1C\uC744 \uBAA9\uD45C\uB85C \uD558\uACE0 \uC788\uC2B5\uB2C8\uB2E4."));
 }
 const WEBR_HOME_ASSET_BASE = "https://cdn.jsdelivr.net/gh/statground/web-R_CDN@f3e464e95616fa13712baa6adbbb0b6cda7ee821/";
+function homeCurrentWebRCDN2Base() {
+  const scriptURL = typeof document !== "undefined" && document.currentScript && document.currentScript.src ? document.currentScript.src : "";
+  const match = scriptURL.match(/gh\/statground\/web-r_CDN2@([^/,]+)\//);
+  return match ? "https://cdn.jsdelivr.net/gh/statground/web-r_CDN2@" + match[1] + "/" : "";
+}
+const WEBR_HOME_CDN2_BASE = homeCurrentWebRCDN2Base();
+const WEBR_HOME_WORKSHOP_FALLBACK_IMAGE = WEBR_HOME_CDN2_BASE ? WEBR_HOME_CDN2_BASE + "images/banner/r_workshop_fallback_20260526.svg" : WEBR_HOME_ASSET_BASE + "images/svg/menu_workshop.svg";
 function homeArray(data) {
   if (!data)
     return [];
@@ -212,7 +219,7 @@ function homeBookPreview(row) {
 }
 function homeWorkshopPreview(row) {
   const identifier = row.uuid || row.slug || row.board_key || "";
-  const image = row.cover_image_url || row.image || row.url_image || row.thumbnail_url || row.thumbnail || row.youtube_thumbnail || "";
+  const image = row.cover_image_url || row.image || row.url_image || row.thumbnail_url || row.thumbnail || row.youtube_thumbnail || WEBR_HOME_WORKSHOP_FALLBACK_IMAGE;
   return {
     title: homeShortText(row.title || row.name || "워크샵", 54),
     meta: [row.source_name || row.venue || "워크샵", homeFormatDate(row.starts_at || row.created_at)].filter(Boolean).join(" · "),
