@@ -195,6 +195,57 @@ function homeRecentWithin(value, hours) {
 function homeRecentAny(row, keys, hours) {
   return keys.some((key) => homeRecentWithin(row && row[key], hours));
 }
+const WEBR_HOME_PAYLOAD_CACHE_PREFIX = "webr.home.payload.";
+const WEBR_HOME_PAYLOAD_CACHE_TTL = 6 * 60 * 60 * 1e3;
+function homePayloadCacheKey(url) {
+  return WEBR_HOME_PAYLOAD_CACHE_PREFIX + String(url || "").replace(/[^a-z0-9_/-]+/gi, "_");
+}
+function homePayloadLooksUsable(url, value) {
+  if (!value || typeof value !== "object" || value.ok === false)
+    return false;
+  const textURL = String(url || "");
+  if (textURL.indexOf("ajax_index_packages") >= 0) {
+    return homeArray(value.recent_published || value.packages).length > 0 || homeArray(value.recent_observed).length > 0 || homeArray(value.package_news).length > 0;
+  }
+  if (textURL.indexOf("ajax_index_statistics") >= 0) {
+    return ["cnt_member", "cnt_visitor", "cnt_pageview"].some((key) => Number(value[key]) > 0);
+  }
+  if (textURL.indexOf("ajax_index_books") >= 0) {
+    return homeArray(value.books || value).length > 0;
+  }
+  if (textURL.indexOf("ajax_index_r_ecosystem") >= 0) {
+    return homeArray(value.items || value).length > 0;
+  }
+  if (textURL.indexOf("workshop/ajax_list") >= 0) {
+    return homeArray(value.workshops || value).length > 0;
+  }
+  return homeArray(value).length > 0;
+}
+function homeReadCachedPayload(url) {
+  try {
+    if (typeof window === "undefined" || !window.localStorage)
+      return null;
+    const raw = window.localStorage.getItem(homePayloadCacheKey(url));
+    if (!raw)
+      return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed || Date.now() - Number(parsed.savedAt || 0) > WEBR_HOME_PAYLOAD_CACHE_TTL)
+      return null;
+    if (!homePayloadLooksUsable(url, parsed.value))
+      return null;
+    return parsed.value;
+  } catch (_error) {
+    return null;
+  }
+}
+function homeWriteCachedPayload(url, value) {
+  try {
+    if (typeof window === "undefined" || !window.localStorage || !homePayloadLooksUsable(url, value))
+      return;
+    window.localStorage.setItem(homePayloadCacheKey(url), JSON.stringify({ savedAt: Date.now(), value }));
+  } catch (_error) {
+  }
+}
 function homeFormatDate(value) {
   const text = String(value || "").trim();
   const matched = text.match(/^\d{4}-\d{2}-\d{2}/);
@@ -214,32 +265,49 @@ function homeRelativeTime(value) {
   return homeFormatDate(value);
 }
 function homePostJSON(url, timeoutMs) {
-  const waitMs = timeoutMs || 8e3;
-  const controller = typeof AbortController !== "undefined" ? new AbortController() : null;
-  let timer = null;
-  const fetchOptions = { method: "POST" };
-  if (controller)
-    fetchOptions.signal = controller.signal;
-  const request = fetch(url, fetchOptions).then((res) => {
-    if (!res.ok)
-      throw new Error("request failed");
-    return res.json();
-  }).catch(() => null);
-  const timeout = new Promise((resolve) => {
-    timer = setTimeout(() => {
-      if (controller)
-        controller.abort();
-      resolve(null);
-    }, waitMs);
-  });
-  return Promise.race([request, timeout]).then((value) => {
-    if (timer)
-      clearTimeout(timer);
-    return value;
-  }, () => {
-    if (timer)
-      clearTimeout(timer);
-    return null;
+  const fetchJSON = (waitMs) => {
+    const controller = typeof AbortController !== "undefined" ? new AbortController() : null;
+    let timer = null;
+    const fetchOptions = { method: "POST" };
+    if (controller)
+      fetchOptions.signal = controller.signal;
+    const request = fetch(url, fetchOptions).then((res) => {
+      if (!res.ok)
+        throw new Error("request failed");
+      return res.json();
+    }).catch(() => null);
+    const timeout = new Promise((resolve) => {
+      timer = setTimeout(() => {
+        if (controller)
+          controller.abort();
+        resolve(null);
+      }, waitMs);
+    });
+    return Promise.race([request, timeout]).then((value) => {
+      if (timer)
+        clearTimeout(timer);
+      return value;
+    }, () => {
+      if (timer)
+        clearTimeout(timer);
+      return null;
+    });
+  };
+  const firstWaitMs = timeoutMs || 12e3;
+  const retryWaitMs = Math.max(22e3, firstWaitMs + 8e3);
+  const cached = homeReadCachedPayload(url);
+  return fetchJSON(firstWaitMs).then((value) => {
+    if (homePayloadLooksUsable(url, value)) {
+      homeWriteCachedPayload(url, value);
+      return value;
+    }
+    return fetchJSON(retryWaitMs).then((retryValue) => {
+      if (homePayloadLooksUsable(url, retryValue)) {
+        homeWriteCachedPayload(url, retryValue);
+        return retryValue;
+      }
+      return cached || retryValue || value || null;
+    });
   });
 }
 function homeWorkshopStatus(row) {
@@ -619,8 +687,7 @@ function Div_home_update_dashboard() {
   }
   function CategorySection(props) {
     const section = props.section;
-    const countLabel = section.id === "books" ? "랜덤 항목 3개" : section.id === "workshops" ? "진행중/예정 우선 3개" : "최근 항목 최대 " + CATEGORY_ITEM_LIMIT + "개";
-    return /* @__PURE__ */ React.createElement("article", { class: "overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm" }, /* @__PURE__ */ React.createElement("div", { class: "flex items-start justify-between gap-3 border-b border-slate-100 px-4 py-3" }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("span", { class: "inline-flex h-7 items-center rounded-md border px-2 text-xs font-extrabold " + section.tone }, section.label), /* @__PURE__ */ React.createElement("p", { class: "mt-2 text-xs font-semibold text-slate-500" }, countLabel)), /* @__PURE__ */ React.createElement("a", { href: section.href, class: "shrink-0 text-xs font-extrabold text-blue-700 hover:text-blue-900" }, "더 보기")), section.loading && !section.items.length ? /* @__PURE__ */ React.createElement("div", { class: "p-4" }, /* @__PURE__ */ React.createElement(DashboardSkeleton, null)) : section.items.length ? /* @__PURE__ */ React.createElement("div", { class: "bg-white" }, section.items.map((item, idx) => /* @__PURE__ */ React.createElement(FeedRow, { key: section.id + item.href + item.title + idx, item }))) : /* @__PURE__ */ React.createElement("a", { href: section.href, class: "block px-4 py-5 text-sm font-semibold text-slate-500 hover:bg-slate-50 hover:text-blue-700" }, "최근 항목 확인하기"));
+    return /* @__PURE__ */ React.createElement("article", { class: "overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm" }, /* @__PURE__ */ React.createElement("div", { class: "flex items-start justify-between gap-3 border-b border-slate-100 px-4 py-3" }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("span", { class: "inline-flex h-7 items-center rounded-md border px-2 text-xs font-extrabold " + section.tone }, section.label)), /* @__PURE__ */ React.createElement("a", { href: section.href, class: "shrink-0 text-xs font-extrabold text-blue-700 hover:text-blue-900" }, "더 보기")), section.loading && !section.items.length ? /* @__PURE__ */ React.createElement("div", { class: "p-4" }, /* @__PURE__ */ React.createElement(DashboardSkeleton, null)) : section.items.length ? /* @__PURE__ */ React.createElement("div", { class: "bg-white" }, section.items.map((item, idx) => /* @__PURE__ */ React.createElement(FeedRow, { key: section.id + item.href + item.title + idx, item }))) : /* @__PURE__ */ React.createElement("a", { href: section.href, class: "block px-4 py-5 text-sm font-semibold text-slate-500 hover:bg-slate-50 hover:text-blue-700" }, "최근 항목 확인하기"));
   }
   function NoticePanel() {
     return /* @__PURE__ */ React.createElement("aside", { class: "rounded-lg border border-slate-100 bg-slate-50/80 p-4 shadow-sm" }, /* @__PURE__ */ React.createElement("div", { class: "flex items-center justify-between gap-3" }, /* @__PURE__ */ React.createElement("h3", { class: "text-base font-extrabold text-slate-950" }, "공지사항"), /* @__PURE__ */ React.createElement("a", { href: "/intro/notice/", class: "text-xs font-extrabold text-blue-700 hover:text-blue-900" }, "더 보기")), /* @__PURE__ */ React.createElement("div", { class: "mt-3 space-y-2" }, homeState.loading.notice && !noticeItems.length ? [0, 1, 2].map((idx) => /* @__PURE__ */ React.createElement("div", { key: idx, class: "rounded-md border border-slate-100 bg-white p-3" }, /* @__PURE__ */ React.createElement("div", { class: "h-3 w-4/5 rounded-full bg-slate-300 animate-pulse" }), /* @__PURE__ */ React.createElement("div", { class: "mt-2 h-2 w-1/3 rounded-full bg-slate-200 animate-pulse" }))) : noticeItems.length ? noticeItems.map((item, idx) => /* @__PURE__ */ React.createElement("a", { key: item.href + item.title + idx, href: item.href, class: "block rounded-md border border-slate-100 bg-white px-3 py-2 hover:border-blue-200 hover:bg-blue-50" }, /* @__PURE__ */ React.createElement("span", { class: "flex items-center gap-2" }, /* @__PURE__ */ React.createElement("span", { class: "min-w-0 truncate text-sm font-extrabold text-slate-950" }, item.title), item.isNew ? /* @__PURE__ */ React.createElement(WebRStatusBadge, { tone: "new", label: "NEW" }) : null), /* @__PURE__ */ React.createElement("span", { class: "mt-1 block text-xs font-semibold text-slate-400" }, item.meta || "공지사항"))) : /* @__PURE__ */ React.createElement("a", { href: "/intro/notice/", class: "block rounded-md border border-dashed border-slate-200 bg-white px-3 py-3 text-sm font-semibold text-slate-500 hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700" }, "공지사항 보기")));
