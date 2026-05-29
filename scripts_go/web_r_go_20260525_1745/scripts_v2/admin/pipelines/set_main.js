@@ -485,13 +485,14 @@
 
     if (loading && !data) return h(LoadingView, null);
     const summary = data && data.summary ? data.summary : {};
+    const sourceLabel = data && data.snapshot_source === "cdn2" ? "CDN2 snapshot" : "live";
     return h("div", { className: "webr-admin-shell webr-admin-pipeline-shell" },
       h(AdminMenu, null),
       h("main", { className: "webr-pipeline-main" },
         h("header", { className: "webr-pipeline-toolbar" },
           h("div", null,
             h("h1", { className: "webr-pipeline-title" }, "데이터 파이프라인"),
-            h("p", { className: "webr-pipeline-subtitle" }, data ? "마지막 갱신 " + (data.generated_at || "-") : "")
+            h("p", { className: "webr-pipeline-subtitle" }, data ? "마지막 갱신 " + (data.generated_at || "-") + " · " + sourceLabel : "")
           ),
           h("button", { type: "button", className: "webr-pipeline-refresh", onClick: load, disabled: loading }, loading ? "갱신 중" : "새로고침")
         ),
