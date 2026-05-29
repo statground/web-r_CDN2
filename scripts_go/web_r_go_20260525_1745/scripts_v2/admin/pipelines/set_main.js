@@ -45,29 +45,50 @@
     return text.length > 10 ? text.slice(0, 10) : text;
   }
 
+  function compactTime(value) {
+    const text = String(value || "").trim();
+    const match = text.match(/(\d{4}-\d{2}-\d{2})\s+(\d{2}:\d{2})(?::\d{2})?/);
+    if (match) return match[1].slice(5) + " " + match[2];
+    return text || "-";
+  }
+
+  function stepWindow(steps) {
+    const rows = Array.isArray(steps) ? steps : [];
+    const started = rows.map(function (step) { return step.started_at || ""; }).find(Boolean) || "";
+    const completed = rows.slice().reverse().map(function (step) { return step.completed_at || ""; }).find(Boolean) || "";
+    if (started && completed) return compactTime(started) + " -> " + compactTime(completed);
+    if (started) return compactTime(started) + " 시작";
+    if (completed) return compactTime(completed) + " 완료";
+    return "";
+  }
+
   function installStyle() {
     if (document.getElementById("webr-admin-pipelines-style-20260529")) return;
     const style = document.createElement("style");
     style.id = "webr-admin-pipelines-style-20260529";
     style.textContent = [
-      "#div_main .webr-admin-pipeline-shell{max-width:none!important;width:100%!important;}",
-      "#div_main .webr-pipeline-main{display:grid;gap:12px;min-width:0;width:100%;}",
-      "#div_main .webr-pipeline-toolbar{display:flex;align-items:center;justify-content:space-between;gap:12px;border:1px solid #e2e8f0;border-radius:8px;background:#fff;padding:14px;}",
-      "#div_main .webr-pipeline-title{margin:0;color:#0f172a;font-size:1.05rem;font-weight:850;letter-spacing:0;line-height:1.2;}",
+      "#div_main .webr-admin-pipeline-shell.webr-admin-shell{display:grid!important;grid-template-columns:260px minmax(0,1fr)!important;align-items:start!important;gap:18px!important;max-width:none!important;width:100%!important;margin:0!important;padding:24px 32px!important;background:#f8fafc;color:#0f172a;}",
+      "#div_main .webr-admin-pipeline-shell>.webr-admin-menu{grid-column:1/2!important;max-width:260px!important;width:260px!important;min-width:0!important;position:sticky!important;top:86px!important;align-self:start!important;}",
+      "#div_main .webr-admin-pipeline-shell>.webr-pipeline-main{grid-column:2/3!important;display:grid!important;gap:14px!important;min-width:0!important;width:100%!important;max-width:none!important;}",
+      "#div_main .webr-admin-pipeline-shell .webr-admin-menu-list{display:flex!important;flex-direction:column!important;gap:8px!important;width:100%!important;}",
+      "#div_main .webr-admin-pipeline-shell .webr-admin-accordion{width:100%!important;}",
+      "#div_main .webr-admin-pipeline-shell .webr-admin-tab{width:100%!important;margin:0!important;}",
+      "#div_main .webr-pipeline-toolbar{display:flex;align-items:center;justify-content:space-between;gap:16px;border:1px solid #e2e8f0;border-radius:8px;background:#fff;padding:16px 18px;}",
+      "#div_main .webr-pipeline-title{margin:0;color:#0f172a;font-size:1.18rem;font-weight:850;letter-spacing:0;line-height:1.2;}",
       "#div_main .webr-pipeline-subtitle{margin:4px 0 0;color:#64748b;font-size:.78rem;line-height:1.35;}",
       "#div_main .webr-pipeline-refresh{display:inline-flex;align-items:center;justify-content:center;min-height:38px;border:1px solid #cbd5e1;border-radius:8px;background:#fff;padding:0 14px;color:#0f172a;font-size:.83rem;font-weight:800;}",
       "#div_main .webr-pipeline-refresh:hover{background:#f8fafc;}",
       "#div_main .webr-pipeline-segments{display:flex;flex-wrap:wrap;gap:6px;border:1px solid #e2e8f0;border-radius:8px;background:#f8fafc;padding:6px;}",
       "#div_main .webr-pipeline-segment{min-height:34px;border:0;border-radius:6px;background:transparent;padding:0 12px;color:#475569;font-size:.8rem;font-weight:800;}",
       "#div_main .webr-pipeline-segment-active{background:#0f172a;color:#fff;box-shadow:0 1px 2px rgba(15,23,42,.1);}",
-      "#div_main .webr-pipeline-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;}",
-      "#div_main .webr-pipeline-kpi{border:1px solid #e2e8f0;border-left:4px solid #2563eb;border-radius:8px;background:#fff;padding:12px;min-width:0;}",
+      "#div_main .webr-pipeline-kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;}",
+      "#div_main .webr-pipeline-kpi{border:1px solid #e2e8f0;border-left:4px solid #2563eb;border-radius:8px;background:#fff;padding:14px;min-width:0;}",
       "#div_main .webr-pipeline-kpi:nth-child(2){border-left-color:#059669;}#div_main .webr-pipeline-kpi:nth-child(3){border-left-color:#d97706;}#div_main .webr-pipeline-kpi:nth-child(4){border-left-color:#dc2626;}",
       "#div_main .webr-pipeline-kpi-label{color:#64748b;font-size:.76rem;font-weight:800;line-height:1.2;}",
       "#div_main .webr-pipeline-kpi-value{margin-top:5px;color:#020617;font-size:1.45rem;font-weight:900;letter-spacing:0;line-height:1;}",
-      "#div_main .webr-pipeline-grid{display:grid;grid-template-columns:minmax(0,1.08fr) minmax(300px,.92fr);gap:12px;}",
-      "#div_main .webr-pipeline-panel{border:1px solid #e2e8f0;border-radius:8px;background:#fff;min-width:0;padding:14px;}",
-      "#div_main .webr-pipeline-panel-title{margin:0 0 12px;color:#0f172a;font-size:.92rem;font-weight:850;letter-spacing:0;line-height:1.2;}",
+      "#div_main .webr-pipeline-grid{display:grid;grid-template-columns:minmax(560px,1.34fr) minmax(360px,.66fr);gap:14px;}",
+      "#div_main .webr-pipeline-panel{border:1px solid #e2e8f0;border-radius:8px;background:#fff;min-width:0;padding:16px;}",
+      "#div_main .webr-pipeline-panel-title{margin:0 0 12px;color:#0f172a;font-size:1rem;font-weight:850;letter-spacing:0;line-height:1.2;}",
       "#div_main .webr-pipeline-list{display:grid;gap:10px;}",
       "#div_main .webr-pipeline-run{border:1px solid #e5e7eb;border-radius:8px;background:#fff;padding:12px;min-width:0;}",
       "#div_main .webr-pipeline-run-head{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;min-width:0;}",
@@ -76,18 +97,19 @@
       "#div_main .webr-pipeline-badge{display:inline-flex;align-items:center;justify-content:center;min-height:24px;border-radius:999px;padding:0 9px;font-size:.72rem;font-weight:850;white-space:nowrap;}",
       "#div_main .webr-pipeline-status-success{background:#dcfce7;color:#166534;}#div_main .webr-pipeline-status-failed{background:#fee2e2;color:#991b1b;}#div_main .webr-pipeline-status-running{background:#dbeafe;color:#1d4ed8;}#div_main .webr-pipeline-status-pending{background:#fef3c7;color:#92400e;}#div_main .webr-pipeline-status-skipped{background:#f1f5f9;color:#475569;}",
       "#div_main .webr-pipeline-dag{display:grid;gap:8px;margin-top:12px;}",
-      "#div_main .webr-pipeline-stage-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(126px,1fr));gap:8px;}",
+      "#div_main .webr-pipeline-stage-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(118px,1fr));gap:8px;}",
       "#div_main .webr-pipeline-stage{position:relative;min-height:72px;border:1px solid #e2e8f0;border-radius:8px;background:#f8fafc;padding:9px;}",
       "#div_main .webr-pipeline-stage:before{content:\"\";position:absolute;left:9px;top:9px;width:8px;height:8px;border-radius:999px;background:#94a3b8;}",
       "#div_main .webr-pipeline-stage-success:before{background:#059669;}#div_main .webr-pipeline-stage-failed:before{background:#dc2626;}#div_main .webr-pipeline-stage-running:before{background:#2563eb;}#div_main .webr-pipeline-stage-pending:before{background:#d97706;}#div_main .webr-pipeline-stage-skipped:before{background:#64748b;}",
       "#div_main .webr-pipeline-stage-label{padding-left:15px;color:#0f172a;font-size:.78rem;font-weight:850;line-height:1.2;word-break:keep-all;}",
       "#div_main .webr-pipeline-stage-sub{margin-top:8px;color:#64748b;font-size:.7rem;line-height:1.25;}",
+      "#div_main .webr-pipeline-stage-time{margin-top:5px;color:#334155;font-size:.7rem;font-weight:750;line-height:1.25;}",
       "#div_main .webr-pipeline-chart{height:320px;width:100%;}",
       "#div_main .webr-pipeline-table-wrap{overflow:auto;border:1px solid #e2e8f0;border-radius:8px;}",
-      "#div_main .webr-pipeline-table{width:100%;border-collapse:collapse;min-width:680px;}",
-      "#div_main .webr-pipeline-table th{background:#f8fafc;color:#475569;font-size:.72rem;font-weight:850;text-align:left;padding:10px;border-bottom:1px solid #e2e8f0;white-space:nowrap;}",
-      "#div_main .webr-pipeline-table td{color:#0f172a;font-size:.76rem;line-height:1.3;padding:10px;border-bottom:1px solid #f1f5f9;vertical-align:top;}",
-      "#div_main .webr-pipeline-output-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(270px,1fr));gap:10px;}",
+      "#div_main .webr-pipeline-table{width:100%;border-collapse:collapse;min-width:760px;}",
+      "#div_main .webr-pipeline-table th{background:#f8fafc;color:#475569;font-size:.74rem;font-weight:850;text-align:left;padding:11px 12px;border-bottom:1px solid #e2e8f0;white-space:nowrap;}",
+      "#div_main .webr-pipeline-table td{color:#0f172a;font-size:.78rem;line-height:1.35;padding:11px 12px;border-bottom:1px solid #f1f5f9;vertical-align:top;}",
+      "#div_main .webr-pipeline-output-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:10px;}",
       "#div_main .webr-pipeline-output{border:1px solid #e5e7eb;border-radius:8px;background:#fff;padding:11px;min-width:0;}",
       "#div_main .webr-pipeline-output-title{display:block;color:#0f172a;font-size:.82rem;font-weight:850;line-height:1.32;text-decoration:none;word-break:keep-all;}",
       "#div_main .webr-pipeline-output-title:hover{color:#2563eb;}",
@@ -95,7 +117,9 @@
       "#div_main .webr-pipeline-empty{display:flex;min-height:96px;align-items:center;justify-content:center;border:1px dashed #cbd5e1;border-radius:8px;background:#f8fafc;color:#64748b;font-size:.8rem;font-weight:700;text-align:center;}",
       "#div_main .webr-pipeline-skeleton{border:1px solid #e2e8f0;border-radius:8px;background:#fff;padding:16px;}",
       "#div_main .webr-pipeline-skel-line{height:14px;border-radius:999px;background:#e2e8f0;margin:10px 0;}",
-      "@media (max-width:1024px){#div_main .webr-pipeline-grid{grid-template-columns:1fr;}#div_main .webr-pipeline-toolbar{align-items:stretch;flex-direction:column;}#div_main .webr-pipeline-refresh{width:100%;}}"
+      "@media (max-width:1180px){#div_main .webr-pipeline-grid{grid-template-columns:1fr;}#div_main .webr-pipeline-kpis{grid-template-columns:repeat(2,minmax(0,1fr));}}",
+      "@media (max-width:900px){#div_main .webr-admin-pipeline-shell.webr-admin-shell{grid-template-columns:1fr!important;padding:16px!important;}#div_main .webr-admin-pipeline-shell>.webr-admin-menu,#div_main .webr-admin-pipeline-shell>.webr-pipeline-main{grid-column:1/2!important;width:100%!important;max-width:none!important;position:static!important;}#div_main .webr-pipeline-toolbar{align-items:stretch;flex-direction:column;}#div_main .webr-pipeline-refresh{width:100%;}}",
+      "@media (max-width:640px){#div_main .webr-pipeline-kpis{grid-template-columns:1fr;}#div_main .webr-pipeline-output-grid{grid-template-columns:1fr;}}"
     ].join("\n");
     document.head.appendChild(style);
   }
@@ -159,9 +183,11 @@
         const meta = statusMeta(stage.status);
         const steps = Array.isArray(stage.steps) ? stage.steps : [];
         const duration = steps.reduce(function (sum, step) { return sum + Number(step.duration_seconds || 0); }, 0);
+        const windowText = stepWindow(steps);
         return h("div", { key: stage.key, className: "webr-pipeline-stage " + meta.className.replace("status", "stage") },
           h("div", { className: "webr-pipeline-stage-label" }, stage.label),
-          h("div", { className: "webr-pipeline-stage-sub" }, meta.label, steps.length ? " · " + steps.length + " step" : "", duration ? " · " + formatDuration(duration) : "")
+          h("div", { className: "webr-pipeline-stage-sub" }, meta.label, steps.length ? " · " + steps.length + " step" : "", duration ? " · " + formatDuration(duration) : ""),
+          windowText ? h("div", { className: "webr-pipeline-stage-time" }, windowText) : null
         );
       }))
     );
@@ -176,7 +202,7 @@
           h("div", { className: "webr-pipeline-run-meta" },
             h("span", null, pipeline.repo_label),
             h("span", null, "#" + (pipeline.run_number || "-")),
-            h("span", null, pipeline.started_at || pipeline.created_at || "-"),
+            h("span", null, compactTime(pipeline.started_at || pipeline.created_at)),
             pipeline.duration_seconds ? h("span", null, formatDuration(pipeline.duration_seconds)) : null,
             pipeline.head_sha ? h("span", null, shortSha(pipeline.head_sha)) : null
           )
@@ -366,11 +392,55 @@
             { key: "pipeline_label", label: "workflow" },
             { key: "status", label: "상태", render: function (row) { return h(StatusBadge, { status: row.status }); } },
             { key: "duration_seconds", label: "시간", render: function (row) { return formatDuration(row.duration_seconds); } },
-            { key: "started_at", label: "시작" }
+            { key: "started_at", label: "시작", render: function (row) { return compactTime(row.started_at); } },
+            { key: "updated_at", label: "종료", render: function (row) { return compactTime(row.updated_at); } }
           ]
         })
       )
     );
+  }
+
+  function HistoryView(props) {
+    const rows = props.data.recent_runs || [];
+    const byPipeline = {};
+    rows.forEach(function (row) {
+      const key = row.pipeline_key || row.pipeline_label || "unknown";
+      if (!byPipeline[key]) byPipeline[key] = [];
+      byPipeline[key].push(row);
+    });
+    const pipelineOrder = (props.data.pipelines || []).map(function (pipeline) { return pipeline.key; });
+    Object.keys(byPipeline).forEach(function (key) {
+      if (pipelineOrder.indexOf(key) < 0) pipelineOrder.push(key);
+    });
+    if (!rows.length) {
+      return h("section", { className: "webr-pipeline-panel" },
+        h("h2", { className: "webr-pipeline-panel-title" }, "이전 실행 이력"),
+        h("div", { className: "webr-pipeline-empty" }, "최근 실행 이력이 없습니다.")
+      );
+    }
+    return h("div", { className: "webr-pipeline-list" }, pipelineOrder.map(function (key) {
+      const group = byPipeline[key] || [];
+      if (!group.length) return null;
+      const first = group[0] || {};
+      return h("section", { key: key, className: "webr-pipeline-panel" },
+        h("h2", { className: "webr-pipeline-panel-title" }, first.pipeline_label || key),
+        h(SourceTable, {
+          rows: group,
+          columns: [
+            { key: "status", label: "상태", render: function (row) { return h(StatusBadge, { status: row.status }); } },
+            { key: "run_number", label: "run", render: function (row) {
+              const label = "#" + (row.run_number || "-");
+              return row.run_url ? h("a", { href: row.run_url, target: "_blank", rel: "noopener noreferrer", className: "text-blue-700 font-bold" }, label) : label;
+            } },
+            { key: "event", label: "event" },
+            { key: "started_at", label: "시작", render: function (row) { return compactTime(row.started_at); } },
+            { key: "updated_at", label: "종료/갱신", render: function (row) { return compactTime(row.updated_at); } },
+            { key: "duration_seconds", label: "소요", render: function (row) { return formatDuration(row.duration_seconds); } },
+            { key: "repo_label", label: "repo" }
+          ]
+        })
+      );
+    }));
   }
 
   function LoadingView() {
@@ -438,10 +508,11 @@
           items: [
             { key: "overview", label: "전체" },
             { key: "sources", label: "출처" },
-            { key: "outputs", label: "결과물" }
+            { key: "outputs", label: "결과물" },
+            { key: "history", label: "이력" }
           ]
         }),
-        data ? (tab === "sources" ? h(SourcesView, { data: data }) : tab === "outputs" ? h(OutputsView, { data: data }) : h(Overview, { data: data })) : null
+        data ? (tab === "sources" ? h(SourcesView, { data: data }) : tab === "outputs" ? h(OutputsView, { data: data }) : tab === "history" ? h(HistoryView, { data: data }) : h(Overview, { data: data })) : null
       )
     );
   }
