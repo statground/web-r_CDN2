@@ -13,6 +13,7 @@
     { key: "bot_team", label: "Bot 팀", url: "/admin/bot_team/" },
     { key: "payments", label: "결제 현황", url: "/admin/payments/" },
     { key: "balance_account", label: "정산액 조회", url: balanceAccountURL },
+    { key: "pipelines", label: "데이터 파이프라인", url: "/admin/pipelines/" },
   ];
   const MENU_GROUPS = [
     {
@@ -29,6 +30,11 @@
       key: "special",
       label: "특별 계정 관리",
       items: ["admin_team", "tester_team", "bot_team"],
+    },
+    {
+      key: "pipelines",
+      label: "데이터 수집",
+      items: ["pipelines"],
     },
   ];
 
