@@ -88,10 +88,14 @@ function Div_main(props) {
           React.createElement(
             "dl",
             { className: "grid grid-cols-1 w-full md:grid-cols-4 gap-8 p-4 mx-auto text-gray-900 md:p-8" },
-            React.createElement(Div_sub_card, { title: "총 방문자 수", value: adminVisitorMetric(data, "val_visitor_total"), unit: "명", subtitle: "총 페이지 뷰", subvalue: adminVisitorMetric(data, "val_pageview_total"), subunit: "건" }),
-            React.createElement(Div_sub_card, { title: "올해 방문자 수", value: adminVisitorMetric(data, "val_visitor_yearly"), unit: "명", subtitle: "올해 페이지 뷰", subvalue: adminVisitorMetric(data, "val_pageview_yearly"), subunit: "건" }),
-            React.createElement(Div_sub_card, { title: "이번 달 방문자 수", value: adminVisitorMetric(data, "val_visitor_monthly"), unit: "명", subtitle: "이번 달 페이지 뷰", subvalue: adminVisitorMetric(data, "val_pageview_monthly"), subunit: "건" }),
-            React.createElement(Div_sub_card, { title: "오늘 방문자 수", value: adminVisitorMetric(data, "val_visitor_daily"), unit: "명", subtitle: "오늘 페이지 뷰", subvalue: adminVisitorMetric(data, "val_pageview_daily"), subunit: "건" })
+            React.createElement(Div_sub_card, { title: "총 방문자 수", value: adminVisitorMetric(data, "val_visitor_total"), unit: "명" }),
+            React.createElement(Div_sub_card, { title: "총 페이지 뷰", value: adminVisitorMetric(data, "val_pageview_total"), unit: "건" }),
+            React.createElement(Div_sub_card, { title: "올해 방문자 수", value: adminVisitorMetric(data, "val_visitor_yearly"), unit: "명" }),
+            React.createElement(Div_sub_card, { title: "올해 페이지 뷰", value: adminVisitorMetric(data, "val_pageview_yearly"), unit: "건" }),
+            React.createElement(Div_sub_card, { title: "이번 달 방문자 수", value: adminVisitorMetric(data, "val_visitor_monthly"), unit: "명" }),
+            React.createElement(Div_sub_card, { title: "이번 달 페이지 뷰", value: adminVisitorMetric(data, "val_pageview_monthly"), unit: "건" }),
+            React.createElement(Div_sub_card, { title: "오늘 방문자 수", value: adminVisitorMetric(data, "val_visitor_daily"), unit: "명" }),
+            React.createElement(Div_sub_card, { title: "오늘 페이지 뷰", value: adminVisitorMetric(data, "val_pageview_daily"), unit: "건" })
           )
         )
       ),
