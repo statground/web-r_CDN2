@@ -182,12 +182,20 @@
       margin-left: 0 !important;
       margin-right: 0 !important;
     }
-    :root[data-webr-admin-dashboard] #div_main > div > div:nth-child(2) > div:nth-child(-n+2) dl.grid,
-    :root[data-webr-admin-dashboard="balance_account"] #div_main > div > div:nth-child(2) > div:nth-child(2) dl.grid {
+    :root[data-webr-admin-dashboard] #div_main > div > div:nth-child(2) > div:nth-child(-n+2) dl.grid {
       align-items: stretch !important;
       display: grid !important;
       gap: 8px !important;
       grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)) !important;
+      justify-content: stretch !important;
+      padding: 0 !important;
+      width: 100% !important;
+    }
+    :root[data-webr-admin-dashboard="balance_account"] #div_main > div > div:nth-child(2) > div:nth-child(2) dl.grid {
+      align-items: stretch !important;
+      display: grid !important;
+      gap: 10px !important;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)) !important;
       justify-content: stretch !important;
       padding: 0 !important;
       width: 100% !important;
@@ -334,7 +342,12 @@
         width: 100% !important;
       }
       :root[data-webr-admin-dashboard="balance_account"] #div_main > div > div:nth-child(2) > div:nth-child(2) dl.grid {
-        grid-template-columns: repeat(3, minmax(220px, 1fr)) !important;
+        grid-template-columns: repeat(2, minmax(320px, 1fr)) !important;
+      }
+    }
+    @media (min-width: 1536px) {
+      :root[data-webr-admin-dashboard="balance_account"] #div_main > div > div:nth-child(2) > div:nth-child(2) dl.grid {
+        grid-template-columns: repeat(3, minmax(300px, 1fr)) !important;
       }
     }
   `;
