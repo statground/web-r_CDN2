@@ -59,6 +59,25 @@ function Div_sub_card(props) {
   );
 }
 
+function Div_metric_group(props) {
+  return React.createElement(
+    "div",
+    { className: "w-full bg-white border border-gray-200 rounded-lg shadow" },
+    React.createElement(
+      "div",
+      { className: "p-4 bg-white rounded-lg md:p-8 text-center" },
+      React.createElement(Div_sub_title, { title: props.title }),
+      props.loading ? React.createElement("p", { className: "mb-2 text-xs font-medium text-slate-500" }, "방문 집계를 불러오고 있습니다.") : null,
+      props.error ? React.createElement("p", { className: "mb-2 text-xs font-medium text-rose-600" }, "방문 집계를 불러오지 못했습니다.") : null,
+      React.createElement(
+        "dl",
+        { className: "grid grid-cols-1 w-full md:grid-cols-4 gap-8 p-4 mx-auto text-gray-900 md:p-8" },
+        props.children
+      )
+    )
+  );
+}
+
 function Div_graph_skeleton() {
   return React.createElement("div", { className: "w-full p-4 rounded animate-pulse md:p-6" }, React.createElement("div", { className: "flex items-baseline mt-4 space-x-6" }, React.createElement("div", { className: "w-full bg-gray-200 rounded-t-lg h-72" }), React.createElement("div", { className: "w-full h-56 bg-gray-200 rounded-t-lg" }), React.createElement("div", { className: "w-full bg-gray-200 rounded-t-lg h-72" })));
 }
@@ -77,27 +96,20 @@ function Div_main(props) {
       "div",
       { className: "md:col-span-10 justify-center item-center" },
       React.createElement(
-        "div",
-        { className: "w-full bg-white border border-gray-200 rounded-lg shadow" },
-        React.createElement(
-          "div",
-          { className: "p-4 bg-white rounded-lg md:p-8 text-center" },
-          React.createElement(Div_sub_title, { title: "방문자 수 / 페이지 뷰" }),
-          countsLoading ? React.createElement("p", { className: "mb-2 text-xs font-medium text-slate-500" }, "방문 집계를 불러오고 있습니다.") : null,
-          errors.counts ? React.createElement("p", { className: "mb-2 text-xs font-medium text-rose-600" }, "방문 집계를 불러오지 못했습니다.") : null,
-          React.createElement(
-            "dl",
-            { className: "grid grid-cols-1 w-full md:grid-cols-4 gap-8 p-4 mx-auto text-gray-900 md:p-8" },
-            React.createElement(Div_sub_card, { title: "총 방문자 수", value: adminVisitorMetric(data, "val_visitor_total"), unit: "명" }),
-            React.createElement(Div_sub_card, { title: "총 페이지 뷰", value: adminVisitorMetric(data, "val_pageview_total"), unit: "건" }),
-            React.createElement(Div_sub_card, { title: "올해 방문자 수", value: adminVisitorMetric(data, "val_visitor_yearly"), unit: "명" }),
-            React.createElement(Div_sub_card, { title: "올해 페이지 뷰", value: adminVisitorMetric(data, "val_pageview_yearly"), unit: "건" }),
-            React.createElement(Div_sub_card, { title: "이번 달 방문자 수", value: adminVisitorMetric(data, "val_visitor_monthly"), unit: "명" }),
-            React.createElement(Div_sub_card, { title: "이번 달 페이지 뷰", value: adminVisitorMetric(data, "val_pageview_monthly"), unit: "건" }),
-            React.createElement(Div_sub_card, { title: "오늘 방문자 수", value: adminVisitorMetric(data, "val_visitor_daily"), unit: "명" }),
-            React.createElement(Div_sub_card, { title: "오늘 페이지 뷰", value: adminVisitorMetric(data, "val_pageview_daily"), unit: "건" })
-          )
-        )
+        Div_metric_group,
+        { title: "방문자 수", loading: countsLoading, error: errors.counts },
+        React.createElement(Div_sub_card, { title: "총 방문자 수", value: adminVisitorMetric(data, "val_visitor_total"), unit: "명" }),
+        React.createElement(Div_sub_card, { title: "올해 방문자 수", value: adminVisitorMetric(data, "val_visitor_yearly"), unit: "명" }),
+        React.createElement(Div_sub_card, { title: "이번 달 방문자 수", value: adminVisitorMetric(data, "val_visitor_monthly"), unit: "명" }),
+        React.createElement(Div_sub_card, { title: "오늘 방문자 수", value: adminVisitorMetric(data, "val_visitor_daily"), unit: "명" })
+      ),
+      React.createElement(
+        Div_metric_group,
+        { title: "페이지 뷰", loading: countsLoading, error: errors.counts },
+        React.createElement(Div_sub_card, { title: "총 페이지 뷰", value: adminVisitorMetric(data, "val_pageview_total"), unit: "건" }),
+        React.createElement(Div_sub_card, { title: "올해 페이지 뷰", value: adminVisitorMetric(data, "val_pageview_yearly"), unit: "건" }),
+        React.createElement(Div_sub_card, { title: "이번 달 페이지 뷰", value: adminVisitorMetric(data, "val_pageview_monthly"), unit: "건" }),
+        React.createElement(Div_sub_card, { title: "오늘 페이지 뷰", value: adminVisitorMetric(data, "val_pageview_daily"), unit: "건" })
       ),
       React.createElement(
         "div",
