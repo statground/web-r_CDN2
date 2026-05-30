@@ -303,17 +303,21 @@
       padding: 0 !important;
     }
     @media (min-width: 1024px) {
-      :root[data-webr-admin-dashboard="visitors"] #div_main > div > div:nth-child(2),
       :root[data-webr-admin-dashboard="webr"] #div_main > div > div:nth-child(2),
       :root[data-webr-admin-dashboard="payments"] #div_main > div > div:nth-child(2) {
         grid-template-columns: repeat(2, minmax(0, 1fr));
       }
-      :root[data-webr-admin-dashboard="visitors"] #div_main > div > div:nth-child(2) > div:nth-child(n+3),
       :root[data-webr-admin-dashboard="webr"] #div_main > div > div:nth-child(2) > div:nth-child(n+3),
       :root[data-webr-admin-dashboard="payments"] #div_main > div > div:nth-child(2) > div:nth-child(n+3),
       :root[data-webr-admin-dashboard="active_users"] #div_main > div > div:nth-child(2) > div,
       :root[data-webr-admin-dashboard="balance_account"] #div_main > div > div:nth-child(2) > div {
         grid-column: 1 / -1;
+      }
+      :root[data-webr-admin-dashboard="visitors"] #div_main > div > div:nth-child(2) {
+        grid-template-columns: minmax(0, 1fr) !important;
+      }
+      :root[data-webr-admin-dashboard="visitors"] #div_main > div > div:nth-child(2) > div {
+        grid-column: 1 / -1 !important;
       }
       :root[data-webr-admin-dashboard="balance_account"] #div_main > div {
         max-width: none !important;
