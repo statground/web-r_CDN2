@@ -239,6 +239,14 @@ function draw_chart(inputData, activeTabId) {
       return;
     el.className = id === activeTabId ? class_tab_active : class_tab_inactive;
   });
+  if (!window.echarts) {
+    if (window.WebRAdminDashboard && window.WebRAdminDashboard.ensureECharts) {
+      window.WebRAdminDashboard.ensureECharts(function() {
+        draw_chart(inputData, activeTabId);
+      });
+    }
+    return;
+  }
   let rows;
   if (Array.isArray(inputData)) {
     rows = inputData.slice();
@@ -490,20 +498,30 @@ function draw_chart(inputData, activeTabId) {
   window.addEventListener("resize", onResize, { passive: true });
 }
 async function get_main() {
-  ReactDOM.render(/* @__PURE__ */ React.createElement(Div_main_skeleton, null), document.getElementById("div_main"));
-  try {
-    const data = await fetch("/admin/ajax_get_admin_active_users/", { method: "POST" }).then(function(r) {
+  const mount = document.getElementById("div_main");
+  let data = {};
+  const render = function() {
+    ReactDOM.render(/* @__PURE__ */ React.createElement(Div_main, { data }), mount);
+  };
+  const loadPeriod = function(period) {
+    const body = new URLSearchParams();
+    body.set("period", period);
+    return fetch("/admin/ajax_get_admin_active_users_period/", {
+      method: "POST",
+      credentials: "same-origin",
+      body
+    }).then(function(r) {
       return r.json();
+    }).then(function(payload) {
+      data = { ...data, ...(payload || {}) };
+      render();
+    }).catch(function(e) {
+      console.error(e);
+      render();
     });
-    const mount = document.getElementById("div_main");
-    ReactDOM.render(
-      /* @__PURE__ */ React.createElement(Div_main, { data }),
-      mount
-    );
-  } catch (e) {
-    console.error(e);
-    document.getElementById("div_main").innerHTML = '<div class="text-center text-gray-500 py-10">\uB370\uC774\uD130\uB97C \uBD88\uB7EC\uC624\uB294 \uC911 \uC624\uB958\uAC00 \uBC1C\uC0DD\uD588\uC2B5\uB2C8\uB2E4.</div>';
-  }
+  };
+  render();
+  await Promise.all(["monthly", "daily", "yearly", "total"].map(loadPeriod));
 }
 async function set_main() {
   function Div_check_admin() {
@@ -531,7 +549,6 @@ async function set_main() {
     const role = headerData && headerData.role ? headerData.role : "";
     window.gv_role = role;
     if (role === "\uAD00\uB9AC\uC790") {
-      ReactDOM.render(/* @__PURE__ */ React.createElement(Div_main_skeleton, null), mount);
       await get_main();
     } else {
       ReactDOM.render(/* @__PURE__ */ React.createElement(Div_main_stop, null), mount);

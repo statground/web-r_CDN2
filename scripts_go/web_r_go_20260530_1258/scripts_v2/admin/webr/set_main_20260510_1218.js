@@ -137,6 +137,14 @@ function draw_chart(inputData, activeTabId, groupedData) {
   const el = document.getElementById("div_statistics_graph");
   if (!el)
     return;
+  if (!window.echarts) {
+    if (window.WebRAdminDashboard && window.WebRAdminDashboard.ensureECharts) {
+      window.WebRAdminDashboard.ensureECharts(function() {
+        draw_chart(inputData, activeTabId, groupedData);
+      });
+    }
+    return;
+  }
   const prev = echarts.getInstanceByDom(el);
   if (prev)
     prev.dispose();
@@ -187,16 +195,37 @@ function draw_chart(inputData, activeTabId, groupedData) {
   window.addEventListener("resize", () => chart.resize(), { passive: true });
 }
 async function get_main() {
-  const data = await fetch("/admin/ajax_get_admin_webr/", { method: "POST" }).then((r) => r.json());
-  ReactDOM.render(
-    /* @__PURE__ */ React.createElement(Div_main, { data }),
-    document.getElementById("div_main"),
-    () => {
-      requestAnimationFrame(() => {
-        draw_chart(data.list_monthly, "graph_tab_monthly", data.list_group_monthly);
-      });
-    }
-  );
+  const mount = document.getElementById("div_main");
+  let data = {};
+  const render = function(drawGraph) {
+    ReactDOM.render(
+      /* @__PURE__ */ React.createElement(Div_main, { data }),
+      mount,
+      () => {
+        if (drawGraph) {
+          requestAnimationFrame(() => {
+            draw_chart(data.list_monthly, "graph_tab_monthly", data.list_group_monthly);
+          });
+        }
+      }
+    );
+  };
+  const loadSection = function(url, drawGraph) {
+    return fetch(url, { method: "POST", credentials: "same-origin" }).then((r) => r.json()).then((payload) => {
+      data = { ...data, ...(payload || {}) };
+      render(drawGraph);
+    }).catch((error) => {
+      console.error(error);
+      render(drawGraph);
+    });
+  };
+  render(false);
+  await Promise.all([
+    loadSection("/admin/ajax_get_admin_webr_counts/", false),
+    loadSection("/admin/ajax_get_admin_webr_app_groups/", false),
+    loadSection("/admin/ajax_get_admin_webr_apps/", false),
+    loadSection("/admin/ajax_get_admin_webr_graph/", true)
+  ]);
 }
 async function set_main() {
   function Div_check_admin() {
@@ -224,7 +253,6 @@ async function set_main() {
     const role = headerData && headerData.role ? headerData.role : "";
     window.gv_role = role;
     if (role === "\uAD00\uB9AC\uC790") {
-      ReactDOM.render(/* @__PURE__ */ React.createElement(Div_main_skeleton, null), mount);
       await get_main();
     } else {
       ReactDOM.render(/* @__PURE__ */ React.createElement(Div_main_stop, null), mount);

@@ -211,7 +211,13 @@ function draw_chart(inputData, activeTabId) {
   if (!el)
     return;
   if (!window.echarts) {
-    el.innerHTML = '<div class="flex h-full items-center justify-center text-sm text-slate-500">차트 라이브러리를 불러오지 못했습니다.</div>';
+    if (window.WebRAdminDashboard && window.WebRAdminDashboard.ensureECharts) {
+      window.WebRAdminDashboard.ensureECharts(function() {
+        draw_chart(inputData, activeTabId);
+      });
+    } else {
+      el.innerHTML = '<div class="flex h-full items-center justify-center text-sm text-slate-500">차트 라이브러리를 불러오지 못했습니다.</div>';
+    }
     return;
   }
   const prev = echarts.getInstanceByDom(el);

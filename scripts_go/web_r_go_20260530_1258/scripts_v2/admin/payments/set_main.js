@@ -66,9 +66,11 @@ function Div_main_skeleton(props) {
   )));
 }
 function Div_main(props) {
-  const data = props.data;
-  const list_product_membership = Object.values(data.list_product).filter((x) => x.product === "webr");
-  const list_product_workshop = Object.values(data.list_product).filter((x) => x.product === "seminar");
+  const data = props.data || {};
+  const count = data.count || {};
+  const countValue = (key) => count[key] && count[key]["0"] != null ? count[key]["0"] : 0;
+  const list_product_membership = Object.values(data.list_product || {}).filter((x) => x.product === "webr");
+  const list_product_workshop = Object.values(data.list_product || {}).filter((x) => x.product === "seminar");
   function Div_payment_list({ data: data2, title }) {
     const payment_list = Object.keys(data2).map((k) => /* @__PURE__ */ React.createElement("div", { className: "flex flex-row justify-between items-center w-full", key: k }, /* @__PURE__ */ React.createElement("p", null, data2[k].product_name), /* @__PURE__ */ React.createElement("p", null, data2[k].amt.toString().replace(/\B(?<!\.\d*)(?=(\d{3})+(?!\d))/g, ","), "\uC6D0", " ", "(", data2[k].cnt.toString().replace(/\B(?<!\.\d*)(?=(\d{3})+(?!\d))/g, ","), "\uAC74)")));
     return /* @__PURE__ */ React.createElement("div", { className: "flex flex-col justify-center items-center rounded-xl border border-gray-200 space-y-4 w-full p-8" }, /* @__PURE__ */ React.createElement("p", { className: "font-extrabold underline" }, title), payment_list.length > 0 ? payment_list : /* @__PURE__ */ React.createElement("p", { className: "text-gray-400" }, "\uD45C\uC2DC\uD560 \uD56D\uBAA9\uC774 \uC5C6\uC2B5\uB2C8\uB2E4."));
@@ -91,40 +93,40 @@ function Div_main(props) {
     Div_sub_card,
     {
       title: "\uCD1D \uACB0\uC81C\uC561",
-      value: data.count.sum_amount_total["0"],
+      value: countValue("sum_amount_total"),
       unit: "\uC6D0",
       subtitle: "\uCD1D \uACB0\uC81C \uAC74 \uC218",
-      subvalue: data.count.cnt_amount_total["0"],
+      subvalue: countValue("cnt_amount_total"),
       subunit: "\uAC74"
     }
   ), /* @__PURE__ */ React.createElement(
     Div_sub_card,
     {
       title: "\uC62C\uD574 \uACB0\uC81C\uC561",
-      value: data.count.sum_amount_yearly["0"],
+      value: countValue("sum_amount_yearly"),
       unit: "\uC6D0",
       subtitle: "\uC62C\uD574 \uACB0\uC81C \uAC74 \uC218",
-      subvalue: data.count.cnt_amount_yearly["0"],
+      subvalue: countValue("cnt_amount_yearly"),
       subunit: "\uAC74"
     }
   ), /* @__PURE__ */ React.createElement(
     Div_sub_card,
     {
       title: "\uC774\uBC88 \uB2EC \uACB0\uC81C\uC561",
-      value: data.count.sum_amount_monthly["0"],
+      value: countValue("sum_amount_monthly"),
       unit: "\uC6D0",
       subtitle: "\uC774\uBC88 \uB2EC \uACB0\uC81C \uAC74 \uC218",
-      subvalue: data.count.cnt_amount_monthly["0"],
+      subvalue: countValue("cnt_amount_monthly"),
       subunit: "\uAC74"
     }
   ), /* @__PURE__ */ React.createElement(
     Div_sub_card,
     {
       title: "\uC624\uB298 \uACB0\uC81C\uC561",
-      value: data.count.sum_amount_daily["0"],
+      value: countValue("sum_amount_daily"),
       unit: "\uC6D0",
       subtitle: "\uC624\uB298 \uACB0\uC81C \uAC74 \uC218",
-      subvalue: data.count.cnt_amount_daily["0"],
+      subvalue: countValue("cnt_amount_daily"),
       subunit: "\uAC74"
     }
   )))), /* @__PURE__ */ React.createElement("div", { className: "w-full bg-white border border-gray-200 rounded-lg shadow" }, /* @__PURE__ */ React.createElement("div", { className: "p-4 bg-white rounded-lg md:p-8 text-center" }, /* @__PURE__ */ React.createElement(Div_sub_title2, { title: "\uACB0\uC81C \uD56D\uBAA9" }), /* @__PURE__ */ React.createElement("p", null, "(\uC774\uBC88 \uB2EC \uAE30\uC900)"), /* @__PURE__ */ React.createElement("dl", { className: "grid grid-cols-2 justify-center items-start w-full gap-4 p-4 mx-auto text-gray-900" }, /* @__PURE__ */ React.createElement(Div_payment_list, { data: list_product_membership, title: "\uD68C\uC6D0 \uB4F1\uAE09 \uC5C5\uADF8\uB808\uC774\uB4DC \uACB0\uC81C" }), /* @__PURE__ */ React.createElement(Div_payment_list, { data: list_product_workshop, title: "\uC6CC\uD06C\uC0F5 \uACB0\uC81C" })))), /* @__PURE__ */ React.createElement("div", { className: "w-full bg-white border border-gray-200 rounded-lg shadow" }, /* @__PURE__ */ React.createElement("div", { className: "p-4 bg-white rounded-lg md:p-8 text-center" }, /* @__PURE__ */ React.createElement("dl", { className: "flex flex-col justify-center items-start w-full p-4 mx-auto text-gray-900" }, /* @__PURE__ */ React.createElement("ul", { className: "flex flex-wrap text-sm font-medium text-center text-gray-500 border-b border-gray-200 w-full" }, /* @__PURE__ */ React.createElement("li", { className: "me-2", onClick: () => draw_chart(data.list_daily, "graph_tab_daily") }, /* @__PURE__ */ React.createElement("div", { className: class_tab_inactive, id: "graph_tab_daily" }, "\uC77C")), /* @__PURE__ */ React.createElement("li", { className: "me-2", onClick: () => draw_chart(data.list_monthly, "graph_tab_monthly") }, /* @__PURE__ */ React.createElement("div", { className: class_tab_active, id: "graph_tab_monthly" }, "\uC6D4")), /* @__PURE__ */ React.createElement("li", { className: "me-2", onClick: () => draw_chart(data.list_yearly, "graph_tab_yearly") }, /* @__PURE__ */ React.createElement("div", { className: class_tab_inactive, id: "graph_tab_yearly" }, "\uB144"))), /* @__PURE__ */ React.createElement("div", { id: "div_statistics_graph", name: "div_statistics_graph", className: "w-full h-[500px] p-8" }))))));
@@ -139,6 +141,14 @@ function draw_chart(inputData, activeTabId) {
   const el = document.getElementById("div_statistics_graph");
   if (!el)
     return;
+  if (!window.echarts) {
+    if (window.WebRAdminDashboard && window.WebRAdminDashboard.ensureECharts) {
+      window.WebRAdminDashboard.ensureECharts(function() {
+        draw_chart(inputData, activeTabId);
+      });
+    }
+    return;
+  }
   const prev = echarts.getInstanceByDom(el);
   if (prev)
     prev.dispose();
@@ -181,16 +191,36 @@ function draw_chart(inputData, activeTabId) {
   }
 }
 async function get_main() {
-  const data = await fetch("/admin/ajax_get_admin_payments/", { method: "POST" }).then((res) => res.json());
-  ReactDOM.render(
-    /* @__PURE__ */ React.createElement(Div_main, { data }),
-    document.getElementById("div_main"),
-    () => {
-      requestAnimationFrame(() => {
-        draw_chart(data.list_monthly, "graph_tab_monthly");
-      });
-    }
-  );
+  const mount = document.getElementById("div_main");
+  let data = {};
+  const render = function(drawGraph) {
+    ReactDOM.render(
+      /* @__PURE__ */ React.createElement(Div_main, { data }),
+      mount,
+      () => {
+        if (drawGraph) {
+          requestAnimationFrame(() => {
+            draw_chart(data.list_monthly, "graph_tab_monthly");
+          });
+        }
+      }
+    );
+  };
+  const loadSection = function(url, drawGraph) {
+    return fetch(url, { method: "POST", credentials: "same-origin" }).then((res) => res.json()).then((payload) => {
+      data = { ...data, ...(payload || {}) };
+      render(drawGraph);
+    }).catch((error) => {
+      console.error(error);
+      render(drawGraph);
+    });
+  };
+  render(false);
+  await Promise.all([
+    loadSection("/admin/ajax_get_admin_payments_amounts/", false),
+    loadSection("/admin/ajax_get_admin_payments_products/", false),
+    loadSection("/admin/ajax_get_admin_payments_graph/", true)
+  ]);
 }
 async function set_main() {
   function Div_check_admin() {
@@ -218,7 +248,6 @@ async function set_main() {
     const role = headerData && headerData.role ? headerData.role : "";
     window.gv_role = role;
     if (role === "\uAD00\uB9AC\uC790") {
-      ReactDOM.render(/* @__PURE__ */ React.createElement(Div_main_skeleton, null), mount);
       await get_main();
     } else {
       ReactDOM.render(/* @__PURE__ */ React.createElement(Div_main_stop, null), mount);

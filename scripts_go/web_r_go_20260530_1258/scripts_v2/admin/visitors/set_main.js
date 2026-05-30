@@ -129,8 +129,16 @@ function draw_chart(inputData, activeTabId) {
       el2.className = id === activeTabId ? class_tab_active : class_tab_inactive;
   });
   const el = document.getElementById("div_statistics_graph");
-  if (!el || !window.echarts)
+  if (!el)
     return;
+  if (!window.echarts) {
+    if (window.WebRAdminDashboard && window.WebRAdminDashboard.ensureECharts) {
+      window.WebRAdminDashboard.ensureECharts(function() {
+        draw_chart(inputData, activeTabId);
+      });
+    }
+    return;
+  }
   const prev = echarts.getInstanceByDom(el);
   if (prev)
     prev.dispose();
