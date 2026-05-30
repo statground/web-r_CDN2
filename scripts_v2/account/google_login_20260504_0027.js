@@ -435,9 +435,6 @@ function set_main() {
         <BackButton onClick={props.onBack} />
         <Div_textbox id="email" type="text" title="E-mail" autoComplete="email" function={handleEmailLoginInput} />
         <Div_textbox id="password" type="password" title="Password" autoComplete="current-password" function={handleEmailLoginInput} />
-        <div className="rounded-xl bg-blue-50 px-4 py-3 text-sm text-blue-900">
-          기존 홈페이지 회원은 비밀번호를 1회 변경해야 합니다.
-        </div>
         <div id="btn_submit" className="w-full">
           <Div_btn_submit className={class_btn_disabled} function={null} text={"로그인"} />
         </div>
