@@ -65,12 +65,18 @@
   installChartHelper();
   var match = window.location.pathname.match(/^\/admin\/([^/]+)\//);
   var sub = match ? match[1] : "";
+  if (!sub && /^\/admin\/?$/.test(window.location.pathname || "")) {
+    sub = "main";
+  }
   var enabled = {
+    main: true,
     active_users: true,
     webr: true,
     visitors: true,
+    members: true,
     payments: true,
-    balance_account: true
+    balance_account: true,
+    pipelines: true
   };
   if (!enabled[sub]) {
     return;
@@ -242,11 +248,77 @@
       animation-duration: 1.5s;
     }
     :root[data-webr-admin-dashboard] #div_main .animate-pulse h5,
+    :root[data-webr-admin-dashboard] #div_main .animate-pulse dt,
+    :root[data-webr-admin-dashboard] #div_main .animate-pulse dd,
+    :root[data-webr-admin-dashboard] #div_main .animate-pulse label,
+    :root[data-webr-admin-dashboard] #div_main .animate-pulse p,
+    :root[data-webr-admin-dashboard] #div_main .animate-pulse select,
+    :root[data-webr-admin-dashboard] #div_main .animate-pulse button {
+      background: #e5e7eb !important;
+      border-color: #e5e7eb !important;
+      border-radius: 999px !important;
+      box-shadow: none !important;
+      color: transparent !important;
+      line-height: 0 !important;
+      overflow: hidden !important;
+      pointer-events: none !important;
+      text-shadow: none !important;
+    }
+    :root[data-webr-admin-dashboard] #div_main .animate-pulse h5,
     :root[data-webr-admin-dashboard] #div_main .animate-pulse h5 span {
-      color: #111827 !important;
+      color: transparent !important;
+      text-shadow: none !important;
+    }
+    :root[data-webr-admin-dashboard] #div_main .animate-pulse h5 {
+      display: block !important;
+      height: 18px !important;
+      margin: 0 auto 18px !important;
+      max-width: 220px !important;
+      width: 42% !important;
+    }
+    :root[data-webr-admin-dashboard] #div_main .animate-pulse h5 span {
+      background: transparent !important;
+      display: inline !important;
+    }
+    :root[data-webr-admin-dashboard] #div_main .animate-pulse dt {
+      display: block !important;
+      height: 22px !important;
+      margin-left: auto !important;
+      margin-right: auto !important;
+      max-width: 160px !important;
+      min-height: 0 !important;
+      width: 68% !important;
+    }
+    :root[data-webr-admin-dashboard] #div_main .animate-pulse dd {
+      display: block !important;
+      height: 12px !important;
+      margin: 9px auto 0 !important;
+      max-width: 130px !important;
+      min-height: 0 !important;
+      width: 58% !important;
+    }
+    :root[data-webr-admin-dashboard] #div_main .animate-pulse label {
+      display: block !important;
+      height: 12px !important;
+      margin: 0 0 8px !important;
+      width: 58px !important;
+    }
+    :root[data-webr-admin-dashboard] #div_main .animate-pulse p {
+      display: block !important;
+      height: 12px !important;
+      margin: 0 0 10px !important;
+      max-width: 180px !important;
+      width: 36% !important;
+    }
+    :root[data-webr-admin-dashboard] #div_main .animate-pulse select,
+    :root[data-webr-admin-dashboard] #div_main .animate-pulse button {
+      height: 38px !important;
+      min-width: 96px !important;
+      width: 112px !important;
     }
     :root[data-webr-admin-dashboard] #div_main .animate-pulse [class*="bg-gray-100"],
-    :root[data-webr-admin-dashboard] #div_main .animate-pulse [class*="bg-gray-200"] {
+    :root[data-webr-admin-dashboard] #div_main .animate-pulse [class*="bg-gray-200"],
+    :root[data-webr-admin-dashboard] #div_main .animate-pulse [class*="bg-gray-300"] {
       background: #e5e7eb !important;
     }
     :root[data-webr-admin-dashboard] #div_main .animate-pulse [class*="h-[350px]"] {

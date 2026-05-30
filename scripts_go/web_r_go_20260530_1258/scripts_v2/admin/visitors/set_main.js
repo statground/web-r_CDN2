@@ -60,19 +60,27 @@ function Div_sub_card(props) {
 }
 
 function Div_metric_group(props) {
+  const innerClass = "p-4 bg-white rounded-lg md:p-8 text-center" + (props.loading ? " animate-pulse" : "");
+  const children = props.loading ? Array.from({ length: 4 }).map(function (_, idx) {
+    return React.createElement(
+      "div",
+      { key: idx, className: "flex flex-col justify-center items-center rounded-xl space-y-2 w-full p-6" },
+      React.createElement("dt", null),
+      React.createElement("dd", null)
+    );
+  }) : props.children;
   return React.createElement(
     "div",
     { className: "w-full bg-white border border-gray-200 rounded-lg shadow" },
     React.createElement(
       "div",
-      { className: "p-4 bg-white rounded-lg md:p-8 text-center" },
+      { className: innerClass },
       React.createElement(Div_sub_title, { title: props.title }),
-      props.loading ? React.createElement("p", { className: "mb-2 text-xs font-medium text-slate-500" }, "방문 집계를 불러오고 있습니다.") : null,
-      props.error ? React.createElement("p", { className: "mb-2 text-xs font-medium text-rose-600" }, "방문 집계를 불러오지 못했습니다.") : null,
+      !props.loading && props.error ? React.createElement("p", { className: "mb-2 text-xs font-medium text-rose-600" }, "방문 집계를 불러오지 못했습니다.") : null,
       React.createElement(
         "dl",
         { className: "grid grid-cols-1 w-full md:grid-cols-4 gap-8 p-4 mx-auto text-gray-900 md:p-8" },
-        props.children
+        children
       )
     )
   );
@@ -116,10 +124,9 @@ function Div_main(props) {
         { className: "w-full bg-white border border-gray-200 rounded-lg shadow" },
         React.createElement(
           "div",
-          { className: "p-4 bg-white rounded-lg md:p-8 text-center" },
-          graphLoading ? React.createElement("p", { className: "mb-2 text-xs font-medium text-slate-500" }, "방문 추이 그래프를 불러오고 있습니다.") : null,
+          { className: "p-4 bg-white rounded-lg md:p-8 text-center" + (graphLoading ? " animate-pulse" : "") },
           errors.graph ? React.createElement("p", { className: "mb-2 text-xs font-medium text-rose-600" }, "방문 추이 그래프를 불러오지 못했습니다.") : null,
-          React.createElement(
+          graphLoading ? React.createElement(Div_graph_skeleton, null) : React.createElement(
             "dl",
             { className: "flex flex-col justify-center items-start w-full p-4 mx-auto text-gray-900" },
             React.createElement(
@@ -129,7 +136,7 @@ function Div_main(props) {
               React.createElement("li", { className: "me-2", onClick: () => draw_chart(data.list_monthly || {}, "graph_tab_monthly") }, React.createElement("div", { className: class_tab_active, id: "graph_tab_monthly" }, "월")),
               React.createElement("li", { className: "me-2", onClick: () => draw_chart(data.list_yearly || {}, "graph_tab_yearly") }, React.createElement("div", { className: class_tab_inactive, id: "graph_tab_yearly" }, "년"))
             ),
-            React.createElement("div", { id: "div_statistics_graph", name: "div_statistics_graph", className: "w-full h-[500px] p-8" }, graphLoading ? React.createElement(Div_graph_skeleton, null) : null)
+            React.createElement("div", { id: "div_statistics_graph", name: "div_statistics_graph", className: "w-full h-[500px] p-8" })
           )
         )
       )

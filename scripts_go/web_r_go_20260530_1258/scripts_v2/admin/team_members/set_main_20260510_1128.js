@@ -143,6 +143,48 @@ function Div_operation_menu() {
   );
 }
 
+function TeamAdminLoadingSkeleton(props) {
+  const scope = props.scope || TEAM_ADMIN_SCOPES.team_members;
+  const showSummary = scope.metrics !== "internal";
+  const summaryCards = showSummary ? Array.from({ length: 3 }).map(function (_, idx) {
+    return React.createElement("div", { key: idx, className: "rounded-lg border border-slate-200 bg-white p-4" },
+      React.createElement("div", { className: "mb-4 h-4 w-24 rounded-full bg-gray-200" }),
+      React.createElement("div", { className: "grid grid-cols-2 gap-3" },
+        React.createElement("div", { className: "h-14 rounded-md bg-gray-200" }),
+        React.createElement("div", { className: "h-14 rounded-md bg-gray-200" }),
+        React.createElement("div", { className: "h-14 rounded-md bg-gray-200" })
+      )
+    );
+  }) : null;
+  const teamPanels = Array.from({ length: 3 }).map(function (_, idx) {
+    return React.createElement("div", { key: idx, className: "rounded-lg border border-slate-200 bg-white p-4" },
+      React.createElement("div", { className: "mb-4 h-5 w-48 rounded-full bg-gray-200" }),
+      React.createElement("div", { className: "space-y-3" },
+        React.createElement("div", { className: "h-4 w-full rounded-full bg-gray-200" }),
+        React.createElement("div", { className: "h-4 w-11/12 rounded-full bg-gray-200" }),
+        React.createElement("div", { className: "h-4 w-10/12 rounded-full bg-gray-200" }),
+        React.createElement("div", { className: "mt-5 h-28 rounded-md bg-gray-200" })
+      )
+    );
+  });
+  return React.createElement("div", { className: "grid grid-cols-1 md:grid-cols-12 justify-center item-center w-full px-[10px] py-[20px] md:px-[100px]" },
+    React.createElement(Div_operation_menu, null),
+    React.createElement("div", { className: "md:col-span-10 justify-center item-center" },
+      React.createElement("div", { className: "flex w-full flex-col gap-4 animate-pulse", role: "status", "aria-label": scope.loading },
+        React.createElement("div", { className: "rounded-lg border border-slate-200 bg-white p-4 md:p-6" },
+          React.createElement("div", { className: "mx-auto h-7 w-52 rounded-full bg-gray-200" }),
+          showSummary ? React.createElement("div", { className: "mt-6 grid grid-cols-1 gap-4 md:grid-cols-3" }, summaryCards) : null
+        ),
+        React.createElement("div", { className: "rounded-md border border-slate-200 bg-slate-50 p-3" },
+          React.createElement("div", { className: "h-10 w-full rounded-md bg-gray-200" }),
+          React.createElement("div", { className: "mt-3 h-3 w-44 rounded-full bg-gray-200" })
+        ),
+        React.createElement("div", { className: "grid grid-cols-1 gap-4" }, teamPanels)
+      )
+    )
+  );
+}
+
 function TeamMetric(props) {
   return React.createElement("div", { className: "flex flex-col items-center justify-center p-4" },
     React.createElement("dt", { className: "text-3xl font-extrabold" }, props.value),
@@ -812,7 +854,7 @@ async function set_main() {
     return;
   }
   const scope = teamAdminScopeConfig(teamAdminCurrentScope());
-  ReactDOM.render(React.createElement("div", { className: "max-w-screen-xl px-6 py-10 mx-auto text-center text-gray-500" }, scope.loading), mount);
+  ReactDOM.render(React.createElement(TeamAdminLoadingSkeleton, { scope: scope }), mount);
   try {
     const headerData = await fetch("/ajax_get_menu_header/", { method: "POST", credentials: "same-origin" }).then(function (res) { return res.json(); });
     const role = headerData && headerData.role ? headerData.role : "";

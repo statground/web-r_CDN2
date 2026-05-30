@@ -115,11 +115,19 @@
       "#div_main .webr-pipeline-output-title:hover{color:#2563eb;}",
       "#div_main .webr-pipeline-output-meta{display:flex;flex-wrap:wrap;gap:6px;margin-top:7px;color:#64748b;font-size:.72rem;line-height:1.25;}",
       "#div_main .webr-pipeline-empty{display:flex;min-height:96px;align-items:center;justify-content:center;border:1px dashed #cbd5e1;border-radius:8px;background:#f8fafc;color:#64748b;font-size:.8rem;font-weight:700;text-align:center;}",
-      "#div_main .webr-pipeline-skeleton{border:1px solid #e2e8f0;border-radius:8px;background:#fff;padding:16px;}",
-      "#div_main .webr-pipeline-skel-line{height:14px;border-radius:999px;background:#e2e8f0;margin:10px 0;}",
+      "@keyframes webrPipelineSkeletonPulse{0%,100%{opacity:1;}50%{opacity:.48;}}",
+      "#div_main .webr-pipeline-skeleton{display:grid;gap:14px;min-width:0;}",
+      "#div_main .webr-pipeline-skel-toolbar{display:flex;align-items:center;justify-content:space-between;gap:16px;border:1px solid #e2e8f0;border-radius:8px;background:#fff;padding:16px 18px;}",
+      "#div_main .webr-pipeline-skel-kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;}",
+      "#div_main .webr-pipeline-skel-grid{display:grid;grid-template-columns:minmax(560px,1.34fr) minmax(360px,.66fr);gap:14px;}",
+      "#div_main .webr-pipeline-skel-line,#div_main .webr-pipeline-skel-card,#div_main .webr-pipeline-skel-panel{animation:webrPipelineSkeletonPulse 1.45s ease-in-out infinite;background:#e5e7eb;box-shadow:none;}",
+      "#div_main .webr-pipeline-skel-line{height:14px;border-radius:999px;margin:10px 0;}",
+      "#div_main .webr-pipeline-skel-card{height:92px;border-radius:8px;}",
+      "#div_main .webr-pipeline-skel-panel{height:260px;border-radius:8px;}",
       "@media (max-width:1180px){#div_main .webr-pipeline-grid{grid-template-columns:1fr;}#div_main .webr-pipeline-kpis{grid-template-columns:repeat(2,minmax(0,1fr));}}",
-      "@media (max-width:900px){#div_main .webr-admin-pipeline-shell.webr-admin-shell{grid-template-columns:1fr!important;padding:16px!important;}#div_main .webr-admin-pipeline-shell>.webr-admin-menu,#div_main .webr-admin-pipeline-shell>.webr-pipeline-main{grid-column:1/2!important;width:100%!important;max-width:none!important;position:static!important;}#div_main .webr-pipeline-toolbar{align-items:stretch;flex-direction:column;}#div_main .webr-pipeline-refresh{width:100%;}}",
-      "@media (max-width:640px){#div_main .webr-pipeline-kpis{grid-template-columns:1fr;}#div_main .webr-pipeline-output-grid{grid-template-columns:1fr;}}"
+      "@media (max-width:1180px){#div_main .webr-pipeline-skel-grid{grid-template-columns:1fr;}#div_main .webr-pipeline-skel-kpis{grid-template-columns:repeat(2,minmax(0,1fr));}}",
+      "@media (max-width:900px){#div_main .webr-admin-pipeline-shell.webr-admin-shell{grid-template-columns:1fr!important;padding:16px!important;}#div_main .webr-admin-pipeline-shell>.webr-admin-menu,#div_main .webr-admin-pipeline-shell>.webr-pipeline-main{grid-column:1/2!important;width:100%!important;max-width:none!important;position:static!important;}#div_main .webr-pipeline-toolbar,#div_main .webr-pipeline-skel-toolbar{align-items:stretch;flex-direction:column;}#div_main .webr-pipeline-refresh{width:100%;}}",
+      "@media (max-width:640px){#div_main .webr-pipeline-kpis,#div_main .webr-pipeline-skel-kpis{grid-template-columns:1fr;}#div_main .webr-pipeline-output-grid{grid-template-columns:1fr;}}"
     ].join("\n");
     document.head.appendChild(style);
   }
@@ -447,10 +455,21 @@
     return h("div", { className: "webr-admin-shell webr-admin-pipeline-shell" },
       h(AdminMenu, null),
       h("main", { className: "webr-pipeline-main" },
-        h("div", { className: "webr-pipeline-skeleton" },
-          h("div", { className: "webr-pipeline-skel-line", style: { width: "32%" } }),
-          h("div", { className: "webr-pipeline-skel-line", style: { width: "82%" } }),
-          h("div", { className: "webr-pipeline-skel-line", style: { width: "68%" } })
+        h("div", { className: "webr-pipeline-skeleton", role: "status", "aria-label": "데이터 파이프라인을 불러오고 있습니다." },
+          h("div", { className: "webr-pipeline-skel-toolbar" },
+            h("div", { className: "webr-pipeline-skel-line", style: { margin: 0, width: "28%" } }),
+            h("div", { className: "webr-pipeline-skel-line", style: { margin: 0, width: "96px" } })
+          ),
+          h("div", { className: "webr-pipeline-skel-kpis" },
+            Array.from({ length: 4 }).map(function (_, idx) {
+              return h("div", { key: idx, className: "webr-pipeline-skel-card" });
+            })
+          ),
+          h("div", { className: "webr-pipeline-skel-grid" },
+            h("div", { className: "webr-pipeline-skel-panel" }),
+            h("div", { className: "webr-pipeline-skel-panel" })
+          ),
+          h("div", { className: "webr-pipeline-skel-panel", style: { height: "180px" } })
         )
       )
     );
