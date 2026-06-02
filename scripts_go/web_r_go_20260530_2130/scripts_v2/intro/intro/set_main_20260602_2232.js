@@ -1,31 +1,68 @@
 (function() {
   const h = React.createElement;
-  const statgroundAssetRoot = "https://cdn.jsdelivr.net/gh/statground/Statground_CDN@8caf42578ea00e7cf973e39acc1a42a4182c217a/assets3/images/member/";
+  const statgroundAssetRoot = "https://cdn.jsdelivr.net/gh/statground/Statground_CDN@8caf42578ea00e7cf973e39acc1a42a4182c217a/assets3/images/";
+  const memberAssetRoot = statgroundAssetRoot + "member/";
+  const partnershipAssetRoot = statgroundAssetRoot + "partnership/";
+  const clientAssetRoot = statgroundAssetRoot + "client/";
   const people = [
     {
       name: "Jae-seong Yoo",
       role: "CEO",
-      image: statgroundAssetRoot + "JaeseongYoo.jpg",
+      image: memberAssetRoot + "JaeseongYoo.jpg",
       url: "https://www.facebook.com/JSYoo86"
     },
     {
       name: "Jae-kwang Kim",
       role: "Technical Advisor",
-      image: statgroundAssetRoot + "JaekwangKim.jpg",
+      image: memberAssetRoot + "JaekwangKim.jpg",
       url: "https://www.facebook.com/profile.php?id=100013068106711"
     },
     {
       name: "Seung-sik Hwang",
       role: "Admin. of Community",
-      image: statgroundAssetRoot + "SeungsikHwang.jpg",
+      image: memberAssetRoot + "SeungsikHwang.jpg",
       url: "https://www.facebook.com/seungsik.hwang"
     },
     {
       name: "Keon-Woong Moon",
       role: "Admin. of Web-R",
-      image: statgroundAssetRoot + "KeonwoongMoon.jpg",
+      image: memberAssetRoot + "KeonwoongMoon.jpg",
       url: "https://www.facebook.com/cardiomoon"
     }
+  ];
+  const partnerships = [
+    { name: "(주)KB국민카드", role: "데이터 비즈(Data Biz) 파트너 계약", image: partnershipAssetRoot + "kbkookmincard.jpg", url: "https://card.kbcard.com/" },
+    { name: "슬기로운 통계생활", role: "사업 협력 계약", image: partnershipAssetRoot + "statisticsplaybook.jpg", url: "https://statisticsplaybook.com/" },
+    { name: "(주)인사이트마이닝", role: "공동 연구, 정보와 자료 교환, 장비와 인력 교류 등을 통한 업무 협약", image: partnershipAssetRoot + "insightmining.jpg", url: "http://insightmining.co.kr/" },
+    { name: "(사)AI프렌즈학회", role: "기업 회원, 공동 세미나 진행", image: partnershipAssetRoot + "aifrenz.jpg", url: "https://aifrenz.notion.site/" },
+    { name: "(주)LG CNS", role: "Data lake 포털 구축 등", image: partnershipAssetRoot + "LGCNS.jpg", url: "https://www.lgcns.com/" },
+    { name: "이그나이트", role: "Chief Technology Officer 참여 등", image: partnershipAssetRoot + "ignite-artist.jpg", url: "https://www.ignite-artist.com/" },
+    { name: "Korean International Statistical Society", role: "2023 KISS Summer School 시행사 등", image: partnershipAssetRoot + "kiss.jpg", url: "https://statkiss.org/" },
+    { name: "Korea Startup Forum", role: "코리아 스타트업 포럼 멘토단", image: partnershipAssetRoot + "koreastartupforum.jpg", url: "https://kstartupforum.org/" },
+    { name: "경북대학교 컴퓨터학부", role: "경북대 온라인 현장실습 멘토링", image: partnershipAssetRoot + "knuit.jpg", url: "https://computer.knu.ac.kr/" },
+    { name: "(주)워니프레임", role: "공동 플랫폼 제작을 위한 업무 협약", image: partnershipAssetRoot + "wonyframe.jpg", url: "http://wonyframe.com/" },
+    { name: "세종과학예술영재학교", role: "교육통계분석 서비스 공동 개발", image: partnershipAssetRoot + "sasa.jpg", url: "https://sasa.sjeduhs.kr/" },
+    { name: "소셜러스(주)", role: "주식 양수 계약", image: partnershipAssetRoot + "socialerus.jpg", url: "https://socialerus.com/" }
+  ];
+  const clients = [
+    { name: "(주)바이풀디자인", image: clientAssetRoot + "by_fulldesign.jpg" },
+    { name: "한국환경연구원", image: clientAssetRoot + "kei.jpg" },
+    { name: "고려대학교", image: clientAssetRoot + "koreauniv.jpg" },
+    { name: "성신여자대학교", image: clientAssetRoot + "sungshinuniv.jpg" },
+    { name: "단국대학교천안캠퍼스", image: clientAssetRoot + "dankookuniv.jpg" },
+    { name: "한국에너지기술연구원", image: clientAssetRoot + "kier.jpg" },
+    { name: "충북대학교", image: clientAssetRoot + "chungbukuniv.jpg" },
+    { name: "양산부산대학교병원", image: clientAssetRoot + "pnuyangsan.jpg" },
+    { name: "전남대학교병원", image: clientAssetRoot + "chonnamunivhospital.jpg" },
+    { name: "나무인텔리전스(주)", image: clientAssetRoot + "namu.jpg" },
+    { name: "서울특별시 광역치매센터", image: clientAssetRoot + "seoulnid.jpg" },
+    { name: "서울아산병원", image: clientAssetRoot + "asan.jpg" },
+    { name: "조선대학교", image: clientAssetRoot + "chosun2.jpg" },
+    { name: "JK통계컨설팅", image: clientAssetRoot + "jk.jpg" },
+    { name: "(주)DS이노베이션", image: clientAssetRoot + "dsinnovation.jpg" },
+    { name: "광주과학고등학교", image: clientAssetRoot + "gwangjuscienceacademy.jpg" },
+    { name: "한국원자력의학원", image: clientAssetRoot + "kirams.jpg" },
+    { name: "인천과학예술영재학교", image: clientAssetRoot + "icehs.jpg" }
   ];
   const storyBlocks = [
     {
@@ -64,8 +101,22 @@
   function PeopleSection() {
     return h("section", { className: "bg-white px-5 py-16 md:px-8 md:py-20" }, h("div", { className: "mx-auto max-w-6xl" }, h(SectionHeader, { kicker: "People", title: "만든 사람들", description: "통계마당과 Web-R의 시작을 함께 만든 사람들입니다." }), h("div", { className: "mt-10 grid grid-cols-2 gap-4 md:grid-cols-4 md:gap-6" }, people.map((person) => h(PersonCard, { key: "people-" + person.name, person })))));
   }
+  function LogoCard(props) {
+    const item = props.item;
+    const content = h("div", { className: "flex h-full flex-col items-center justify-start rounded-lg border border-gray-200 bg-white p-4 text-center shadow-sm transition hover:border-sky-300 hover:shadow-md" }, h("div", { className: "flex h-28 w-full items-center justify-center overflow-hidden rounded-md bg-gray-50" }, h("img", { src: item.image, alt: item.name, className: "max-h-24 w-full object-contain" })), h("h3", { className: "mt-4 text-sm font-bold leading-6 text-gray-950" }, item.name), item.role ? h("p", { className: "mt-2 text-xs leading-5 text-gray-500" }, item.role) : null);
+    if (item.url) {
+      return h("a", { href: item.url, target: "_blank", rel: "noreferrer", className: "block h-full" }, content);
+    }
+    return h("div", { className: "h-full" }, content);
+  }
+  function PartnershipSection() {
+    return h("section", { className: "border-t border-gray-200 bg-gray-50 px-5 py-16 md:px-8 md:py-20" }, h("div", { className: "mx-auto max-w-6xl" }, h(SectionHeader, { kicker: "Partners", title: "파트너십", description: "통계마당과 함께 교육, 연구, 서비스의 접점을 넓혀 온 파트너들입니다." }), h("div", { className: "mt-10 grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-4" }, partnerships.map((item) => h(LogoCard, { key: "partner-" + item.name, item })))));
+  }
+  function ClientSection() {
+    return h("section", { className: "border-t border-gray-200 bg-white px-5 py-16 md:px-8 md:py-20" }, h("div", { className: "mx-auto max-w-6xl" }, h(SectionHeader, { kicker: "Clients", title: "클라이언트", description: "통계마당의 교육, 분석, 플랫폼 경험이 닿았던 기관과 기업입니다." }), h("div", { className: "mt-10 grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-6" }, clients.map((item) => h(LogoCard, { key: "client-" + item.name, item })))));
+  }
   function Div_main() {
-    return h("main", { className: "w-full bg-white text-gray-950" }, h("section", { className: "px-5 pt-14 pb-12 md:px-8 md:pt-20" }, h("div", { className: "mx-auto max-w-6xl text-center" }, h("p", { className: "text-base font-semibold text-sky-700" }, "국내 최대의 데이터 커뮤니티"), h("h1", { className: "mt-3 text-4xl font-extrabold text-gray-950 md:text-6xl" }, "주식회사 통계마당"), h("p", { className: "mx-auto mt-5 max-w-3xl text-lg leading-8 text-gray-600" }, "통계마당은 통계와 데이터를 배우고 쓰는 사람들이 서로의 지식과 경험을 나누며 더 멀리 갈 수 있도록 커뮤니티, 교육, 도구를 함께 만들어 온 회사입니다."))), h(StorySection, null), h(PeopleSection, null));
+    return h("main", { className: "w-full bg-white text-gray-950" }, h("section", { className: "px-5 pt-14 pb-12 md:px-8 md:pt-20" }, h("div", { className: "mx-auto max-w-6xl text-center" }, h("p", { className: "text-base font-semibold text-sky-700" }, "국내 최대의 데이터 커뮤니티"), h("h1", { className: "mt-3 text-4xl font-extrabold text-gray-950 md:text-6xl" }, "주식회사 통계마당"), h("p", { className: "mx-auto mt-5 max-w-3xl text-lg leading-8 text-gray-600" }, "통계마당은 통계와 데이터를 배우고 쓰는 사람들이 서로의 지식과 경험을 나누며 더 멀리 갈 수 있도록 커뮤니티, 교육, 도구를 함께 만들어 온 회사입니다."))), h(StorySection, null), h(PeopleSection, null), h(PartnershipSection, null), h(ClientSection, null));
   }
   function set_main() {
     ReactDOM.render(h(Div_main, null), document.getElementById("div_main"));
