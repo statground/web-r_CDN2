@@ -40,7 +40,6 @@
     { name: "Korean International Statistical Society", role: "2023 KISS Summer School 시행사 등", image: partnershipAssetRoot + "kiss.jpg", url: "https://statkiss.org/" },
     { name: "Korea Startup Forum", role: "코리아 스타트업 포럼 멘토단", image: partnershipAssetRoot + "koreastartupforum.jpg", url: "https://kstartupforum.org/" },
     { name: "경북대학교 컴퓨터학부", role: "경북대 온라인 현장실습 멘토링", image: partnershipAssetRoot + "knuit.jpg", url: "https://computer.knu.ac.kr/" },
-    { name: "(주)워니프레임", role: "공동 플랫폼 제작을 위한 업무 협약", image: partnershipAssetRoot + "wonyframe.jpg", url: "http://wonyframe.com/" },
     { name: "세종과학예술영재학교", role: "교육통계분석 서비스 공동 개발", image: partnershipAssetRoot + "sasa.jpg", url: "https://sasa.sjeduhs.kr/" },
     { name: "소셜러스(주)", role: "주식 양수 계약", image: partnershipAssetRoot + "socialerus.jpg", url: "https://socialerus.com/" }
   ];
