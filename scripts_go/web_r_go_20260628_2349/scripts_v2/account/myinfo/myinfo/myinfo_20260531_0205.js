@@ -1,0 +1,1532 @@
+function myInfoText(value) {
+  if (value === null || value === void 0)
+    return "";
+  return String(value);
+}
+function myInfoNumber(value) {
+  const parsed = Number(value || 0);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+function myInfoBool(value) {
+  if (typeof value === "boolean")
+    return value;
+  const text = myInfoText(value).trim().toLowerCase();
+  return text === "1" || text === "true" || text === "yes" || text === "on";
+}
+function myInfoRows(value) {
+  return Object.values(value || {});
+}
+const myInfoDefaultGenderOptions = [
+  { name: "Male", label: "\uB0A8\uC131" },
+  { name: "Female", label: "\uC5EC\uC131" },
+  { name: "\uAE30\uD0C0", label: "\uAE30\uD0C0" },
+  { name: "\uC751\uB2F5\uD558\uACE0 \uC2F6\uC9C0 \uC54A\uC74C", label: "\uC751\uB2F5\uD558\uACE0 \uC2F6\uC9C0 \uC54A\uC74C" }
+];
+function myInfoResolvedGenderOptions(options) {
+  return Array.isArray(options) && options.length ? options : myInfoDefaultGenderOptions;
+}
+function myInfoMoney(value) {
+  return myInfoNumber(value).toLocaleString("ko-KR") + "\uC6D0";
+}
+function myInfoDate(value) {
+  const text = myInfoText(value).trim();
+  return text || "-";
+}
+function myInfoGenderLabel(value, options) {
+  const text = myInfoText(value).trim();
+  const found = myInfoResolvedGenderOptions(options).find((option) => option.name === text);
+  if (found && found.label)
+    return found.label;
+  if (text === "Male")
+    return "\uB0A8\uC131";
+  if (text === "Female")
+    return "\uC5EC\uC131";
+  return text || "\uC751\uB2F5\uD558\uACE0 \uC2F6\uC9C0 \uC54A\uC74C";
+}
+function myInfoArticleHref(row) {
+  const direct = myInfoText(row.url).trim();
+  if (direct)
+    return direct;
+  const category = myInfoText(row.category_url).trim() || "free";
+  const uuid = myInfoText(row.uuid).trim();
+  return uuid ? `/community/${category}/read/${uuid}/` : "/community/";
+}
+function myInfoCommentHref(row) {
+  const uuid = myInfoText(row.uuid_article).trim();
+  return uuid ? `/community/read/${uuid}/` : "/community/";
+}
+function myInfoStatusText(status) {
+  const text = myInfoText(status).trim();
+  if (text === "DONE")
+    return "\uC644\uB8CC";
+  if (text === "REFUNDED")
+    return "\uD658\uBD88";
+  if (text === "PARTIAL_REFUNDED")
+    return "\uBD80\uBD84 \uD658\uBD88";
+  if (text === "WAITING")
+    return "\uB300\uAE30";
+  if (text === "CANCELED")
+    return "\uCDE8\uC18C";
+  return text || "-";
+}
+function myInfoFetchJSON(url, options) {
+  return fetch(url, { credentials: "same-origin", ...options || {} }).then((res) => res.json()).catch(() => ({}));
+}
+const myInfoStatementSignatureFallbackURL = "/account/myinfo/payment_statement_signature.png";
+const myInfoStatementFontFamily = '"Noto Sans KR", "Malgun Gothic", "Apple SD Gothic Neo", Arial, sans-serif';
+const myInfoStatementFontProbe = '"Noto Sans KR"';
+async function myInfoEnsureStatementFonts() {
+  if (!document.fonts || !document.fonts.ready)
+    return;
+  try {
+    await Promise.all([
+      document.fonts.load(`400 20px ${myInfoStatementFontProbe}`),
+      document.fonts.load(`700 20px ${myInfoStatementFontProbe}`)
+    ]);
+    await document.fonts.ready;
+  } catch (_) {
+  }
+}
+function myInfoStatementDateParts(value) {
+  const text = myInfoText(value).trim();
+  const match = text.match(/^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2})(?::(\d{2}))?)?/);
+  if (!match)
+    return { year: "", month: "", day: "", time: "", date: text };
+  return {
+    year: match[1],
+    month: match[2],
+    day: match[3],
+    time: match[4] ? `${match[4]}:${match[5] || "00"}:${match[6] || "00"}` : "",
+    date: `${match[1]}. ${match[2]}. ${match[3]}`
+  };
+}
+function myInfoStatementFileName(row) {
+  const parts = myInfoStatementDateParts(row.created_at);
+  const order = myInfoText(row.order_id).trim().replace(/[\\/:*?"<>|]+/g, "-");
+  const date = [parts.year, parts.month, parts.day].filter(Boolean).join("");
+  return `거래명세서_${date || "payment"}_${order || "order"}.pdf`;
+}
+function myInfoImageFromSource(src) {
+  return new Promise((resolve) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = () => resolve(null);
+    image.src = src;
+  });
+}
+function myInfoImageFromBlob(blob) {
+  return new Promise((resolve) => {
+    const image = new Image();
+    const url = URL.createObjectURL(blob);
+    image.onload = () => {
+      URL.revokeObjectURL(url);
+      resolve(image);
+    };
+    image.onerror = () => {
+      URL.revokeObjectURL(url);
+      resolve(null);
+    };
+    image.src = url;
+  });
+}
+async function myInfoLoadStatementSignature(dataURL, signatureURL) {
+  const embedded = myInfoText(dataURL).trim();
+  const globals = myInfoGlobals();
+  const candidates = [
+    signatureURL,
+    globals.payment_statement_signature_url,
+    globals.statement_signature_url,
+    embedded,
+    myInfoStatementSignatureFallbackURL
+  ];
+  const seen = /* @__PURE__ */ new Set();
+  for (const candidate of candidates) {
+    const source = myInfoText(candidate).trim();
+    if (!source || seen.has(source))
+      continue;
+    seen.add(source);
+    if (source.startsWith("data:image/")) {
+      const image = await myInfoImageFromSource(source);
+      if (image)
+        return image;
+      continue;
+    }
+    const isFallback = source === myInfoStatementSignatureFallbackURL;
+    const requestURL = isFallback ? `${source}?v=${Date.now()}` : source;
+    try {
+      const res = await fetch(requestURL, {
+        credentials: "same-origin",
+        cache: isFallback ? "no-store" : "force-cache"
+      });
+      if (!res.ok)
+        continue;
+      const image = await myInfoImageFromBlob(await res.blob());
+      if (image)
+        return image;
+    } catch (_) {
+    }
+  }
+  return null;
+}
+function myInfoLogPaymentStatementDownload(row) {
+  const form = new FormData();
+  form.append("order_id", myInfoText(row && row.order_id));
+  fetch("/account/ajax_log_payment_statement_download/", {
+    method: "POST",
+    credentials: "same-origin",
+    body: form
+  }).catch(() => {
+  });
+}
+function myInfoDrawLine(ctx, x1, y1, x2, y2, color, width) {
+  ctx.save();
+  ctx.strokeStyle = color || "#111827";
+  ctx.lineWidth = width || 1;
+  ctx.beginPath();
+  ctx.moveTo(x1, y1);
+  ctx.lineTo(x2, y2);
+  ctx.stroke();
+  ctx.restore();
+}
+function myInfoDrawText(ctx, text, x, y, options = {}) {
+  ctx.save();
+  ctx.fillStyle = options.color || "#0f172a";
+  ctx.font = options.font || `28px ${myInfoStatementFontFamily}`;
+  ctx.textAlign = options.align || "left";
+  ctx.textBaseline = options.baseline || "middle";
+  ctx.globalAlpha = options.alpha || 1;
+  if (options.maxWidth) {
+    ctx.fillText(myInfoText(text), x, y, options.maxWidth);
+  } else {
+    ctx.fillText(myInfoText(text), x, y);
+  }
+  ctx.restore();
+}
+function myInfoDrawFittedText(ctx, text, x, y, options = {}) {
+  const value = myInfoText(text);
+  const maxWidth = Math.max(10, options.maxWidth || 240);
+  const weight = options.weight || "normal";
+  let size = options.size || 22;
+  const minSize = options.minSize || 13;
+  ctx.save();
+  ctx.fillStyle = options.color || "#0f172a";
+  ctx.textAlign = options.align || "left";
+  ctx.textBaseline = options.baseline || "middle";
+  ctx.globalAlpha = options.alpha || 1;
+  while (size > minSize) {
+    ctx.font = `${weight} ${size}px ${myInfoStatementFontFamily}`;
+    if (ctx.measureText(value).width <= maxWidth)
+      break;
+    size -= 1;
+  }
+  ctx.font = `${weight} ${size}px ${myInfoStatementFontFamily}`;
+  ctx.fillText(value, x, y);
+  ctx.restore();
+}
+function myInfoDrawCellText(ctx, text, x, y, width, height, options = {}) {
+  const padding = options.padding === void 0 ? 16 : options.padding;
+  const align = options.align || "center";
+  const tx = align === "left" ? x + padding : align === "right" ? x + width - padding : x + width / 2;
+  myInfoDrawFittedText(ctx, text, tx, y + height / 2, {
+    align,
+    maxWidth: Math.max(10, width - padding * 2),
+    size: options.size || 22,
+    minSize: options.minSize || 13,
+    weight: options.weight || "normal",
+    color: options.color || "#0f172a"
+  });
+}
+function myInfoCreateStatementCanvas(row, user, signatureImage) {
+  const canvas = document.createElement("canvas");
+  canvas.width = 1240;
+  canvas.height = 1754;
+  const ctx = canvas.getContext("2d");
+  const parts = myInfoStatementDateParts(row.created_at);
+  const orderID = myInfoText(row.order_id).trim();
+  const paymentDateTime = `${parts.date}${parts.time ? ` ${parts.time}` : ""}`.trim();
+  const buyerName = myInfoText(row.username).trim() || myInfoText(user && (user.name || user.nickname || user.real_name || user.username)).trim() || myInfoText(row.email).trim() || "-";
+  const buyerEmail = myInfoText(row.email).trim() || myInfoText(user && user.email).trim();
+  const itemName = myInfoText(row.order_name).trim() || myInfoText(row.product_name).trim() || "Web-R 결제 상품";
+  const quantity = Math.max(1, Math.round(myInfoNumber(row.quantity) || 1));
+  const amount = Math.round(myInfoNumber(row.amount));
+  const unitPrice = Math.round(myInfoNumber(row.unit_price) || amount / quantity);
+  const remarkText = myInfoText(row.statement_note || row.remark || row.memo || row.note).trim();
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.fillStyle = "#f4f7fa";
+  ctx.fillRect(30, 90, 1180, 650);
+  myInfoDrawText(ctx, `NO. ${orderID}`, 92, 148, {
+    font: `bold 17px ${myInfoStatementFontFamily}`,
+    color: "#111827",
+    maxWidth: 520
+  });
+  myInfoDrawText(ctx, "거  래  명  세  서", 620, 250, {
+    align: "center",
+    font: `bold 54px ${myInfoStatementFontFamily}`,
+    color: "#78909c"
+  });
+  const left = 82;
+  const top = 330;
+  const width = 1076;
+  const rowH = 56;
+  myInfoDrawLine(ctx, left, top, left + width, top, "#111827", 4);
+  myInfoDrawLine(ctx, left, top + rowH, left + width, top + rowH, "#cbd5e1", 1);
+  myInfoDrawLine(ctx, left, top + rowH * 2, left + width, top + rowH * 2, "#cbd5e1", 1);
+  myInfoDrawLine(ctx, left, top, left, top + rowH * 2, "#cbd5e1", 1);
+  myInfoDrawLine(ctx, left + 210, top, left + 210, top + rowH * 2, "#cbd5e1", 1);
+  myInfoDrawLine(ctx, left + 540, top, left + 540, top + rowH * 2, "#cbd5e1", 1);
+  myInfoDrawLine(ctx, left + 740, top, left + 740, top + rowH * 2, "#cbd5e1", 1);
+  myInfoDrawLine(ctx, left + width, top, left + width, top + rowH * 2, "#cbd5e1", 1);
+  myInfoDrawCellText(ctx, "작성일자", left, top, 210, rowH);
+  myInfoDrawCellText(ctx, parts.date || "-", left + 210, top, 330, rowH, { size: 23, weight: "bold" });
+  myInfoDrawCellText(ctx, "주문번호", left + 540, top, 200, rowH);
+  myInfoDrawCellText(ctx, orderID || "-", left + 740, top, 336, rowH, { size: 19, minSize: 10, weight: "bold" });
+  myInfoDrawCellText(ctx, "결제일시", left, top + rowH, 210, rowH);
+  myInfoDrawCellText(ctx, paymentDateTime || "-", left + 210, top + rowH, 330, rowH);
+  myInfoDrawCellText(ctx, "결제방식", left + 540, top + rowH, 200, rowH);
+  myInfoDrawCellText(ctx, myInfoText(row.method) || "-", left + 740, top + rowH, 336, rowH);
+  const partyTop = top + rowH * 2 + 26;
+  const partyGap = 24;
+  const partyW = (width - partyGap) / 2;
+  const partyHeaderH = 42;
+  const partyRowH = 50;
+  const supplierRows = [
+    ["상호명", "주식회사 통계마당", { align: "left", size: 19, weight: "bold" }],
+    ["대표자", "유재성", { align: "left", size: 19, weight: "bold" }],
+    ["사업자등록번호", "795-88-02574", { align: "left", size: 19, weight: "bold" }],
+    ["주소", "서울특별시 강남구 테헤란로70길 12 402-106A호", { align: "left", size: 16, minSize: 11 }]
+  ];
+  const recipientRows = [
+    ["닉네임", buyerName, { align: "left", size: 19, weight: "bold" }]
+  ];
+  const partyH = partyHeaderH + partyRowH * Math.max(supplierRows.length, recipientRows.length);
+  const drawPartyBlock = (title, x, rows2) => {
+    const blockH = partyHeaderH + partyRowH * rows2.length;
+    ctx.save();
+    ctx.fillStyle = "#edf3f7";
+    ctx.fillRect(x, partyTop, partyW, partyHeaderH);
+    ctx.restore();
+    ctx.strokeStyle = "#cbd5e1";
+    ctx.lineWidth = 1;
+    ctx.strokeRect(x, partyTop, partyW, blockH);
+    myInfoDrawLine(ctx, x, partyTop + partyHeaderH, x + partyW, partyTop + partyHeaderH, "#cbd5e1", 1);
+    myInfoDrawLine(ctx, x + 150, partyTop + partyHeaderH, x + 150, partyTop + blockH, "#cbd5e1", 1);
+    myInfoDrawCellText(ctx, title, x, partyTop, partyW, partyHeaderH, { size: 21, weight: "bold" });
+    rows2.forEach((entry, idx) => {
+      const y = partyTop + partyHeaderH + partyRowH * idx;
+      if (idx > 0)
+        myInfoDrawLine(ctx, x, y, x + partyW, y, "#cbd5e1", 1);
+      myInfoDrawCellText(ctx, entry[0], x, y, 150, partyRowH, { size: 18, color: "#334155" });
+      myInfoDrawCellText(ctx, entry[1], x + 150, y, partyW - 150, partyRowH, entry[2] || { align: "left", size: 19, weight: "bold" });
+    });
+  };
+  drawPartyBlock("공급자", left, supplierRows);
+  drawPartyBlock("공급받는자", left + partyW + partyGap, recipientRows);
+  const tableTop = partyTop + partyH + 42;
+  const tableCols = [66, 390, 180, 90, 150, 200];
+  const tableHeaderH = 54;
+  const tableRowH = 64;
+  const tableBottom = tableTop + tableHeaderH + tableRowH;
+  myInfoDrawLine(ctx, left, tableTop, left + width, tableTop, "#111827", 3);
+  myInfoDrawLine(ctx, left, tableTop + tableHeaderH, left + width, tableTop + tableHeaderH, "#94a3b8", 1);
+  myInfoDrawLine(ctx, left, tableBottom, left + width, tableBottom, "#e2e8f0", 1);
+  let cursor = left;
+  tableCols.forEach((colWidth) => {
+    myInfoDrawLine(ctx, cursor, tableTop, cursor, tableBottom, "#e2e8f0", 1);
+    cursor += colWidth;
+  });
+  myInfoDrawLine(ctx, left + width, tableTop, left + width, tableBottom, "#e2e8f0", 1);
+  const colX = tableCols.reduce((acc, col) => {
+    acc.push(acc[acc.length - 1] + col);
+    return acc;
+  }, [left]);
+  ["NO", "품목", "대상", "수량", "단가", "금액 (VAT 포함)"].forEach((label, idx) => {
+    myInfoDrawCellText(ctx, label, colX[idx], tableTop, tableCols[idx], tableHeaderH, { size: 19, weight: "bold", color: "#334155" });
+  });
+  const bodyY = tableTop + tableHeaderH;
+  myInfoDrawCellText(ctx, "1", colX[0], bodyY, tableCols[0], tableRowH, { size: 19 });
+  myInfoDrawCellText(ctx, itemName, colX[1], bodyY, tableCols[1], tableRowH, { align: "left", size: 20, minSize: 13 });
+  myInfoDrawCellText(ctx, buyerName, colX[2], bodyY, tableCols[2], tableRowH, { align: "left", size: 19, minSize: 13 });
+  myInfoDrawCellText(ctx, quantity.toLocaleString("ko-KR"), colX[3], bodyY, tableCols[3], tableRowH, { align: "right", size: 19 });
+  myInfoDrawCellText(ctx, myInfoMoney(unitPrice), colX[4], bodyY, tableCols[4], tableRowH, { align: "right", size: 19, minSize: 12 });
+  myInfoDrawCellText(ctx, myInfoMoney(amount), colX[5], bodyY, tableCols[5], tableRowH, { align: "right", size: 20, weight: "bold", minSize: 12 });
+  myInfoDrawText(ctx, "통계마당", 620, 1070, {
+    align: "center",
+    font: `bold 150px ${myInfoStatementFontFamily}`,
+    color: "#0f172a",
+    alpha: 0.06
+  });
+  myInfoDrawLine(ctx, left, 1265, left + width, 1265, "#94a3b8", 1);
+  myInfoDrawText(ctx, "합계", left + 250, 1308, { align: "center", font: `bold 20px ${myInfoStatementFontFamily}` });
+  myInfoDrawText(ctx, quantity.toLocaleString("ko-KR"), left + 705, 1308, { align: "right", font: `20px ${myInfoStatementFontFamily}` });
+  myInfoDrawText(ctx, myInfoMoney(amount), left + 900, 1308, { align: "right", font: `bold 22px ${myInfoStatementFontFamily}` });
+  myInfoDrawLine(ctx, left, 1348, left + width, 1348, "#94a3b8", 1);
+  if (remarkText) {
+    myInfoDrawText(ctx, "비고", left + 20, 1400, { font: `20px ${myInfoStatementFontFamily}` });
+    myInfoDrawText(ctx, remarkText, left + 120, 1400, { font: `19px ${myInfoStatementFontFamily}`, maxWidth: width - 150 });
+    myInfoDrawLine(ctx, left, 1460, left + width, 1460, "#94a3b8", 1);
+  }
+  myInfoDrawText(ctx, `${parts.year || ""} 년  ${parts.month || ""} 월  ${parts.day || ""} 일`, 620, 1548, {
+    align: "center",
+    font: `bold 24px ${myInfoStatementFontFamily}`
+  });
+  myInfoDrawText(ctx, "공급자 : (주)통계마당", 885, 1600, { font: `bold 20px ${myInfoStatementFontFamily}` });
+  myInfoDrawText(ctx, `인수자 : ${buyerName}(인)`, 885, 1652, { font: `bold 20px ${myInfoStatementFontFamily}` });
+  if (signatureImage) {
+    ctx.drawImage(signatureImage, 1030, 1526, 124, 124);
+  }
+  ctx.fillStyle = "#78909c";
+  ctx.fillRect(30, 1700, 1180, 54);
+  myInfoDrawText(ctx, "통계마당 Statistical Ground Corp.", 620, 1727, {
+    align: "center",
+    font: `bold 28px ${myInfoStatementFontFamily}`,
+    color: "#ffffff"
+  });
+  return canvas;
+}
+function myInfoStringBytes(text) {
+  return new TextEncoder().encode(text);
+}
+function myInfoDataURLBytes(dataURL) {
+  const base64 = dataURL.split(",")[1] || "";
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i += 1)
+    bytes[i] = binary.charCodeAt(i);
+  return bytes;
+}
+function myInfoConcatBytes(parts) {
+  const total = parts.reduce((sum, part) => sum + part.length, 0);
+  const output = new Uint8Array(total);
+  let offset = 0;
+  parts.forEach((part) => {
+    output.set(part, offset);
+    offset += part.length;
+  });
+  return output;
+}
+function myInfoBuildImagePDF(jpegBytes, width, height) {
+  const chunks = [];
+  const offsets = [0];
+  let byteOffset = 0;
+  const add = (part) => {
+    const bytes = typeof part === "string" ? myInfoStringBytes(part) : part;
+    chunks.push(bytes);
+    byteOffset += bytes.length;
+  };
+  const addObject = (num, body) => {
+    offsets[num] = byteOffset;
+    add(`${num} 0 obj\n${body}\nendobj\n`);
+  };
+  add("%PDF-1.4\n");
+  addObject(1, "<< /Type /Catalog /Pages 2 0 R >>");
+  addObject(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>");
+  addObject(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /XObject << /Im0 4 0 R >> >> /Contents 5 0 R >>");
+  offsets[4] = byteOffset;
+  add(`4 0 obj\n<< /Type /XObject /Subtype /Image /Width ${width} /Height ${height} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${jpegBytes.length} >>\nstream\n`);
+  add(jpegBytes);
+  add("\nendstream\nendobj\n");
+  const content = "q\n595 0 0 842 0 0 cm\n/Im0 Do\nQ\n";
+  addObject(5, `<< /Length ${content.length} >>\nstream\n${content}endstream`);
+  const xrefOffset = byteOffset;
+  add("xref\n0 6\n0000000000 65535 f \n");
+  for (let i = 1; i <= 5; i += 1)
+    add(`${String(offsets[i]).padStart(10, "0")} 00000 n \n`);
+  add(`trailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF`);
+  return new Blob([myInfoConcatBytes(chunks)], { type: "application/pdf" });
+}
+async function myInfoDownloadPaymentStatement(row, user, signatureDataURL, signatureURL) {
+  const signatureImage = await myInfoLoadStatementSignature(signatureDataURL, signatureURL);
+  if (!signatureImage) {
+    window.alert("거래명세서 도장 이미지를 불러오지 못했습니다. 새로고침 후 다시 시도해 주세요.");
+    return;
+  }
+  await myInfoEnsureStatementFonts();
+  myInfoLogPaymentStatementDownload(row);
+  const canvas = myInfoCreateStatementCanvas(row, user, signatureImage);
+  const jpegBytes = myInfoDataURLBytes(canvas.toDataURL("image/jpeg", 0.92));
+  const blob = myInfoBuildImagePDF(jpegBytes, canvas.width, canvas.height);
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = myInfoStatementFileName(row);
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 1e3);
+}
+function myInfoGlobals() {
+  return window.__webr_globals__ || {};
+}
+function myInfoTrim(value) {
+  return myInfoText(value).trim();
+}
+function myInfoGoogleMessage(checker) {
+  const messages = {
+    GOOGLE_DISABLED: "\uAD6C\uAE00 \uB85C\uADF8\uC778\uC774 \uC544\uC9C1 \uC124\uC815\uB418\uC9C0 \uC54A\uC558\uC2B5\uB2C8\uB2E4.",
+    CSRF_FAILED: "\uC5F0\uB3D9 \uC694\uCCAD\uC744 \uD655\uC778\uD558\uC9C0 \uBABB\uD588\uC2B5\uB2C8\uB2E4. \uC0C8\uB85C\uACE0\uCE68 \uD6C4 \uB2E4\uC2DC \uC2DC\uB3C4\uD574\uC8FC\uC138\uC694.",
+    NONCE_FAILED: "Google \uC751\uB2F5\uC744 \uD655\uC778\uD558\uC9C0 \uBABB\uD588\uC2B5\uB2C8\uB2E4. \uC0C8\uB85C\uACE0\uCE68 \uD6C4 \uB2E4\uC2DC \uC2DC\uB3C4\uD574\uC8FC\uC138\uC694.",
+    INVALID_GOOGLE_TOKEN: "Google \uACC4\uC815 \uC815\uBCF4\uB97C \uD655\uC778\uD558\uC9C0 \uBABB\uD588\uC2B5\uB2C8\uB2E4.",
+    GOOGLE_EMAIL_UNVERIFIED: "\uC778\uC99D\uB418\uC9C0 \uC54A\uC740 Google \uC774\uBA54\uC77C\uC785\uB2C8\uB2E4.",
+    DOMAIN_NOT_ALLOWED: "\uD5C8\uC6A9\uB418\uC9C0 \uC54A\uC740 Google \uACC4\uC815 \uB3C4\uBA54\uC778\uC785\uB2C8\uB2E4.",
+    GOOGLE_ALREADY_LINKED: "\uC774\uBBF8 \uB2E4\uB978 Google \uACC4\uC815\uC774 \uC5F0\uACB0\uB418\uC5B4 \uC788\uC2B5\uB2C8\uB2E4.",
+    GOOGLE_ALREADY_LINKED_OTHER: "\uC774\uBBF8 \uB2E4\uB978 Web-R \uACC4\uC815\uC5D0 \uC5F0\uACB0\uB41C Google \uACC4\uC815\uC785\uB2C8\uB2E4.",
+    GOOGLE_EMAIL_OWNED_BY_OTHER_ACCOUNT: "\uD574\uB2F9 Google \uC774\uBA54\uC77C\uC744 \uC0AC\uC6A9\uD558\uB294 \uB2E4\uB978 Web-R \uACC4\uC815\uC774 \uC788\uC2B5\uB2C8\uB2E4.",
+    GOOGLE_NOT_LINKED: "\uC5F0\uACB0\uB41C Google \uACC4\uC815\uC774 \uC5C6\uC2B5\uB2C8\uB2E4.",
+    PASSWORD_REQUIRED: "Google\uB85C \uAC00\uC785\uD55C \uACC4\uC815\uC740 \uBE44\uBC00\uBC88\uD638\uB97C \uBA3C\uC800 \uC124\uC815\uD55C \uB4A4 \uC5F0\uACB0\uC744 \uD574\uC81C\uD560 \uC218 \uC788\uC2B5\uB2C8\uB2E4.",
+    INACTIVE: "\uBE44\uD65C\uC131 \uACC4\uC815\uC785\uB2C8\uB2E4.",
+    NOTEXIST: "\uB85C\uADF8\uC778\uC774 \uD544\uC694\uD569\uB2C8\uB2E4."
+  };
+  return messages[checker] || "Google \uACC4\uC815 \uC5F0\uB3D9\uC744 \uCC98\uB9AC\uD558\uC9C0 \uBABB\uD588\uC2B5\uB2C8\uB2E4.";
+}
+function myInfoEscapeHTML(value) {
+  return myInfoText(value).replace(/[&<>"']/g, (char) => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    '"': "&quot;",
+    "'": "&#39;"
+  })[char]);
+}
+function myInfoIsSafeURL(value, allowDataImage) {
+  const text = myInfoText(value).trim();
+  if (!text)
+    return false;
+  const compact = text.replace(/[\u0000-\u001f\s]+/g, "").toLowerCase();
+  if (compact.startsWith("javascript:") || compact.startsWith("vbscript:") || compact.startsWith("data:text/html")) {
+    return false;
+  }
+  return compact.startsWith("http://") || compact.startsWith("https://") || compact.startsWith("mailto:") || compact.startsWith("tel:") || compact.startsWith("/") || compact.startsWith("#") || allowDataImage && compact.startsWith("data:image/");
+}
+function myInfoSanitizeHTML(value) {
+  const source = myInfoText(value).trim();
+  if (!source)
+    return "";
+  if (!source.includes("<"))
+    return myInfoEscapeHTML(source);
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(`<div>${source}</div>`, "text/html");
+  const allowedTags = /* @__PURE__ */ new Set([
+    "a",
+    "b",
+    "blockquote",
+    "br",
+    "code",
+    "del",
+    "div",
+    "em",
+    "figcaption",
+    "figure",
+    "h1",
+    "h2",
+    "h3",
+    "h4",
+    "h5",
+    "h6",
+    "hr",
+    "i",
+    "img",
+    "li",
+    "ol",
+    "p",
+    "pre",
+    "s",
+    "span",
+    "strong",
+    "sub",
+    "sup",
+    "table",
+    "tbody",
+    "td",
+    "th",
+    "thead",
+    "tr",
+    "u",
+    "ul"
+  ]);
+  const removedTags = /* @__PURE__ */ new Set([
+    "base",
+    "button",
+    "embed",
+    "form",
+    "iframe",
+    "input",
+    "link",
+    "meta",
+    "object",
+    "script",
+    "select",
+    "style",
+    "textarea"
+  ]);
+  const globalAttrs = /* @__PURE__ */ new Set(["title"]);
+  const tableAttrs = /* @__PURE__ */ new Set(["colspan", "rowspan"]);
+  const sanitizeNode = (node) => {
+    Array.from(node.childNodes).forEach((child) => {
+      if (child.nodeType === 3)
+        return;
+      if (child.nodeType !== 1) {
+        child.remove();
+        return;
+      }
+      const tag = child.tagName.toLowerCase();
+      if (removedTags.has(tag)) {
+        child.remove();
+        return;
+      }
+      if (!allowedTags.has(tag)) {
+        const fragment = doc.createDocumentFragment();
+        while (child.firstChild)
+          fragment.appendChild(child.firstChild);
+        child.replaceWith(fragment);
+        sanitizeNode(node);
+        return;
+      }
+      Array.from(child.attributes).forEach((attr) => {
+        const name = attr.name.toLowerCase();
+        const valueText = attr.value;
+        if (name.startsWith("on")) {
+          child.removeAttribute(attr.name);
+          return;
+        }
+        if (name === "href" && tag === "a") {
+          if (!myInfoIsSafeURL(valueText, false))
+            child.removeAttribute(attr.name);
+          return;
+        }
+        if (name === "src" && tag === "img") {
+          if (!myInfoIsSafeURL(valueText, true))
+            child.removeAttribute(attr.name);
+          return;
+        }
+        if (tag === "img" && ["alt", "width", "height"].includes(name) || globalAttrs.has(name) || ["td", "th"].includes(tag) && tableAttrs.has(name)) {
+          return;
+        }
+        child.removeAttribute(attr.name);
+      });
+      if (tag === "a" && child.getAttribute("href")) {
+        child.setAttribute("rel", "noopener noreferrer");
+      }
+      sanitizeNode(child);
+    });
+  };
+  sanitizeNode(doc.body);
+  return doc.body.firstElementChild ? doc.body.firstElementChild.innerHTML : "";
+}
+function myInfoAppendUserForm(form, user, nextEmail, nextGender, nextEmailSubscription) {
+  const gender = myInfoText(nextGender || user.gender).trim() || "\uC751\uB2F5\uD558\uACE0 \uC2F6\uC9C0 \uC54A\uC74C";
+  const subscription = !!nextEmailSubscription;
+  form.append("txt_email", myInfoText(nextEmail || user.email));
+  form.append("txt_name", myInfoText(user.name));
+  form.append("txt_realname", myInfoText(user.realname));
+  form.append("sel_gender", gender);
+  form.append("rad_gender", gender);
+  if (subscription)
+    form.append("chk_email_subscription", "on");
+  form.append("rad_email_subscription", subscription ? "1" : "0");
+}
+function myInfoDateKey(value) {
+  const text = myInfoText(value).trim();
+  return text.length >= 10 ? text.slice(0, 10) : "";
+}
+function myInfoMonthKey(value) {
+  const date = myInfoDateKey(value);
+  return date.length >= 7 ? date.slice(0, 7) : "";
+}
+function myInfoYearKey(value) {
+  const date = myInfoDateKey(value);
+  return date.length >= 4 ? date.slice(0, 4) : "";
+}
+function myInfoUnitKey(value, granularity) {
+  const unit = myInfoNormalizeGranularity(granularity);
+  if (unit === "year")
+    return myInfoYearKey(value);
+  if (unit === "month")
+    return myInfoMonthKey(value);
+  return myInfoDateKey(value);
+}
+function myInfoNormalizeGranularity(value, fallback) {
+  const text = myInfoText(value).trim();
+  if (text === "day" || text === "month" || text === "year")
+    return text;
+  return fallback || "day";
+}
+function myInfoUnitLabel(granularity) {
+  const unit = myInfoNormalizeGranularity(granularity);
+  if (unit === "year")
+    return "\uC5F0\uBCC4";
+  if (unit === "month")
+    return "\uC6D4\uBCC4";
+  return "\uC77C\uBCC4";
+}
+function myInfoNextUnitKey(key, granularity) {
+  const unit = myInfoNormalizeGranularity(granularity);
+  if (unit === "year")
+    return String(Number(key) + 1);
+  if (unit === "month") {
+    const parts = key.split("-");
+    const year = Number(parts[0]);
+    const month = Number(parts[1]);
+    if (!year || !month)
+      return "";
+    const next = new Date(year, month, 1);
+    return `${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, "0")}`;
+  }
+  const date = /* @__PURE__ */ new Date(`${key}T00:00:00`);
+  if (Number.isNaN(date.getTime()))
+    return "";
+  date.setDate(date.getDate() + 1);
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+function myInfoFillSeries(series, granularity) {
+  if (!series || series.length === 0)
+    return [];
+  const sorted = [...series].sort((a, b) => String(a[0]).localeCompare(String(b[0])));
+  const byKey = Object.fromEntries(sorted.map((item) => [item[0], myInfoNumber(item[1])]));
+  const end = sorted[sorted.length - 1][0];
+  const filled = [];
+  let key = sorted[0][0];
+  let guard = 0;
+  while (key && key <= end && guard < 5e3) {
+    filled.push([key, byKey[key] || 0]);
+    key = myInfoNextUnitKey(key, granularity);
+    guard += 1;
+  }
+  return filled;
+}
+function myInfoAggregateSeries(rows, granularity, valueGetter) {
+  const unit = myInfoNormalizeGranularity(granularity);
+  const values = {};
+  (rows || []).forEach((row) => {
+    const key = myInfoUnitKey(row.date || row.created_at, unit);
+    if (!key)
+      return;
+    values[key] = (values[key] || 0) + myInfoNumber(valueGetter(row));
+  });
+  const series = Object.keys(values).sort().map((key) => [key, values[key]]);
+  return myInfoFillSeries(series, unit);
+}
+function myInfoFilledKeys(seriesList, granularity) {
+  const keys = (seriesList || []).flatMap((series) => series || []).map((item) => item[0]).filter(Boolean).sort();
+  if (keys.length === 0)
+    return [];
+  return myInfoFillSeries([[keys[0], 0], [keys[keys.length - 1], 0]], granularity).map((item) => item[0]);
+}
+function myInfoDailySeries(rows) {
+  const counts = {};
+  (rows || []).forEach((row) => {
+    const date = myInfoDateKey(row.date || row.created_at);
+    if (!date)
+      return;
+    counts[date] = (counts[date] || 0) + myInfoNumber(row.cnt || 1);
+  });
+  return Object.keys(counts).sort().map((date) => [date, counts[date]]);
+}
+function myInfoSeriesRange(series) {
+  if (!series || series.length === 0)
+    return [];
+  return [series[0][0], series[series.length - 1][0]];
+}
+function myInfoMaxSeriesValue(series) {
+  return Math.max(1, ...(series || []).map((item) => myInfoNumber(item[1])));
+}
+function myInfoActivitySummaryOption(articleCount, commentCount, paymentCount) {
+  return {
+    grid: { top: 24, right: 18, bottom: 34, left: 42 },
+    tooltip: { trigger: "axis" },
+    xAxis: {
+      type: "category",
+      data: ["\uC4F4 \uAE00", "\uC4F4 \uB313\uAE00", "\uACB0\uC81C"],
+      axisTick: { show: false },
+      axisLine: { lineStyle: { color: "#cbd5e1" } }
+    },
+    yAxis: {
+      type: "value",
+      minInterval: 1,
+      splitLine: { lineStyle: { color: "#e2e8f0" } }
+    },
+    series: [{
+      type: "bar",
+      data: [articleCount, commentCount, paymentCount],
+      barWidth: 34,
+      itemStyle: { borderRadius: [6, 6, 0, 0], color: "#0f172a" }
+    }]
+  };
+}
+function myInfoPaymentAmountOption(rows, granularity) {
+  const unit = myInfoNormalizeGranularity(granularity, "month");
+  const series = myInfoAggregateSeries(rows, unit, (row) => row.amount);
+  if (series.length === 0)
+    return null;
+  return {
+    grid: { top: 24, right: 18, bottom: 34, left: 64 },
+    tooltip: {
+      trigger: "axis",
+      valueFormatter: (value) => myInfoMoney(value)
+    },
+    xAxis: {
+      type: "category",
+      data: series.map((item) => item[0]),
+      axisTick: { show: false },
+      axisLine: { lineStyle: { color: "#cbd5e1" } },
+      axisLabel: { hideOverlap: true }
+    },
+    yAxis: {
+      type: "value",
+      axisLabel: { formatter: (value) => `${Math.round(value / 1e4)}\uB9CC` },
+      splitLine: { lineStyle: { color: "#e2e8f0" } }
+    },
+    series: [{
+      type: "bar",
+      data: series.map((item) => item[1]),
+      barMaxWidth: 28,
+      itemStyle: { borderRadius: [6, 6, 0, 0], color: "#0284c7" }
+    }]
+  };
+}
+function myInfoCalendarOption(rows, title) {
+  const allSeries = myInfoDailySeries(rows);
+  if (allSeries.length === 0)
+    return null;
+  const lastDate = /* @__PURE__ */ new Date(`${allSeries[allSeries.length - 1][0]}T00:00:00`);
+  const firstAllowed = new Date(lastDate);
+  firstAllowed.setDate(firstAllowed.getDate() - 364);
+  const series = allSeries.filter((item) => /* @__PURE__ */ new Date(`${item[0]}T00:00:00`) >= firstAllowed);
+  if (series.length === 0)
+    return null;
+  const range = myInfoSeriesRange(series);
+  const max = myInfoMaxSeriesValue(series);
+  return {
+    title: { text: title, left: 0, top: 0, textStyle: { color: "#0f172a", fontSize: 15, fontWeight: 700 } },
+    tooltip: {
+      formatter: (params) => `${params.value[0]}<br/>${myInfoNumber(params.value[1]).toLocaleString("ko-KR")}\uD68C`
+    },
+    visualMap: {
+      min: 0,
+      max,
+      orient: "horizontal",
+      left: "center",
+      bottom: 0,
+      inRange: { color: ["#f8fafc", "#bae6fd", "#0ea5e9", "#0f172a"] },
+      textStyle: { color: "#64748b" }
+    },
+    calendar: {
+      top: 48,
+      left: 34,
+      right: 20,
+      bottom: 42,
+      range,
+      cellSize: ["auto", 16],
+      itemStyle: { borderColor: "#ffffff", borderWidth: 2 },
+      splitLine: { lineStyle: { color: "#cbd5e1", width: 1 } },
+      dayLabel: { color: "#64748b" },
+      monthLabel: { color: "#64748b" },
+      yearLabel: { show: false }
+    },
+    series: [{ type: "heatmap", coordinateSystem: "calendar", data: series }]
+  };
+}
+function myInfoConnectionTrendOption(visitRows, shinyRows, granularity) {
+  const unit = myInfoNormalizeGranularity(granularity);
+  const visitSeries = myInfoAggregateSeries(visitRows, unit, (row) => row.cnt || 1);
+  const shinySeries = myInfoAggregateSeries(shinyRows, unit, (row) => row.cnt || 1);
+  const keys = myInfoFilledKeys([visitSeries, shinySeries], unit);
+  if (keys.length === 0)
+    return null;
+  const visitByKey = Object.fromEntries(visitSeries);
+  const shinyByKey = Object.fromEntries(shinySeries);
+  return {
+    legend: { top: 0, right: 0, textStyle: { color: "#475569" } },
+    grid: { top: 42, right: 20, bottom: 34, left: 42 },
+    tooltip: { trigger: "axis" },
+    xAxis: {
+      type: "category",
+      data: keys,
+      axisTick: { show: false },
+      axisLine: { lineStyle: { color: "#cbd5e1" } },
+      axisLabel: { hideOverlap: true }
+    },
+    yAxis: {
+      type: "value",
+      minInterval: 1,
+      splitLine: { lineStyle: { color: "#e2e8f0" } }
+    },
+    series: [
+      { name: "\uBC29\uBB38", type: "line", smooth: true, showSymbol: false, data: keys.map((key) => visitByKey[key] || 0), symbolSize: 6, lineStyle: { width: 3, color: "#0f172a" }, itemStyle: { color: "#0f172a" }, areaStyle: { color: "rgba(15, 23, 42, 0.08)" } },
+      { name: "\uC571 \uC811\uC18D", type: "line", smooth: true, showSymbol: false, data: keys.map((key) => shinyByKey[key] || 0), symbolSize: 6, lineStyle: { width: 3, color: "#0284c7" }, itemStyle: { color: "#0284c7" }, areaStyle: { color: "rgba(2, 132, 199, 0.08)" } }
+    ]
+  };
+}
+const myInfoGranularityOptions = [
+  { key: "day", label: "\uC77C\uBCC4" },
+  { key: "month", label: "\uC6D4\uBCC4" },
+  { key: "year", label: "\uC5F0\uBCC4" }
+];
+function MyInfoGranularityControl(props) {
+  const value = myInfoNormalizeGranularity(props.value, props.defaultValue || "day");
+  return /* @__PURE__ */ React.createElement("div", { className: "flex flex-wrap gap-1 rounded-lg border border-slate-200 bg-slate-50 p-1" }, myInfoGranularityOptions.map((option) => {
+    const selected = option.key === value;
+    return /* @__PURE__ */ React.createElement(
+      "button",
+      {
+        key: option.key,
+        type: "button",
+        className: `rounded-md px-3 py-1.5 text-xs font-bold transition ${selected ? "bg-slate-950 text-white shadow-sm" : "text-slate-600 hover:bg-white hover:text-slate-950"}`,
+        "aria-pressed": selected,
+        onClick: () => props.onChange(option.key)
+      },
+      option.label
+    );
+  }));
+}
+function MyInfoChart(props) {
+  const ref = React.useRef(null);
+  const [ready, setReady] = React.useState(false);
+  React.useEffect(() => {
+    setReady(false);
+    if (!ref.current || !window.echarts || !props.option)
+      return void 0;
+    let canceled = false;
+    const chart = window.echarts.init(ref.current);
+    chart.setOption(props.option);
+    window.requestAnimationFrame(() => {
+      if (!canceled)
+        setReady(true);
+    });
+    const resize = () => chart.resize();
+    window.addEventListener("resize", resize);
+    return () => {
+      canceled = true;
+      window.removeEventListener("resize", resize);
+      chart.dispose();
+    };
+  }, [props.option]);
+  const className = props.className || "h-[260px] w-full";
+  if (props.loading) {
+    return /* @__PURE__ */ React.createElement(MyInfoChartSkeleton, { className });
+  }
+  if (!props.option) {
+    return /* @__PURE__ */ React.createElement(MyInfoTableEmpty, null, props.empty || "\uD45C\uC2DC\uD560 \uB370\uC774\uD130\uAC00 \uC5C6\uC2B5\uB2C8\uB2E4.");
+  }
+  return /* @__PURE__ */ React.createElement("div", { className: `relative ${className}` }, /* @__PURE__ */ React.createElement("div", { ref, className: "h-full w-full" }), !ready ? /* @__PURE__ */ React.createElement("div", { className: "absolute inset-0 rounded-lg border border-slate-200 bg-white p-5" }, /* @__PURE__ */ React.createElement("div", { className: "flex h-full animate-pulse flex-col justify-between" }, /* @__PURE__ */ React.createElement("div", { className: "space-y-3" }, /* @__PURE__ */ React.createElement("div", { className: "h-4 w-1/3 rounded-full bg-slate-200" }), /* @__PURE__ */ React.createElement("div", { className: "h-3 w-1/2 rounded-full bg-slate-100" })), /* @__PURE__ */ React.createElement("div", { className: "grid h-2/3 grid-cols-12 items-end gap-2" }, [35, 60, 44, 76, 52, 88, 63, 48, 72, 55, 81, 66].map((height, index) => /* @__PURE__ */ React.createElement("div", { key: index, className: "rounded-t bg-slate-200", style: { height: `${height}%` } }))), /* @__PURE__ */ React.createElement("div", { className: "h-3 w-2/3 rounded-full bg-slate-100" }))) : null);
+}
+function MyInfoChartSkeleton(props) {
+  return /* @__PURE__ */ React.createElement("div", { className: `rounded-lg border border-slate-200 bg-white p-5 ${props.className || "h-[260px] w-full"}` }, /* @__PURE__ */ React.createElement("div", { className: "flex h-full animate-pulse flex-col justify-between" }, /* @__PURE__ */ React.createElement("div", { className: "space-y-3" }, /* @__PURE__ */ React.createElement("div", { className: "h-4 w-1/3 rounded-full bg-slate-200" }), /* @__PURE__ */ React.createElement("div", { className: "h-3 w-1/2 rounded-full bg-slate-100" })), /* @__PURE__ */ React.createElement("div", { className: "grid h-2/3 grid-cols-12 items-end gap-2" }, [35, 60, 44, 76, 52, 88, 63, 48, 72, 55, 81, 66].map((height, index) => /* @__PURE__ */ React.createElement("div", { key: index, className: "rounded-t bg-slate-200", style: { height: `${height}%` } }))), /* @__PURE__ */ React.createElement("div", { className: "h-3 w-2/3 rounded-full bg-slate-100" })));
+}
+function MyInfoField(props) {
+  return /* @__PURE__ */ React.createElement("div", { className: "rounded-lg border border-slate-200 bg-white px-5 py-4" }, /* @__PURE__ */ React.createElement("div", { className: "text-sm font-semibold text-slate-500" }, props.label), /* @__PURE__ */ React.createElement("div", { className: "mt-3 break-words text-lg text-slate-900" }, props.value || "-"));
+}
+function MyInfoPanel(props) {
+  return /* @__PURE__ */ React.createElement("section", { className: "rounded-lg border border-slate-200 bg-white p-7 shadow-sm sm:p-5" }, /* @__PURE__ */ React.createElement("div", { className: "mb-5 flex flex-row items-end justify-between gap-2 sm:flex-col sm:items-start" }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("h2", { className: "text-xl font-bold text-slate-950" }, props.title), props.subtitle ? /* @__PURE__ */ React.createElement("p", { className: "mt-2 text-sm text-slate-500" }, props.subtitle) : null), props.action), props.children);
+}
+function MyInfoMessage(props) {
+  if (!props.children)
+    return null;
+  const tone = props.tone || "blue";
+  const classes = tone === "red" ? "border-rose-200 bg-rose-50 text-rose-700" : tone === "green" ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-sky-200 bg-sky-50 text-sky-700";
+  return /* @__PURE__ */ React.createElement("div", { className: `rounded-lg border px-4 py-3 text-sm ${classes}` }, props.children);
+}
+function MyInfoTableEmpty(props) {
+  return /* @__PURE__ */ React.createElement("div", { className: "rounded-lg border border-dashed border-slate-200 bg-slate-50 px-5 py-10 text-center text-sm text-slate-500" }, props.children);
+}
+function MyInfoHTMLPreview(props) {
+  const html = React.useMemo(() => myInfoSanitizeHTML(props.html), [props.html]);
+  if (!html) {
+    return /* @__PURE__ */ React.createElement("div", { className: "mt-3 text-sm text-slate-500" }, "-");
+  }
+  return /* @__PURE__ */ React.createElement("div", { className: "mt-3 line-clamp-3 text-sm leading-6 text-slate-600", dangerouslySetInnerHTML: { __html: html } });
+}
+function MyInfoOverview(props) {
+  const user = props.user || {};
+  const google2 = props.googleIdentity || {};
+  const [paymentGranularity, setPaymentGranularity] = React.useState("month");
+  const articleCount = myInfoRows((props.articles || {}).list).length;
+  const commentCount = myInfoRows((props.comments || {}).list).length;
+  const paymentRows = myInfoRows((props.payments || {}).list);
+  const paymentCount = paymentRows.length;
+  const activityLoading = props.loadingArticles || props.loadingComments || props.loadingPayments;
+  const summaryOption = myInfoActivitySummaryOption(articleCount, commentCount, paymentCount);
+  const paymentOption = myInfoPaymentAmountOption(paymentRows, paymentGranularity);
+  return /* @__PURE__ */ React.createElement("div", { className: "space-y-7" }, /* @__PURE__ */ React.createElement(MyInfoPanel, { title: "\uC800\uC7A5\uB41C \uAC1C\uC778\uC815\uBCF4" }, /* @__PURE__ */ React.createElement("div", { className: "grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3" }, /* @__PURE__ */ React.createElement(MyInfoField, { label: "\uC774\uBA54\uC77C", value: user.email }), /* @__PURE__ */ React.createElement(MyInfoField, { label: "\uB2C9\uB124\uC784", value: user.name }), /* @__PURE__ */ React.createElement(MyInfoField, { label: "\uC774\uB984", value: user.realname }), /* @__PURE__ */ React.createElement(MyInfoField, { label: "\uD68C\uC6D0 \uB4F1\uAE09", value: user.role }), /* @__PURE__ */ React.createElement(MyInfoField, { label: "\uC131\uBCC4", value: myInfoGenderLabel(user.gender, props.genderOptions) }), /* @__PURE__ */ React.createElement(MyInfoField, { label: "\uD68C\uC6D0\uB4F1\uAE09 \uB9CC\uB8CC\uC77C", value: user.expired_at || "\uBB34\uC81C\uD55C" }), /* @__PURE__ */ React.createElement(MyInfoField, { label: "\uAC00\uC785 \uC77C\uC790", value: user.date_joined }), /* @__PURE__ */ React.createElement(MyInfoField, { label: "\uCD5C\uADFC \uC218\uC815\uC77C", value: user.updated_at }), /* @__PURE__ */ React.createElement(MyInfoField, { label: "\uC774\uBA54\uC77C \uC218\uC2E0", value: myInfoNumber(user.email_subscription) === 1 ? "\uD5C8\uC6A9" : "\uAC70\uBD80" }))), /* @__PURE__ */ React.createElement(MyInfoPanel, { title: "\uC5F0\uB3D9\uB41C \uB85C\uADF8\uC778 \uBC29\uC2DD" }, /* @__PURE__ */ React.createElement("div", { className: "grid grid-cols-1 gap-4 sm:grid-cols-2" }, /* @__PURE__ */ React.createElement("div", { className: "rounded-lg border border-slate-200 bg-white px-5 py-4" }, /* @__PURE__ */ React.createElement("div", { className: "text-sm font-semibold text-slate-500" }, "\uC774\uBA54\uC77C \uB85C\uADF8\uC778"), /* @__PURE__ */ React.createElement("div", { className: "mt-3 text-base font-semibold text-slate-950" }, "\uC0AC\uC6A9 \uAC00\uB2A5"), /* @__PURE__ */ React.createElement("div", { className: "mt-2 break-words text-sm text-slate-500" }, user.email || "-")), /* @__PURE__ */ React.createElement("div", { className: "rounded-lg border border-slate-200 bg-white px-5 py-4" }, /* @__PURE__ */ React.createElement("div", { className: "text-sm font-semibold text-slate-500" }, "Google \uB85C\uADF8\uC778"), /* @__PURE__ */ React.createElement("div", { className: "mt-3 text-base font-semibold text-slate-950" }, google2.connected ? "\uC5F0\uB3D9\uB428" : "\uBBF8\uC5F0\uB3D9"), /* @__PURE__ */ React.createElement("div", { className: "mt-2 break-words text-sm text-slate-500" }, google2.connected ? google2.email || google2.name || "-" : "\uD558\uC704 \uBA54\uB274\uC5D0\uC11C Google \uACC4\uC815\uC744 \uC5F0\uACB0\uD560 \uC218 \uC788\uC2B5\uB2C8\uB2E4.")))), /* @__PURE__ */ React.createElement("div", { className: "grid grid-cols-1 gap-4 md:grid-cols-3" }, /* @__PURE__ */ React.createElement(MyInfoField, { label: "\uB0B4\uAC00 \uC4F4 \uAE00", value: props.loadingArticles ? "\uBD88\uB7EC\uC624\uB294 \uC911" : `${articleCount.toLocaleString("ko-KR")}\uAC1C` }), /* @__PURE__ */ React.createElement(MyInfoField, { label: "\uB0B4\uAC00 \uC4F4 \uB313\uAE00", value: props.loadingComments ? "\uBD88\uB7EC\uC624\uB294 \uC911" : `${commentCount.toLocaleString("ko-KR")}\uAC1C` }), /* @__PURE__ */ React.createElement(MyInfoField, { label: "\uACB0\uC81C \uB0B4\uC5ED", value: props.loadingPayments ? "\uBD88\uB7EC\uC624\uB294 \uC911" : `${paymentCount.toLocaleString("ko-KR")}\uAC74` })), /* @__PURE__ */ React.createElement("div", { className: "grid grid-cols-1 gap-7 md:grid-cols-2" }, /* @__PURE__ */ React.createElement(MyInfoPanel, { title: "\uB098\uC758 \uD65C\uB3D9 \uC694\uC57D" }, /* @__PURE__ */ React.createElement(MyInfoChart, { option: summaryOption, loading: activityLoading, className: "h-[260px] w-full" })), /* @__PURE__ */ React.createElement(MyInfoPanel, { title: "\uACB0\uC81C \uAE08\uC561", action: /* @__PURE__ */ React.createElement(MyInfoGranularityControl, { value: paymentGranularity, defaultValue: "month", onChange: setPaymentGranularity }) }, /* @__PURE__ */ React.createElement(MyInfoChart, { option: paymentOption, loading: props.loadingPayments, className: "h-[260px] w-full", empty: "\uACB0\uC81C \uCC28\uD2B8\uB97C \uD45C\uC2DC\uD560 \uB370\uC774\uD130\uAC00 \uC5C6\uC2B5\uB2C8\uB2E4." }))));
+}
+function MyInfoEmailForm(props) {
+  const [email, setEmail] = React.useState(myInfoText((props.user || {}).email));
+  const [saving, setSaving] = React.useState(false);
+  const [message, setMessage] = React.useState("");
+  const [tone, setTone] = React.useState("blue");
+  React.useEffect(() => setEmail(myInfoText((props.user || {}).email)), [props.user]);
+  function submit(event) {
+    event.preventDefault();
+    const nextEmail = email.trim().toLowerCase();
+    if (!nextEmail || !nextEmail.includes("@")) {
+      setTone("red");
+      setMessage("\uC774\uBA54\uC77C \uD615\uC2DD\uC744 \uD655\uC778\uD574\uC8FC\uC138\uC694.");
+      return;
+    }
+    const user = props.user || {};
+    const currentEmail = myInfoText(user.email).trim().toLowerCase();
+    const willChangeEmail = nextEmail !== currentEmail;
+    if (willChangeEmail && !window.confirm("\uC774\uBA54\uC77C\uC744 \uBCC0\uACBD\uD558\uBA74 \uD604\uC7AC \uB85C\uADF8\uC778 \uC138\uC158\uC774 \uC885\uB8CC\uB429\uB2C8\uB2E4. \uC0C8 \uC774\uBA54\uC77C\uB85C \uB2E4\uC2DC \uB85C\uADF8\uC778\uD574\uC57C \uD569\uB2C8\uB2E4. \uACC4\uC18D\uD560\uAE4C\uC694?")) {
+      return;
+    }
+    const form = new FormData();
+    myInfoAppendUserForm(
+      form,
+      user,
+      nextEmail,
+      myInfoText(user.gender) || "\uC751\uB2F5\uD558\uACE0 \uC2F6\uC9C0 \uC54A\uC74C",
+      myInfoNumber(user.email_subscription) === 1
+    );
+    let redirecting = false;
+    setSaving(true);
+    myInfoFetchJSON("/account/ajax_update_userinfo/", { method: "POST", body: form }).then((payload) => {
+      const checker = myInfoText(payload.checker);
+      const requiresRelogin = myInfoBool(payload.requires_relogin) || myInfoBool(payload.email_changed);
+      if (checker === "SUCCESS" || checker === "NOTEXIST") {
+        if (requiresRelogin) {
+          redirecting = true;
+          setTone("green");
+          setMessage(myInfoText(payload.message) || "\uC774\uBA54\uC77C\uC774 \uBCC0\uACBD\uB418\uC5C8\uC2B5\uB2C8\uB2E4. \uC7A0\uC2DC \uD6C4 \uB85C\uADF8\uC778 \uD654\uBA74\uC73C\uB85C \uC774\uB3D9\uD569\uB2C8\uB2E4.");
+          window.setTimeout(() => {
+            window.location.href = myInfoText(payload.redirect) || "/account/?next=/account/myinfo/";
+          }, 1800);
+          return;
+        }
+        setTone("green");
+        setMessage("\uC774\uBA54\uC77C\uC774 \uBCC0\uACBD\uB418\uC5C8\uC2B5\uB2C8\uB2E4. \uB2E4\uC74C \uB85C\uADF8\uC778\uBD80\uD130 \uC0C8 \uC774\uBA54\uC77C\uC744 \uC0AC\uC6A9\uD558\uC138\uC694.");
+        props.reload();
+        return;
+      }
+      setTone("red");
+      setMessage(checker === "EXIST" ? "\uC774\uBBF8 \uC0AC\uC6A9 \uC911\uC778 \uC774\uBA54\uC77C\uC785\uB2C8\uB2E4." : "\uC774\uBA54\uC77C\uC744 \uBCC0\uACBD\uD558\uC9C0 \uBABB\uD588\uC2B5\uB2C8\uB2E4.");
+    }).finally(() => {
+      if (!redirecting)
+        setSaving(false);
+    });
+  }
+  return /* @__PURE__ */ React.createElement(MyInfoPanel, { title: "\uC774\uBA54\uC77C \uBCC0\uACBD", subtitle: "\uB85C\uADF8\uC778\uACFC \uACB0\uC81C \uC548\uB0B4\uC5D0 \uC0AC\uC6A9\uD560 \uC774\uBA54\uC77C\uC785\uB2C8\uB2E4." }, /* @__PURE__ */ React.createElement("form", { onSubmit: submit, className: "space-y-5" }, /* @__PURE__ */ React.createElement("label", { className: "block" }, /* @__PURE__ */ React.createElement("span", { className: "text-sm font-semibold text-slate-600" }, "\uC0C8 \uC774\uBA54\uC77C"), /* @__PURE__ */ React.createElement(
+    "input",
+    {
+      type: "email",
+      className: "mt-2 w-full rounded-lg border-slate-300 text-base focus:border-slate-900 focus:ring-slate-900",
+      value: email,
+      onChange: (event) => setEmail(event.target.value),
+      autoComplete: "email"
+    }
+  )), /* @__PURE__ */ React.createElement(MyInfoMessage, { tone }, message), /* @__PURE__ */ React.createElement("button", { type: "submit", disabled: saving, className: "rounded-lg bg-slate-950 px-5 py-3 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:bg-slate-400" }, saving ? "\uC800\uC7A5 \uC911" : "\uC774\uBA54\uC77C \uC800\uC7A5")));
+}
+function MyInfoPasswordForm() {
+  const [draft, setDraft] = React.useState({ current: "", next: "", confirm: "" });
+  const [saving, setSaving] = React.useState(false);
+  const [message, setMessage] = React.useState("");
+  const [tone, setTone] = React.useState("blue");
+  function patch(key, value) {
+    setDraft((prev) => ({ ...prev, [key]: value }));
+  }
+  function submit(event) {
+    event.preventDefault();
+    if (!draft.current || !draft.next) {
+      setTone("red");
+      setMessage("\uD604\uC7AC \uBE44\uBC00\uBC88\uD638\uC640 \uC0C8 \uBE44\uBC00\uBC88\uD638\uB97C \uC785\uB825\uD574\uC8FC\uC138\uC694.");
+      return;
+    }
+    if (draft.next.length < 8) {
+      setTone("red");
+      setMessage("\uC0C8 \uBE44\uBC00\uBC88\uD638\uB294 8\uC790 \uC774\uC0C1\uC774\uC5B4\uC57C \uD569\uB2C8\uB2E4.");
+      return;
+    }
+    if (draft.next !== draft.confirm) {
+      setTone("red");
+      setMessage("\uC0C8 \uBE44\uBC00\uBC88\uD638\uAC00 \uC11C\uB85C \uC77C\uCE58\uD558\uC9C0 \uC54A\uC2B5\uB2C8\uB2E4.");
+      return;
+    }
+    const form = new FormData();
+    form.append("current_password", draft.current);
+    form.append("new_password", draft.next);
+    setSaving(true);
+    myInfoFetchJSON("/account/ajax_change_my_password/", { method: "POST", body: form }).then((payload) => {
+      const checker = myInfoText(payload.checker);
+      if (checker === "SUCCESS") {
+        setTone("green");
+        setMessage("\uBE44\uBC00\uBC88\uD638\uAC00 \uBCC0\uACBD\uB418\uC5C8\uC2B5\uB2C8\uB2E4.");
+        setDraft({ current: "", next: "", confirm: "" });
+        return;
+      }
+      setTone("red");
+      setMessage(checker === "WRONGPASSWORD" ? "\uD604\uC7AC \uBE44\uBC00\uBC88\uD638\uAC00 \uC77C\uCE58\uD558\uC9C0 \uC54A\uC2B5\uB2C8\uB2E4." : "\uBE44\uBC00\uBC88\uD638\uB97C \uBCC0\uACBD\uD558\uC9C0 \uBABB\uD588\uC2B5\uB2C8\uB2E4.");
+    }).finally(() => setSaving(false));
+  }
+  return /* @__PURE__ */ React.createElement(MyInfoPanel, { title: "\uBE44\uBC00\uBC88\uD638 \uBCC0\uACBD", subtitle: "\uD604\uC7AC \uBE44\uBC00\uBC88\uD638\uB97C \uD655\uC778\uD55C \uB4A4 \uC0C8 \uBE44\uBC00\uBC88\uD638\uB85C \uBCC0\uACBD\uD569\uB2C8\uB2E4." }, /* @__PURE__ */ React.createElement("form", { onSubmit: submit, className: "space-y-5" }, /* @__PURE__ */ React.createElement("label", { className: "block" }, /* @__PURE__ */ React.createElement("span", { className: "text-sm font-semibold text-slate-600" }, "\uD604\uC7AC \uBE44\uBC00\uBC88\uD638"), /* @__PURE__ */ React.createElement("input", { type: "password", className: "mt-2 w-full rounded-lg border-slate-300 focus:border-slate-900 focus:ring-slate-900", value: draft.current, onChange: (event) => patch("current", event.target.value), autoComplete: "current-password" })), /* @__PURE__ */ React.createElement("div", { className: "grid grid-cols-1 gap-4 md:grid-cols-2" }, /* @__PURE__ */ React.createElement("label", { className: "block" }, /* @__PURE__ */ React.createElement("span", { className: "text-sm font-semibold text-slate-600" }, "\uC0C8 \uBE44\uBC00\uBC88\uD638"), /* @__PURE__ */ React.createElement("input", { type: "password", className: "mt-2 w-full rounded-lg border-slate-300 focus:border-slate-900 focus:ring-slate-900", value: draft.next, onChange: (event) => patch("next", event.target.value), autoComplete: "new-password" })), /* @__PURE__ */ React.createElement("label", { className: "block" }, /* @__PURE__ */ React.createElement("span", { className: "text-sm font-semibold text-slate-600" }, "\uC0C8 \uBE44\uBC00\uBC88\uD638 \uD655\uC778"), /* @__PURE__ */ React.createElement("input", { type: "password", className: "mt-2 w-full rounded-lg border-slate-300 focus:border-slate-900 focus:ring-slate-900", value: draft.confirm, onChange: (event) => patch("confirm", event.target.value), autoComplete: "new-password" }))), /* @__PURE__ */ React.createElement(MyInfoMessage, { tone }, message), /* @__PURE__ */ React.createElement("button", { type: "submit", disabled: saving, className: "rounded-lg bg-slate-950 px-5 py-3 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:bg-slate-400" }, saving ? "\uBCC0\uACBD \uC911" : "\uBE44\uBC00\uBC88\uD638 \uBCC0\uACBD")));
+}
+function MyInfoProfileForm(props) {
+  const user = props.user || {};
+  const [draft, setDraft] = React.useState({
+    name: "",
+    realname: "",
+    gender: "\uC751\uB2F5\uD558\uACE0 \uC2F6\uC9C0 \uC54A\uC74C",
+    emailSubscription: true
+  });
+  const [saving, setSaving] = React.useState(false);
+  const [message, setMessage] = React.useState("");
+  const [tone, setTone] = React.useState("blue");
+  React.useEffect(() => {
+    setDraft({
+      name: myInfoText(user.name),
+      realname: myInfoText(user.realname),
+      gender: myInfoText(user.gender) || "\uC751\uB2F5\uD558\uACE0 \uC2F6\uC9C0 \uC54A\uC74C",
+      emailSubscription: myInfoNumber(user.email_subscription) === 1
+    });
+  }, [props.user]);
+  function patch(key, value) {
+    setDraft((prev) => ({ ...prev, [key]: value }));
+  }
+  function submit(event) {
+    event.preventDefault();
+    if (!draft.name.trim()) {
+      setTone("red");
+      setMessage("\uB2C9\uB124\uC784\uC744 \uC785\uB825\uD574\uC8FC\uC138\uC694.");
+      return;
+    }
+    const form = new FormData();
+    myInfoAppendUserForm(
+      form,
+      { ...user, name: draft.name.trim(), realname: draft.realname.trim(), gender: draft.gender },
+      myInfoText(user.email),
+      draft.gender || "\uC751\uB2F5\uD558\uACE0 \uC2F6\uC9C0 \uC54A\uC74C",
+      draft.emailSubscription
+    );
+    setSaving(true);
+    myInfoFetchJSON("/account/ajax_update_userinfo/", { method: "POST", body: form }).then((payload) => {
+      if (myInfoText(payload.checker) === "SUCCESS") {
+        setTone("green");
+        setMessage("\uAC1C\uC778\uC815\uBCF4\uAC00 \uC800\uC7A5\uB418\uC5C8\uC2B5\uB2C8\uB2E4.");
+        props.reload();
+        return;
+      }
+      setTone("red");
+      setMessage("\uAC1C\uC778\uC815\uBCF4\uB97C \uC800\uC7A5\uD558\uC9C0 \uBABB\uD588\uC2B5\uB2C8\uB2E4.");
+    }).finally(() => setSaving(false));
+  }
+  return /* @__PURE__ */ React.createElement(MyInfoPanel, { title: "\uAC1C\uC778\uC815\uBCF4 \uBCC0\uACBD", subtitle: "\uD504\uB85C\uD544\uC5D0 \uD45C\uC2DC\uB418\uB294 \uC815\uBCF4\uC640 \uC774\uBA54\uC77C \uC218\uC2E0 \uC5EC\uBD80\uC785\uB2C8\uB2E4." }, /* @__PURE__ */ React.createElement("form", { onSubmit: submit, className: "space-y-5" }, /* @__PURE__ */ React.createElement("div", { className: "grid grid-cols-1 gap-4 md:grid-cols-2" }, /* @__PURE__ */ React.createElement("label", { className: "block" }, /* @__PURE__ */ React.createElement("span", { className: "text-sm font-semibold text-slate-600" }, "\uB2C9\uB124\uC784"), /* @__PURE__ */ React.createElement("input", { className: "mt-2 w-full rounded-lg border-slate-300 focus:border-slate-900 focus:ring-slate-900", value: draft.name, onChange: (event) => patch("name", event.target.value) })), /* @__PURE__ */ React.createElement("label", { className: "block" }, /* @__PURE__ */ React.createElement("span", { className: "text-sm font-semibold text-slate-600" }, "\uC774\uB984"), /* @__PURE__ */ React.createElement("input", { className: "mt-2 w-full rounded-lg border-slate-300 focus:border-slate-900 focus:ring-slate-900", value: draft.realname, onChange: (event) => patch("realname", event.target.value) }))), /* @__PURE__ */ React.createElement("div", { className: "grid grid-cols-1 gap-4 md:grid-cols-2" }, /* @__PURE__ */ React.createElement("label", { className: "block" }, /* @__PURE__ */ React.createElement("span", { className: "text-sm font-semibold text-slate-600" }, "\uC131\uBCC4"), /* @__PURE__ */ React.createElement("select", { className: "mt-2 w-full rounded-lg border-slate-300 focus:border-slate-900 focus:ring-slate-900", value: draft.gender, onChange: (event) => patch("gender", event.target.value) }, myInfoResolvedGenderOptions(props.genderOptions).map((option) => /* @__PURE__ */ React.createElement("option", { key: option.name, value: option.name }, option.label || option.name)))), /* @__PURE__ */ React.createElement("label", { className: "flex items-center gap-3 self-end rounded-lg border border-slate-200 px-4 py-3" }, /* @__PURE__ */ React.createElement("input", { type: "checkbox", className: "rounded border-slate-300 text-slate-950 focus:ring-slate-900", checked: draft.emailSubscription, onChange: (event) => patch("emailSubscription", event.target.checked) }), /* @__PURE__ */ React.createElement("span", { className: "text-sm font-semibold text-slate-700" }, "\uC774\uBA54\uC77C \uC218\uC2E0 \uD5C8\uC6A9"))), /* @__PURE__ */ React.createElement(MyInfoMessage, { tone }, message), /* @__PURE__ */ React.createElement("button", { type: "submit", disabled: saving, className: "rounded-lg bg-slate-950 px-5 py-3 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:bg-slate-400" }, saving ? "\uC800\uC7A5 \uC911" : "\uAC1C\uC778\uC815\uBCF4 \uC800\uC7A5")));
+}
+function MyInfoArticles(props) {
+  const rows = myInfoRows((props.data || {}).list);
+  const chartOption = myInfoCalendarOption(rows, "\uAE00 \uC791\uC131 \uCE98\uB9B0\uB354");
+  return /* @__PURE__ */ React.createElement(MyInfoPanel, { title: "\uB0B4\uAC00 \uC4F4 \uAE00" }, props.loading ? /* @__PURE__ */ React.createElement(MyInfoChartSkeleton, { className: "h-[290px] w-full" }) : rows.length === 0 ? /* @__PURE__ */ React.createElement(MyInfoTableEmpty, null, "\uC791\uC131\uD55C \uAE00\uC774 \uC5C6\uC2B5\uB2C8\uB2E4.") : /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { className: "mb-6" }, /* @__PURE__ */ React.createElement(MyInfoChart, { option: chartOption, className: "h-[290px] w-full" })), /* @__PURE__ */ React.createElement("div", { className: "overflow-x-auto" }, /* @__PURE__ */ React.createElement("table", { className: "w-full min-w-[720px] text-left text-sm" }, /* @__PURE__ */ React.createElement("thead", { className: "border-b border-slate-200 text-xs font-semibold uppercase text-slate-500" }, /* @__PURE__ */ React.createElement("tr", null, /* @__PURE__ */ React.createElement("th", { className: "px-3 py-3" }, "\uC81C\uBAA9"), /* @__PURE__ */ React.createElement("th", { className: "px-3 py-3" }, "\uAC8C\uC2DC\uD310"), /* @__PURE__ */ React.createElement("th", { className: "px-3 py-3" }, "\uC791\uC131\uC77C"), /* @__PURE__ */ React.createElement("th", { className: "px-3 py-3 text-right" }, "\uC870\uD68C"), /* @__PURE__ */ React.createElement("th", { className: "px-3 py-3 text-right" }, "\uB313\uAE00"))), /* @__PURE__ */ React.createElement("tbody", { className: "divide-y divide-slate-100" }, rows.map((row) => /* @__PURE__ */ React.createElement("tr", { key: myInfoText(row.uuid), className: "hover:bg-slate-50" }, /* @__PURE__ */ React.createElement("td", { className: "px-3 py-3 font-semibold text-slate-950" }, /* @__PURE__ */ React.createElement("a", { className: "hover:text-sky-700", href: myInfoArticleHref(row) }, myInfoText(row.title) || "-")), /* @__PURE__ */ React.createElement("td", { className: "px-3 py-3 text-slate-600" }, myInfoText(row.category) || myInfoText(row.category_url) || "-"), /* @__PURE__ */ React.createElement("td", { className: "px-3 py-3 text-slate-600" }, myInfoDate(row.created_at)), /* @__PURE__ */ React.createElement("td", { className: "px-3 py-3 text-right text-slate-600" }, myInfoNumber(row.cnt_read).toLocaleString("ko-KR")), /* @__PURE__ */ React.createElement("td", { className: "px-3 py-3 text-right text-slate-600" }, myInfoNumber(row.cnt_comment).toLocaleString("ko-KR")))))))));
+}
+function MyInfoComments(props) {
+  const rows = myInfoRows((props.data || {}).list);
+  const chartOption = myInfoCalendarOption(rows, "\uB313\uAE00 \uC791\uC131 \uCE98\uB9B0\uB354");
+  return /* @__PURE__ */ React.createElement(MyInfoPanel, { title: "\uB0B4\uAC00 \uC4F4 \uB313\uAE00" }, props.loading ? /* @__PURE__ */ React.createElement(MyInfoChartSkeleton, { className: "h-[290px] w-full" }) : rows.length === 0 ? /* @__PURE__ */ React.createElement(MyInfoTableEmpty, null, "\uC791\uC131\uD55C \uB313\uAE00\uC774 \uC5C6\uC2B5\uB2C8\uB2E4.") : /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { className: "mb-6" }, /* @__PURE__ */ React.createElement(MyInfoChart, { option: chartOption, className: "h-[290px] w-full" })), /* @__PURE__ */ React.createElement("div", { className: "space-y-3" }, rows.map((row) => /* @__PURE__ */ React.createElement("div", { key: myInfoText(row.uuid), className: "rounded-lg border border-slate-200 bg-white px-5 py-4 hover:border-sky-300 hover:bg-sky-50" }, /* @__PURE__ */ React.createElement("div", { className: "flex flex-row items-center justify-between gap-2 sm:flex-col sm:items-start" }, /* @__PURE__ */ React.createElement("a", { className: "font-semibold text-slate-950 hover:text-sky-700", href: myInfoCommentHref(row) }, myInfoText(row.article_title) || "\uAC8C\uC2DC\uAE00"), /* @__PURE__ */ React.createElement("div", { className: "text-sm text-slate-500" }, myInfoDate(row.created_at))), /* @__PURE__ */ React.createElement(MyInfoHTMLPreview, { html: row.content }))))));
+}
+function MyInfoPayments(props) {
+  const [paymentGranularity, setPaymentGranularity] = React.useState("month");
+  const rows = myInfoRows((props.data || {}).list);
+  const signatureDataURL = myInfoText((props.data || {}).statement_signature_data_url);
+  const signatureURL = myInfoText((props.data || {}).statement_signature_url) || myInfoText(myInfoGlobals().payment_statement_signature_url);
+  const chartOption = myInfoPaymentAmountOption(rows, paymentGranularity);
+  return React.createElement(
+    MyInfoPanel,
+    { title: "\uACB0\uC81C \uB0B4\uC5ED", action: React.createElement(MyInfoGranularityControl, { value: paymentGranularity, defaultValue: "month", onChange: setPaymentGranularity }) },
+    props.loading ? React.createElement(MyInfoChartSkeleton, { className: "h-[280px] w-full" }) : rows.length === 0 ? React.createElement(MyInfoTableEmpty, null, "\uACB0\uC81C \uB0B4\uC5ED\uC774 \uC5C6\uC2B5\uB2C8\uB2E4.") : React.createElement(
+      "div",
+      null,
+      React.createElement("div", { className: "mb-6" }, React.createElement(MyInfoChart, { option: chartOption, className: "h-[280px] w-full", empty: "\uACB0\uC81C \uCC28\uD2B8\uB97C \uD45C\uC2DC\uD560 \uB370\uC774\uD130\uAC00 \uC5C6\uC2B5\uB2C8\uB2E4." })),
+      React.createElement(
+        "div",
+        { className: "overflow-x-auto" },
+        React.createElement(
+          "table",
+          { className: "w-full min-w-[900px] text-left text-sm" },
+          React.createElement(
+            "thead",
+            { className: "border-b border-slate-200 text-xs font-semibold uppercase text-slate-500" },
+            React.createElement(
+              "tr",
+              null,
+              React.createElement("th", { className: "px-3 py-3" }, "\uC0C1\uD488"),
+              React.createElement("th", { className: "px-3 py-3" }, "\uC8FC\uBB38\uBC88\uD638"),
+              React.createElement("th", { className: "px-3 py-3" }, "\uC77C\uC2DC"),
+              React.createElement("th", { className: "px-3 py-3" }, "\uBC29\uC2DD"),
+              React.createElement("th", { className: "px-3 py-3" }, "\uC0C1\uD0DC"),
+              React.createElement("th", { className: "px-3 py-3 text-right" }, "\uAE08\uC561"),
+              React.createElement("th", { className: "px-3 py-3 text-center" }, "\uAC70\uB798\uBA85\uC138\uC11C")
+            )
+          ),
+          React.createElement(
+            "tbody",
+            { className: "divide-y divide-slate-100" },
+            rows.map((row, idx) => React.createElement(
+              "tr",
+              {
+                key: myInfoText(row.order_id) || idx,
+                className: "hover:bg-slate-50"
+              },
+              React.createElement("td", { className: "px-3 py-3 font-semibold text-slate-950" }, myInfoText(row.product_name) || "-"),
+              React.createElement("td", { className: "px-3 py-3 text-slate-600" }, myInfoText(row.order_id) || "-"),
+              React.createElement("td", { className: "px-3 py-3 text-slate-600" }, myInfoDate(row.created_at)),
+              React.createElement("td", { className: "px-3 py-3 text-slate-600" }, myInfoText(row.method) || "-"),
+              React.createElement("td", { className: "px-3 py-3" }, React.createElement("span", { className: "rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700" }, myInfoStatusText(row.status))),
+              React.createElement("td", { className: "px-3 py-3 text-right font-semibold text-slate-950" }, myInfoMoney(row.amount)),
+              React.createElement(
+                "td",
+                { className: "px-3 py-3 text-center" },
+                React.createElement(
+                  "button",
+                  {
+                    type: "button",
+                    className: "rounded-md border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:border-slate-950 hover:bg-slate-950 hover:text-white",
+                    "aria-label": `${myInfoText(row.order_id) || "\uACB0\uC81C"} \uAC70\uB798\uBA85\uC138\uC11C \uB2E4\uC6B4\uB85C\uB4DC`,
+                    onClick: () => myInfoDownloadPaymentStatement(row, props.user || {}, signatureDataURL, signatureURL)
+                  },
+                  "\uAC70\uB798\uBA85\uC138\uC11C"
+                )
+              )
+            ))
+          )
+        )
+      )
+    )
+  );
+}
+function renderMyInfoGoogleButton(onLinked, setMessage, attempt = 0) {
+  const globals = myInfoGlobals();
+  const clientId = myInfoTrim(globals.google_client_id);
+  const nonce = myInfoTrim(globals.google_login_nonce);
+  const endpoint = myInfoTrim(globals.google_link_endpoint) || "/account/ajax_link_google/";
+  const target = document.getElementById("myInfoGoogleButton");
+  if (!clientId || !nonce || !target) {
+    return;
+  }
+  if (!window.google || !google.accounts || !google.accounts.id) {
+    if (attempt < 120) {
+      window.setTimeout(() => renderMyInfoGoogleButton(onLinked, setMessage, attempt + 1), 50);
+    } else {
+      setMessage({ tone: "red", text: "Google \uB85C\uADF8\uC778 \uC2A4\uD06C\uB9BD\uD2B8\uB97C \uBD88\uB7EC\uC624\uC9C0 \uBABB\uD588\uC2B5\uB2C8\uB2E4." });
+    }
+    return;
+  }
+  if (target.dataset.rendered === "1") {
+    return;
+  }
+  target.dataset.rendered = "1";
+  google.accounts.id.initialize({
+    client_id: clientId,
+    nonce,
+    auto_select: false,
+    cancel_on_tap_outside: true,
+    use_fedcm_for_prompt: true,
+    callback: async (response) => {
+      const credential = myInfoTrim(response && response.credential);
+      if (!credential) {
+        setMessage({ tone: "red", text: "Google \uACC4\uC815 \uC751\uB2F5\uC774 \uBE44\uC5B4 \uC788\uC2B5\uB2C8\uB2E4." });
+        return;
+      }
+      const form = new FormData();
+      form.append("credential", credential);
+      form.append("nonce", nonce);
+      const payload = await myInfoFetchJSON(endpoint, { method: "POST", body: form });
+      if (myInfoText(payload.checker) === "SUCCESS") {
+        setMessage({ tone: "green", text: "Google \uACC4\uC815\uC774 \uC5F0\uACB0\uB418\uC5C8\uC2B5\uB2C8\uB2E4." });
+        if (typeof onLinked === "function")
+          onLinked(payload.identity || {});
+        return;
+      }
+      setMessage({ tone: "red", text: myInfoGoogleMessage(payload.checker) });
+    }
+  });
+  google.accounts.id.renderButton(target, {
+    type: "standard",
+    theme: "outline",
+    size: "large",
+    text: "continue_with",
+    shape: "rectangular",
+    logo_alignment: "left",
+    width: Math.min(420, Math.max(260, target.offsetWidth || 420)),
+    locale: "ko"
+  });
+}
+function MyInfoGooglePanel(props) {
+  const identity = props.identity || {};
+  const googleEnabled = !!myInfoTrim(myInfoGlobals().google_client_id);
+  const [message, setMessage] = React.useState({ tone: "blue", text: "" });
+  const [saving, setSaving] = React.useState(false);
+  React.useEffect(() => {
+    if (googleEnabled && !identity.connected) {
+      renderMyInfoGoogleButton((nextIdentity) => props.onLinked(nextIdentity), setMessage);
+    }
+  }, [googleEnabled, identity.connected]);
+  function unlinkGoogle() {
+    if (saving || !identity.connected)
+      return;
+    if (!identity.can_unlink) {
+      setMessage({ tone: "red", text: myInfoGoogleMessage(identity.unlink_block_code || "PASSWORD_REQUIRED") });
+      return;
+    }
+    if (!window.confirm("Google \uACC4\uC815 \uC5F0\uB3D9\uC744 \uD574\uC81C\uD560\uAE4C\uC694?")) {
+      return;
+    }
+    setSaving(true);
+    const endpoint = myInfoTrim(myInfoGlobals().google_unlink_endpoint) || "/account/ajax_unlink_google/";
+    myInfoFetchJSON(endpoint, { method: "POST", body: new FormData() }).then((payload) => {
+      if (myInfoText(payload.checker) === "SUCCESS") {
+        setMessage({ tone: "green", text: "Google \uACC4\uC815 \uC5F0\uB3D9\uC744 \uD574\uC81C\uD588\uC2B5\uB2C8\uB2E4." });
+        props.reload();
+        return;
+      }
+      setMessage({ tone: "red", text: myInfoGoogleMessage(payload.checker) });
+    }).finally(() => setSaving(false));
+  }
+  return /* @__PURE__ */ React.createElement(MyInfoPanel, { title: "Google \uACC4\uC815 \uC5F0\uB3D9" }, !googleEnabled ? /* @__PURE__ */ React.createElement(MyInfoMessage, { tone: "red" }, "Google \uB85C\uADF8\uC778\uC774 \uC544\uC9C1 \uC124\uC815\uB418\uC9C0 \uC54A\uC558\uC2B5\uB2C8\uB2E4.") : identity.connected ? /* @__PURE__ */ React.createElement("div", { className: "space-y-5" }, /* @__PURE__ */ React.createElement("div", { className: "flex flex-row items-center gap-4 rounded-lg border border-slate-200 bg-white px-5 py-4 sm:flex-col sm:items-start" }, identity.picture_url && /* @__PURE__ */ React.createElement("img", { src: identity.picture_url, alt: "", className: "h-14 w-14 rounded-full border border-slate-200" }), /* @__PURE__ */ React.createElement("div", { className: "min-w-0 flex-1" }, /* @__PURE__ */ React.createElement("div", { className: "text-base font-bold text-slate-950" }, identity.name || "Google \uACC4\uC815"), /* @__PURE__ */ React.createElement("div", { className: "mt-1 break-words text-sm text-slate-500" }, identity.email || "-"), /* @__PURE__ */ React.createElement("div", { className: "mt-2 text-xs font-semibold text-emerald-700" }, "\uC5F0\uB3D9\uB428")), /* @__PURE__ */ React.createElement("button", { type: "button", disabled: saving || !identity.can_unlink, onClick: unlinkGoogle, className: "rounded-lg border border-rose-200 px-4 py-2 text-sm font-semibold text-rose-700 hover:bg-rose-50 disabled:cursor-not-allowed disabled:border-slate-200 disabled:text-slate-400" }, saving ? "\uCC98\uB9AC \uC911" : "\uC5F0\uB3D9 \uD574\uC81C")), !identity.can_unlink && /* @__PURE__ */ React.createElement(MyInfoMessage, { tone: "blue" }, myInfoGoogleMessage(identity.unlink_block_code || "PASSWORD_REQUIRED")), message.text && /* @__PURE__ */ React.createElement(MyInfoMessage, { tone: message.tone }, message.text)) : /* @__PURE__ */ React.createElement("div", { className: "space-y-4" }, /* @__PURE__ */ React.createElement("div", { id: "myInfoGoogleButton", className: "flex h-[44px] w-full max-w-[420px] items-center justify-center" }), message.text && /* @__PURE__ */ React.createElement(MyInfoMessage, { tone: message.tone }, message.text)));
+}
+function MyInfoConnection(props) {
+  const [trendGranularity, setTrendGranularity] = React.useState("day");
+  const shinyRows = myInfoRows((props.data || {}).cnt_table_shinyapp);
+  const visitRows = myInfoRows((props.data || {}).cnt_table_visit);
+  const visitCalendarOption = myInfoCalendarOption(visitRows, "\uBC29\uBB38 \uCE98\uB9B0\uB354");
+  const appCalendarOption = myInfoCalendarOption(shinyRows, "\uC571 \uC811\uC18D \uCE98\uB9B0\uB354");
+  const trendOption = myInfoConnectionTrendOption(visitRows, shinyRows, trendGranularity);
+  return /* @__PURE__ */ React.createElement(MyInfoPanel, { title: "\uACC4\uC815 \uD65C\uB3D9" }, /* @__PURE__ */ React.createElement("div", { className: "mb-7 grid grid-cols-1 gap-5" }, /* @__PURE__ */ React.createElement(MyInfoChart, { option: visitCalendarOption, loading: props.loading, className: "h-[290px] w-full", empty: "\uBC29\uBB38 \uCE98\uB9B0\uB354\uB97C \uD45C\uC2DC\uD560 \uB370\uC774\uD130\uAC00 \uC5C6\uC2B5\uB2C8\uB2E4." }), /* @__PURE__ */ React.createElement(MyInfoChart, { option: appCalendarOption, loading: props.loading, className: "h-[290px] w-full", empty: "\uC571 \uC811\uC18D \uCE98\uB9B0\uB354\uB97C \uD45C\uC2DC\uD560 \uB370\uC774\uD130\uAC00 \uC5C6\uC2B5\uB2C8\uB2E4." })), /* @__PURE__ */ React.createElement("div", { className: "mb-3 flex flex-row items-center justify-between gap-3 sm:flex-col sm:items-start" }, /* @__PURE__ */ React.createElement("h3", { className: "text-base font-bold text-slate-950" }, "\uD65C\uB3D9 \uCD94\uC774"), /* @__PURE__ */ React.createElement(MyInfoGranularityControl, { value: trendGranularity, onChange: setTrendGranularity })), /* @__PURE__ */ React.createElement("div", { className: "mb-7" }, /* @__PURE__ */ React.createElement(MyInfoChart, { option: trendOption, loading: props.loading, className: "h-[300px] w-full", empty: "\uD65C\uB3D9 \uCD94\uC774\uB97C \uD45C\uC2DC\uD560 \uB370\uC774\uD130\uAC00 \uC5C6\uC2B5\uB2C8\uB2E4." })));
+}
+const MYINFO_BASE_PATH = "/account/myinfo/";
+const MYINFO_SECTION_KEYS = ["overview", "articles", "comments", "payments", "connection", "email", "password", "profile", "google"];
+function myInfoNormalizeSectionKey(value) {
+  const key = myInfoText(value).replace(/^#/, "").replace(/^\/+|\/+$/g, "").toLowerCase();
+  return MYINFO_SECTION_KEYS.includes(key) ? key : "";
+}
+function myInfoPathSectionKey() {
+  const segments = window.location.pathname.replace(/^\/+|\/+$/g, "").split("/");
+  if (segments[0] !== "account" || segments[1] !== "myinfo")
+    return "";
+  return myInfoNormalizeSectionKey(segments[2] || "");
+}
+function myInfoHashSectionKey() {
+  return myInfoNormalizeSectionKey(window.location.hash || "");
+}
+function myInfoLocationSectionKey() {
+  return myInfoPathSectionKey() || myInfoHashSectionKey() || myInfoNormalizeSectionKey(window.myinfo_section) || "overview";
+}
+function myInfoSectionPath(key) {
+  const section = myInfoNormalizeSectionKey(key) || "overview";
+  return `${MYINFO_BASE_PATH}${section}/`;
+}
+function myInfoSectionURL(key) {
+  return `${myInfoSectionPath(key)}${window.location.search || ""}`;
+}
+function myInfoLegacyHashRedirectURL() {
+  const key = myInfoHashSectionKey();
+  return key ? myInfoSectionURL(key) : "";
+}
+function myInfoShouldLoadUser(section) {
+  return ["overview", "email", "profile", "payments"].includes(section);
+}
+function myInfoShouldLoadGender(section) {
+  return section === "overview" || section === "profile";
+}
+function myInfoShouldLoadGoogle(section) {
+  return section === "overview" || section === "google";
+}
+function myInfoSectionDataKeys(section) {
+  if (section === "overview")
+    return ["articles", "comments", "payments"];
+  if (["articles", "comments", "payments", "connection"].includes(section))
+    return [section];
+  return [];
+}
+function MyInfoApp() {
+  const menuGroups = [
+    {
+      key: "view",
+      title: "\uBCF4\uAE30",
+      items: [
+        { key: "overview", label: "\uB0B4 \uC815\uBCF4 \uBCF4\uAE30" },
+        { key: "articles", label: "\uB0B4\uAC00 \uC4F4 \uAE00" },
+        { key: "comments", label: "\uB0B4\uAC00 \uC4F4 \uB313\uAE00" },
+        { key: "payments", label: "\uACB0\uC81C \uB0B4\uC5ED" },
+        { key: "connection", label: "\uACC4\uC815 \uD65C\uB3D9" },
+        { key: "team", label: "\uAE30\uAD00/\uD300 \uAD00\uB9AC", href: "/account/team/" }
+      ]
+    },
+    {
+      key: "change",
+      title: "\uBCC0\uACBD",
+      items: [
+        { key: "email", label: "\uC774\uBA54\uC77C \uBCC0\uACBD" },
+        { key: "password", label: "\uBE44\uBC00\uBC88\uD638 \uBCC0\uACBD" },
+        { key: "profile", label: "\uAC1C\uC778\uC815\uBCF4 \uBCC0\uACBD" },
+        { key: "google", label: "Google \uC5F0\uB3D9" }
+      ]
+    }
+  ];
+  const menuItems = menuGroups.flatMap((group) => group.items);
+  const initialKey = myInfoLocationSectionKey();
+  const active = menuItems.some((item) => item.key === initialKey && !item.href) ? initialKey : "overview";
+  const [openGroups, setOpenGroups] = React.useState(() => {
+    const activeGroup = menuGroups.find((group) => group.items.some((item) => item.key === initialKey && !item.href));
+    return { view: !activeGroup || activeGroup.key === "view", change: activeGroup && activeGroup.key === "change" };
+  });
+  const [loading, setLoading] = React.useState(() => myInfoShouldLoadUser(active) || myInfoShouldLoadGender(active) || myInfoShouldLoadGoogle(active));
+  const [dataLoading, setDataLoading] = React.useState(() => {
+    const keys = new Set(myInfoSectionDataKeys(active));
+    return {
+      articles: keys.has("articles"),
+      comments: keys.has("comments"),
+      payments: keys.has("payments"),
+      connection: keys.has("connection")
+    };
+  });
+  const [user, setUser] = React.useState({});
+  const [googleIdentity, setGoogleIdentity] = React.useState({});
+  const [genderOptions, setGenderOptions] = React.useState([]);
+  const [articles, setArticles] = React.useState({});
+  const [comments, setComments] = React.useState({});
+  const [payments, setPayments] = React.useState({});
+  const [connection, setConnection] = React.useState({});
+  function patchDataLoading(key, value) {
+    setDataLoading((prev) => ({ ...prev, [key]: value }));
+  }
+  function loadAccountData(section = active) {
+    const loadUser = myInfoShouldLoadUser(section);
+    const loadGender = myInfoShouldLoadGender(section);
+    const loadGoogle = myInfoShouldLoadGoogle(section);
+    if (!loadUser && !loadGender && !loadGoogle) {
+      setLoading(false);
+      return Promise.resolve();
+    }
+    setLoading(true);
+    return Promise.all([
+      loadUser ? myInfoFetchJSON("/account/ajax_get_myinfo/") : Promise.resolve(null),
+      loadGender ? myInfoFetchJSON("/account/ajax_get_gender_options/") : Promise.resolve(null),
+      loadGoogle ? myInfoFetchJSON("/account/ajax_get_google_identity/") : Promise.resolve(null)
+    ]).then(([nextUser, genderPayload, googlePayload]) => {
+      if (loadUser)
+        setUser(nextUser || {});
+      if (loadGender)
+        setGenderOptions(myInfoResolvedGenderOptions((genderPayload || {}).options));
+      if (loadGoogle)
+        setGoogleIdentity(googlePayload || {});
+    }).finally(() => setLoading(false));
+  }
+  function loadPanelData(key, url, setter) {
+    patchDataLoading(key, true);
+    myInfoFetchJSON(url).then((payload) => {
+      setter(payload || {});
+    }).finally(() => patchDataLoading(key, false));
+  }
+  function loadSectionData(section = active) {
+    setDataLoading({ articles: false, comments: false, payments: false, connection: false });
+    const loaders = {
+      articles: () => loadPanelData("articles", "/account/ajax_get_myinfo_article/", setArticles),
+      comments: () => loadPanelData("comments", "/account/ajax_get_myinfo_comment/", setComments),
+      payments: () => loadPanelData("payments", "/account/ajax_get_myinfo_payment/", setPayments),
+      connection: () => loadPanelData("connection", "/account/ajax_get_myinfo_connection/", setConnection)
+    };
+    myInfoSectionDataKeys(section).forEach((key) => loaders[key]());
+  }
+  function loadPage(section = active) {
+    loadAccountData(section);
+    loadSectionData(section);
+  }
+  React.useEffect(() => {
+    const legacyURL = myInfoLegacyHashRedirectURL();
+    if (legacyURL) {
+      window.location.replace(legacyURL);
+      return;
+    }
+    loadPage(active);
+    const onHash = () => {
+      const legacyURL2 = myInfoLegacyHashRedirectURL();
+      if (legacyURL2)
+        window.location.replace(legacyURL2);
+    };
+    window.addEventListener("hashchange", onHash);
+    return () => {
+      window.removeEventListener("hashchange", onHash);
+    };
+  }, []);
+  function toggleGroup(key) {
+    setOpenGroups((prev) => ({ ...prev, [key]: !prev[key] }));
+  }
+  const content = {
+    overview: /* @__PURE__ */ React.createElement(MyInfoOverview, { user, googleIdentity, genderOptions, articles, comments, payments, loadingArticles: dataLoading.articles, loadingComments: dataLoading.comments, loadingPayments: dataLoading.payments }),
+    email: /* @__PURE__ */ React.createElement(MyInfoEmailForm, { user, reload: () => loadAccountData(active) }),
+    password: /* @__PURE__ */ React.createElement(MyInfoPasswordForm, null),
+    profile: /* @__PURE__ */ React.createElement(MyInfoProfileForm, { user, genderOptions, reload: () => loadAccountData(active) }),
+    google: /* @__PURE__ */ React.createElement(MyInfoGooglePanel, { identity: googleIdentity, onLinked: (identity) => setGoogleIdentity(identity), reload: () => loadAccountData(active) }),
+    articles: /* @__PURE__ */ React.createElement(MyInfoArticles, { data: articles, loading: dataLoading.articles }),
+    comments: /* @__PURE__ */ React.createElement(MyInfoComments, { data: comments, loading: dataLoading.comments }),
+    payments: /* @__PURE__ */ React.createElement(MyInfoPayments, { data: payments, loading: dataLoading.payments, user }),
+    connection: /* @__PURE__ */ React.createElement(MyInfoConnection, { data: connection, loading: dataLoading.connection })
+  }[active];
+  return React.createElement(
+    "main",
+    { className: "mx-auto w-full max-w-[1480px] px-4 py-10 text-slate-950 sm:px-6 lg:px-8" },
+    React.createElement(
+      "header",
+      { className: "mb-10" },
+      React.createElement("h1", { className: "text-3xl font-bold tracking-normal text-slate-950" }, "\uB0B4 \uC815\uBCF4"),
+      React.createElement("p", { className: "mt-3 text-base text-slate-500" }, "\uACC4\uC815 \uC815\uBCF4\uC640 \uD65C\uB3D9 \uB0B4\uC5ED\uC744 \uD655\uC778\uD569\uB2C8\uB2E4.")
+    ),
+    React.createElement(
+      "div",
+      { className: "grid grid-cols-1 gap-7 lg:grid-cols-[248px_minmax(0,1fr)] xl:grid-cols-[280px_minmax(0,1fr)]" },
+      React.createElement(
+        "aside",
+        { className: "sticky top-6 h-fit rounded-lg border border-slate-200 bg-white p-3 shadow-sm md:static" },
+        React.createElement(
+          "nav",
+          { id: "myinfo-account-menu", className: "space-y-3" },
+          menuGroups.map((group) => React.createElement(
+            "section",
+            { key: group.key, className: "space-y-2" },
+            React.createElement(
+              "button",
+              {
+                type: "button",
+                className: `flex w-full items-center justify-between rounded-lg px-4 py-3 text-left text-sm font-bold transition ${openGroups[group.key] ? "bg-slate-950 text-white" : "border border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100"}`,
+                "aria-expanded": !!openGroups[group.key],
+                "aria-controls": `myinfo-menu-group-${group.key}`,
+                onClick: () => toggleGroup(group.key)
+              },
+              React.createElement("span", null, group.title),
+              React.createElement("span", { "aria-hidden": "true" }, openGroups[group.key] ? "-" : "+")
+            ),
+            React.createElement(
+              "div",
+              { id: `myinfo-menu-group-${group.key}`, className: `${openGroups[group.key] ? "block" : "hidden"} space-y-1` },
+              group.items.map((item) => {
+                const selected = item.key === active;
+                if (item.href) {
+                  return React.createElement("a", { key: item.key, href: item.href, className: "block w-full rounded-lg px-4 py-3 text-left text-sm font-semibold text-slate-700 transition hover:bg-slate-100" }, item.label);
+                }
+                return React.createElement(
+                  "a",
+                  {
+                    key: item.key,
+                    href: myInfoSectionPath(item.key),
+                    className: `block w-full rounded-lg px-4 py-3 text-left text-sm font-semibold transition ${selected ? "bg-slate-950 text-white" : "text-slate-700 hover:bg-slate-100"}`
+                  },
+                  item.label
+                );
+              })
+            )
+          ))
+        )
+      ),
+      React.createElement(
+        "div",
+        { className: "min-w-0" },
+        loading ? React.createElement("div", { className: "rounded-lg border border-slate-200 bg-white p-10 text-center text-sm text-slate-500" }, "\uBD88\uB7EC\uC624\uB294 \uC911\uC785\uB2C8\uB2E4.") : content
+      )
+    )
+  );
+}
+function set_main() {
+  const container = document.getElementById("div_main");
+  if (!container)
+    return;
+  if (!window.__webrMyInfoRoot) {
+    window.__webrMyInfoRoot = ReactDOM.createRoot(container);
+  }
+  window.__webrMyInfoRoot.render(/* @__PURE__ */ React.createElement(MyInfoApp, null));
+}
