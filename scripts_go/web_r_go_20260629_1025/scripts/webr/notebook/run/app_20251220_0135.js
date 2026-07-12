@@ -989,13 +989,24 @@ ${varName}`;
       return fallback;
     }
   }
+  function normalizeInstalledPackageNames(value) {
+    const list = Array.isArray(value) ? value : [];
+    const names = list.map((entry) => {
+      if (typeof entry === "string")
+        return entry.trim();
+      if (entry && typeof entry === "object")
+        return String(entry.package || entry.name || "").trim();
+      return "";
+    }).filter(Boolean);
+    return Array.from(new Set(names));
+  }
   function restoreNotebookFromDbItem(item) {
     const title = item && item.title ? item.title : null;
     const mdList = parseJsonSafe(item && item.data_markdown, []);
     const rList = parseJsonSafe(item && item.data_rcode, []);
     const rrList = parseJsonSafe(item && item.data_rcode_result, []);
     const dataMgr = parseJsonSafe(item && item.data_data, []);
-    const pkgList = parseJsonSafe(item && item.data_rpackage, []);
+    const pkgList = normalizeInstalledPackageNames(parseJsonSafe(item && item.data_rpackage, []));
     const meta = parseJsonSafe(item && item.data_meta, {});
     try {
       if (meta && typeof meta.runtime_sessionInfo === "string" && meta.runtime_sessionInfo.trim().length) {
@@ -1042,7 +1053,7 @@ ${varName}`;
         cells: legacyCells,
         activeCellId: meta.activeCellId || (legacyCells[0] ? legacyCells[0].id : 1),
         dataFiles: Array.isArray(meta.dataFiles) ? meta.dataFiles : [],
-        installedPackages: Array.isArray(meta.installedPackages) ? meta.installedPackages : []
+        installedPackages: normalizeInstalledPackageNames(meta.installedPackages)
       };
     }
     const mdById = new Map((Array.isArray(mdList) ? mdList : []).map((x) => [x.id, x.source || ""]));
@@ -1089,7 +1100,7 @@ ${varName}`;
       cells: finalCells.length ? finalCells : null,
       activeCellId: meta && meta.activeCellId ? meta.activeCellId : finalCells[0] ? finalCells[0].id : 1,
       dataFiles: normalizeDataFiles(Array.isArray(dataMgr) ? dataMgr : []),
-      installedPackages: Array.isArray(pkgList) ? pkgList : []
+      installedPackages: pkgList
     };
   }
   function buildDbPartsFromNotebookState() {
