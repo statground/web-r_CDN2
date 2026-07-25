@@ -1,0 +1,374 @@
+:root {
+  --webr-home-bg: #f8fafc;
+  --webr-home-surface: #ffffff;
+  --webr-home-surface-soft: #f8fafc;
+  --webr-home-border: #e2e8f0;
+  --webr-home-border-strong: #cbd5e1;
+  --webr-home-text: #334155;
+  --webr-home-heading: #0f172a;
+  --webr-home-blue: #2563eb;
+  --webr-home-cyan: #0284c7;
+  --webr-home-purple: #7c3aed;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  background-color: var(--webr-home-bg) !important;
+  background-image:
+    radial-gradient(circle at 10% 15%, rgb(37 99 235 / 5%) 0, transparent 40%),
+    radial-gradient(circle at 90% 65%, rgb(2 132 199 / 5%) 0, transparent 40%);
+  background-attachment: fixed;
+  color: var(--webr-home-text);
+}
+
+/*
+ * Keep the existing logo and menu contract. The homepage-only stylesheet makes
+ * the shell lighter and more compact without replacing header DOM or assets.
+ */
+.webr-flowbite-header {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  border-bottom: 1px solid rgb(226 232 240 / 92%);
+  background: rgb(255 255 255 / 94%) !important;
+  box-shadow: none !important;
+  -webkit-backdrop-filter: blur(14px);
+  backdrop-filter: blur(14px);
+}
+
+.webr-flowbite-header > nav {
+  border-color: rgb(226 232 240 / 86%) !important;
+  background: transparent !important;
+}
+
+.webr-flowbite-header > nav:first-child > div {
+  padding-top: 0.7rem !important;
+  padding-bottom: 0.7rem !important;
+}
+
+.webr-flowbite-header > nav:nth-child(2) > div:first-child {
+  padding-top: 0.55rem !important;
+  padding-bottom: 0.55rem !important;
+}
+
+#div_main {
+  background: transparent;
+}
+
+#div_main > main {
+  display: grid;
+  width: min(100%, 1280px);
+  margin: 0 auto;
+  padding: 2.25rem 1rem 0;
+  gap: 1.5rem;
+  background: transparent !important;
+  color: var(--webr-home-text);
+}
+
+#div_main > main > section {
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--webr-home-border);
+  border-radius: 0.9rem;
+  background: var(--webr-home-surface) !important;
+  box-shadow: 0 10px 30px -22px rgb(15 23 42 / 38%);
+}
+
+#div_main > main > section:not(:first-child) {
+  padding-top: 0 !important;
+  padding-bottom: 0 !important;
+}
+
+#div_main > main > section:not(:first-child) > div {
+  width: 100%;
+  max-width: none !important;
+  padding: 1.35rem !important;
+}
+
+/* The wording and CTA content remain exactly as shipped; only the surface changes. */
+#div_main > main > section:first-child {
+  grid-column: 1 / -1;
+  border-color: rgb(191 219 254 / 80%);
+  background:
+    radial-gradient(circle at 86% 20%, rgb(14 165 233 / 10%), transparent 35%),
+    radial-gradient(circle at 6% 88%, rgb(37 99 235 / 8%), transparent 34%),
+    var(--webr-home-surface) !important;
+}
+
+#div_main > main > section:first-child > div.relative {
+  max-width: none !important;
+  padding: clamp(1.35rem, 3.5vw, 3rem) !important;
+}
+
+#div_main > main > section:first-child > div.absolute {
+  opacity: 0.45;
+}
+
+#div_main > main > section:first-child h1 {
+  text-wrap: balance;
+}
+
+#div_main > main > section:first-child article {
+  border-color: var(--webr-home-border) !important;
+  border-radius: 0.85rem !important;
+  box-shadow: 0 16px 34px -24px rgb(37 99 235 / 45%) !important;
+}
+
+#div_main > main > section:first-child article svg rect {
+  fill: #f8fafc;
+}
+
+/* Example-inspired compact card rhythm for the six analysis entry points. */
+#div_main > main > section:nth-child(2) .mt-8.grid {
+  gap: 0.8rem !important;
+}
+
+#div_main > main > section:nth-child(2) .mt-8.grid > article {
+  position: relative;
+  overflow: hidden;
+  min-height: 12.5rem;
+  border-radius: 0.75rem !important;
+  padding: 1.05rem !important;
+  box-shadow: none !important;
+}
+
+#div_main > main > section:nth-child(2) .mt-8.grid > article::before {
+  position: absolute;
+  inset: 0 0 auto;
+  height: 3px;
+  background: var(--webr-home-blue);
+  content: "";
+}
+
+#div_main > main > section:nth-child(2) .mt-8.grid > article:nth-child(2)::before {
+  background: #059669;
+}
+
+#div_main > main > section:nth-child(2) .mt-8.grid > article:nth-child(3)::before {
+  background: var(--webr-home-purple);
+}
+
+#div_main > main > section:nth-child(2) .mt-8.grid > article:nth-child(4)::before {
+  background: var(--webr-home-cyan);
+}
+
+#div_main > main > section:nth-child(2) .mt-8.grid > article:nth-child(5)::before {
+  background: #d97706;
+}
+
+#div_main > main > section:nth-child(2) .mt-8.grid > article:nth-child(6)::before {
+  background: #e11d48;
+}
+
+/* The sample walkthrough becomes the compact right-hand briefing panel. */
+#div_main > main > section:nth-child(3) {
+  color: var(--webr-home-text) !important;
+}
+
+#div_main > main > section:nth-child(3) > div {
+  display: block !important;
+}
+
+#div_main > main > section:nth-child(3) h2,
+#div_main > main > section:nth-child(3) h3 {
+  color: var(--webr-home-heading) !important;
+}
+
+#div_main > main > section:nth-child(3) p {
+  color: #64748b !important;
+}
+
+#div_main > main > section:nth-child(3) ol {
+  margin-top: 1.2rem;
+  gap: 0.65rem !important;
+}
+
+#div_main > main > section:nth-child(3) ol > li {
+  grid-template-columns: 36px minmax(0, 1fr) !important;
+  gap: 0.75rem !important;
+  border-color: var(--webr-home-border) !important;
+  border-radius: 0.75rem !important;
+  background: var(--webr-home-surface-soft) !important;
+  padding: 0.8rem !important;
+}
+
+#div_main > main > section:nth-child(3) ol > li > span {
+  width: 2.25rem !important;
+  height: 2.25rem !important;
+  border-radius: 0.6rem !important;
+  font-size: 0.875rem !important;
+}
+
+/* Result, membership, trust and FAQ cards share the mockup's restrained surfaces. */
+#div_main > main > section:nth-child(n+4) article,
+#div_main > main > section:nth-child(5) dl > div,
+#div_main > main > section:nth-child(6) details,
+#div_main > main > section:nth-child(7) article,
+#div_main > main > section:nth-child(7) nav > a {
+  border-radius: 0.75rem !important;
+  box-shadow: none !important;
+}
+
+#div_main > main > section:nth-child(4) .mt-8.grid,
+#div_main > main > section:nth-child(5) dl,
+#div_main > main > section:nth-child(7) .mt-8.grid {
+  gap: 0.85rem !important;
+}
+
+#div_main > main > section:nth-child(4) article,
+#div_main > main > section:nth-child(5) dl > div,
+#div_main > main > section:nth-child(7) article {
+  padding: 1.1rem !important;
+}
+
+#div_main > main > section:nth-child(5) dl > div {
+  background: var(--webr-home-surface-soft) !important;
+}
+
+#div_main > main > section:nth-child(6) details {
+  padding: 1rem !important;
+}
+
+#div_main > main > section:nth-child(7) {
+  grid-column: 1 / -1;
+}
+
+#div_main > main > section:nth-child(7) nav > a {
+  position: relative;
+  overflow: hidden;
+  min-height: 5.5rem;
+}
+
+#div_main > main > section:nth-child(7) nav > a:nth-child(1) {
+  border-color: #bae6fd !important;
+  background: #f0f9ff !important;
+}
+
+#div_main > main > section:nth-child(7) nav > a:nth-child(2) {
+  border-color: #bfdbfe !important;
+  background: #eff6ff !important;
+}
+
+#div_main > main > section:nth-child(7) nav > a:nth-child(3) {
+  border-color: #fde68a !important;
+  background: #fffbeb !important;
+}
+
+#div_main > main > section:nth-child(7) nav > a:nth-child(4) {
+  border-color: #ddd6fe !important;
+  background: #f5f3ff !important;
+}
+
+#div_main > main > section h2 {
+  text-wrap: balance;
+}
+
+#div_main > main > section p {
+  text-wrap: pretty;
+}
+
+#div_main > main + * {
+  background: transparent;
+}
+
+footer {
+  margin-top: 2.5rem !important;
+  border-color: var(--webr-home-border) !important;
+  background: #f1f5f9 !important;
+}
+
+@media (min-width: 520px) {
+  #div_main > main {
+    padding-right: 1.5rem;
+    padding-left: 1.5rem;
+  }
+
+  #div_main > main > section:not(:first-child) > div {
+    padding: 1.65rem !important;
+  }
+}
+
+@media (min-width: 1024px) {
+  #div_main > main {
+    grid-template-columns: minmax(0, 2fr) minmax(19rem, 1fr);
+    align-items: start;
+    padding-top: 2.5rem;
+    padding-right: 2rem;
+    padding-left: 2rem;
+    gap: 1.75rem;
+  }
+
+  #div_main > main > section:nth-child(2),
+  #div_main > main > section:nth-child(5) {
+    grid-column: 1;
+  }
+
+  #div_main > main > section:nth-child(3),
+  #div_main > main > section:nth-child(6) {
+    grid-column: 2;
+  }
+
+  #div_main > main > section:nth-child(4),
+  #div_main > main > section:nth-child(7) {
+    grid-column: 1 / -1;
+  }
+
+  #div_main > main > section:nth-child(2) .mt-8.grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
+  #div_main > main > section:nth-child(3) {
+    position: sticky;
+    top: 8.25rem;
+  }
+
+  #div_main > main > section:nth-child(6) {
+    align-self: stretch;
+  }
+}
+
+@media (max-width: 767px) {
+  body {
+    background-attachment: scroll;
+  }
+
+  .webr-flowbite-header > nav:first-child > div {
+    padding-top: 0.55rem !important;
+    padding-bottom: 0.55rem !important;
+  }
+
+  #div_main > main {
+    padding-top: 1rem;
+    gap: 1rem;
+  }
+
+  #div_main > main > section:first-child > div.relative {
+    padding: 1.25rem !important;
+  }
+
+  #div_main > main > section:first-child article {
+    margin-top: 0.25rem;
+  }
+
+  #div_main > main > section:not(:first-child) > div {
+    padding: 1.15rem !important;
+  }
+
+  #div_main > main > section:nth-child(2) .mt-8.grid > article {
+    min-height: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  #div_main > main * {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+  }
+}
