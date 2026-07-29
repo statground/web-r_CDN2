@@ -1,0 +1,36 @@
+.webr-home-compact__rail,
+.webr-home-compact__rail-card,
+.webr-home-compact__rail-body,
+.webr-home-compact__notice-list,
+.webr-home-compact__notice {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.webr-home-compact__notice-title-row {
+  display: grid;
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  grid-template-columns: minmax(0, 1fr) auto;
+  column-gap: 0.4rem;
+  padding-inline-end: 0.25rem;
+  overflow: hidden;
+}
+
+.webr-home-compact__notice-title {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.webr-home-compact__notice-title-row .webr-home-compact__new {
+  justify-self: end;
+}
