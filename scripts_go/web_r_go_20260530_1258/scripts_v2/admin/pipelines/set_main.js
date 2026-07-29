@@ -321,7 +321,7 @@
   function SourcesView(props) {
     const groups = props.data.source_groups || {};
     const rRows = groups.r_project || [];
-    const bookRows = groups.naver_book || [];
+    const bookRows = groups.book || groups.naver_book || [];
     const cdnRows = groups.cdn_release || [];
     return h("div", { className: "webr-pipeline-list" },
       h("section", { className: "webr-pipeline-panel" },
@@ -339,7 +339,7 @@
         })
       ),
       h("section", { className: "webr-pipeline-panel" },
-        h("h3", { className: "webr-pipeline-panel-title" }, "NAVER Book 출처"),
+        h("h3", { className: "webr-pipeline-panel-title" }, "도서 수집 출처"),
         h(SourceTable, {
           rows: bookRows,
           columns: [
@@ -374,7 +374,7 @@
       h(OutputSection, { title: "R ecosystem 게시물", rows: outputs.r_posts || [], meta: function (item) { return [item.source_name, item.source_type, item.ingested_at]; } }),
       h(OutputSection, { title: "커뮤니티 요약", rows: outputs.digests || [], meta: function (item) { return [item.source_name, "items " + formatNumber(item.item_count), item.updated_at]; } }),
       h(OutputSection, { title: "Web-R Notebook", rows: outputs.notebooks || [], meta: function (item) { return [item.created_at, item.share ? "공개" : "비공개"]; } }),
-      h(OutputSection, { title: "NAVER 확인 도서", rows: outputs.naver_books || [], meta: function (item) { return [item.author, item.publisher, item.search_mode, item.updated_at]; } }),
+      h(OutputSection, { title: "수집 확인 도서", rows: outputs.books || outputs.naver_books || [], meta: function (item) { return [item.provider || item.metadata_provider, item.author, item.publisher, item.search_mode, item.updated_at]; } }),
       h(OutputSection, { title: "Web-R R 도서 카탈로그", rows: outputs.r_book_catalog || [], meta: function (item) { return [item.author, item.publisher, item.source_kind, item.source_ingested_at]; } }),
       h(OutputSection, { title: "CDN 배치 결과", rows: outputs.cdn_releases || [], meta: function (item) { return [item.cdn_repo, shortSha(item.commit_sha), "items " + formatNumber(item.item_count), item.published_at]; } })
     );
@@ -504,7 +504,9 @@
 
     if (loading && !data) return h(LoadingView, null);
     const summary = data && data.summary ? data.summary : {};
-    const sourceLabel = data && data.snapshot_source === "cdn2" ? "CDN2 snapshot" : "live";
+    const sourceLabel = data && String(data.snapshot_source || "").indexOf("cdn2") === 0
+      ? (data.snapshot_stale ? "CDN2 last-good snapshot" : "CDN2 snapshot")
+      : (data && data.partial ? "live partial" : "live");
     return h("div", { className: "webr-admin-shell webr-admin-pipeline-shell" },
       h(AdminMenu, null),
       h("main", { className: "webr-pipeline-main" },
