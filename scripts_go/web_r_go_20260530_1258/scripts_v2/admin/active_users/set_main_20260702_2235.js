@@ -992,9 +992,30 @@ async function get_main() {
       render();
     });
   };
+  const loadAllPeriods = function() {
+    return fetch("/admin/ajax_get_admin_active_users/", {
+      method: "POST",
+      credentials: "same-origin"
+    }).then(function(r) {
+      return r.json();
+    }).then(function(payload) {
+      if (adminActiveUsersPayloadFailed(payload)) {
+        throw new Error(payload && payload.error ? payload.error : "admin active-users payload failed");
+      }
+      data = { ...data, ...(payload || {}) };
+      render();
+    });
+  };
   ReactDOM.render(/* @__PURE__ */ React.createElement(Div_main_skeleton, { period: "loading" }), mount);
   await loadPeriod("monthly");
-  await Promise.allSettled(["daily", "yearly", "total"].map(loadPeriod));
+  try {
+    await loadAllPeriods();
+  } catch (error) {
+    console.error(error);
+    for (const period of ["daily", "yearly", "total"]) {
+      await loadPeriod(period);
+    }
+  }
 }
 async function set_main() {
   function Div_check_admin() {
