@@ -2,6 +2,9 @@ const COMMUNITY_FILE_DELETE_CLASS = "rounded-lg hover:bg-red-100 cursor-pointer"
 const COMMUNITY_COMMENT_FILE_DELETE_CLASS = "size-4 min-size-4 max-size-4 rounded-lg hover:bg-red-100 cursor-pointer";
 const COMMUNITY_PAGE_SIZE = 10;
 const COMMUNITY_CARD_PAGE_SIZE = 5;
+const COMMUNITY_CARD_FETCH_ATTEMPTS = 3;
+const COMMUNITY_CARD_RETRY_BASE_MS = 180;
+const COMMUNITY_CARD_MAX_CONCURRENCY = 2;
 const COMMUNITY_PAGE_CACHE_TTL_MS = 9e4;
 const COMMUNITY_COMMENT_DELETE_TOMBSTONE_MS = 3e5;
 const COMMUNITY_TABBED_URLS = ["all", "free", "rcommunity", "notebook", "mine", "commented"];
@@ -10,6 +13,7 @@ let header_title = "";
 let header_subtitle = "\uCEE4\uBBA4\uB2C8\uD2F0";
 const communityArticlePageCache = {};
 const communityArticlePrefetching = {};
+const communityCardLastGood = {};
 const communityState = {
   page_num: 1,
   article_counter: 0,
@@ -1622,50 +1626,61 @@ function buildCommunityCardForm(tag, page) {
   }
   return requestData;
 }
-async function fetchCommunityCardData(tag, page) {
-  try {
-    const response = await fetch("/blank/ajax_board/get_article_list/", {
-      method: "POST",
-      headers: { "X-CSRFToken": getCookie("csrftoken") },
-      body: buildCommunityCardForm(tag, page)
-    });
-    const data = await response.json().catch(() => ({ ok: false, pending: true }));
-    if (!response.ok || isCommunityArticleListPending(data)) {
-      return {
-        ok: false,
-        pending: true,
-        message: communityArticleListPendingMessage(data),
-        count: { cnt: 0 },
-        list: {}
-      };
+function communityCardRequestKey(tag, page) {
+  return [tag, String(page || 1), communitySearchText(), communitySearchScope(), tag === "rcommunity" ? communitySourceGroup() : ""].join("|");
+}
+function sleepCommunityCardRetry(attempt) {
+  const jitter = Math.floor(Math.random() * COMMUNITY_CARD_RETRY_BASE_MS);
+  return new Promise((resolve) => window.setTimeout(resolve, COMMUNITY_CARD_RETRY_BASE_MS * attempt + jitter));
+}
+async function fetchCommunityCardData(tag, page, attempts = COMMUNITY_CARD_FETCH_ATTEMPTS) {
+  let lastData = null;
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    try {
+      const response = await fetch("/blank/ajax_board/get_article_list/", {
+        method: "POST",
+        headers: { "X-CSRFToken": getCookie("csrftoken") },
+        body: buildCommunityCardForm(tag, page)
+      });
+      const data = await response.json().catch(() => ({ ok: false, pending: true }));
+      lastData = data;
+      const cacheStatus = String(response.headers.get("X-WebR-Cache") || "").toLowerCase();
+      if (response.ok && cacheStatus !== "pending" && !isCommunityArticleListPending(data)) {
+        return data;
+      }
+    } catch (error) {
+      console.error("[fetchCommunityCardData] failed", tag, error);
     }
-    return data;
-  } catch (error) {
-    console.error("[fetchCommunityCardData] failed", tag, error);
-    return {
-      ok: false,
-      pending: true,
-      message: communityArticleListPendingMessage(null),
-      count: { cnt: 0 },
-      list: {}
-    };
+    if (attempt < attempts) {
+      await sleepCommunityCardRetry(attempt);
+    }
   }
+  return {
+    ok: false,
+    pending: true,
+    message: communityArticleListPendingMessage(lastData),
+    count: { cnt: 0 },
+    list: {}
+  };
 }
 async function loadCommunityBoardCard(def, page) {
   const cardPage = Math.max(1, Number(page || 1));
   communityState.cardPages[def.tag] = cardPage;
+  const requestKey = communityCardRequestKey(def.tag, cardPage);
+  const previousData = communityCardLastGood[requestKey] || null;
   const target = document.getElementById("div_community_card_" + def.tag);
-  if (target) {
+  if (target && !previousData) {
     ReactDOM.render(/* @__PURE__ */ React.createElement(CommunityCardSkeletonBody, { tag: def.tag, title: def.title }), target);
   }
   const data = await fetchCommunityCardData(def.tag, cardPage);
   if (isCommunityArticleListPending(data)) {
     const host = document.getElementById("div_community_card_" + def.tag);
     if (host) {
-      ReactDOM.render(/* @__PURE__ */ React.createElement(CommunityBoardCard, { def, data }), host);
+      ReactDOM.render(/* @__PURE__ */ React.createElement(CommunityBoardCard, { def, data: previousData || data }), host);
     }
     return;
   }
+  communityCardLastGood[requestKey] = data;
   const totalPages = Math.max(1, Math.ceil(Number(data && data.count ? data.count.cnt || 0 : 0) / COMMUNITY_CARD_PAGE_SIZE));
   if (Object.keys(data.list || {}).length === 0 && cardPage > totalPages) {
     return loadCommunityBoardCard(def, totalPages);
@@ -1677,7 +1692,16 @@ async function loadCommunityBoardCard(def, page) {
 }
 async function getCommunityBoardCards() {
   const cards = activeCommunityCardDefinitions();
-  await Promise.all(cards.map((def) => loadCommunityBoardCard(def, communityState.cardPages[def.tag] || 1)));
+  let nextCardIndex = 0;
+  async function loadNextCard() {
+    while (nextCardIndex < cards.length) {
+      const def = cards[nextCardIndex];
+      nextCardIndex += 1;
+      await loadCommunityBoardCard(def, communityState.cardPages[def.tag] || 1);
+    }
+  }
+  const workers = Array.from({ length: Math.min(COMMUNITY_CARD_MAX_CONCURRENCY, cards.length) }, () => loadNextCard());
+  await Promise.all(workers);
 }
 async function goToCommunityCardPage(tag, page) {
   const def = communityCardDefinitions().find((item) => item.tag === tag);
