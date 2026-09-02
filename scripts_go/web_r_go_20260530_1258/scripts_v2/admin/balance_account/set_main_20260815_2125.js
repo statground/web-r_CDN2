@@ -152,7 +152,7 @@ async function set_main() {
   var ADMIN_BALANCE_GUARD_CONTRACT = Object.freeze({
     auth: "SERVER_PAGE_AUTH_TRUSTED_NO_MENU_HEADER_FETCH",
     retry: "RETRY_AFTER_AWARE_MAX_3",
-    failure: "INVALID_PAYLOAD_STAYS_SKELETON_OR_LAST_GOOD",
+    failure: "INVALID_PAYLOAD_RENDERS_TERMINAL_OR_LAST_GOOD",
     zero: "ZERO_REQUIRES_AUTHORITATIVE_EMPTY",
     partial: "ONLY_NONZERO_PARTIAL_MAY_RENDER"
   });
@@ -319,7 +319,44 @@ async function set_main() {
     ReactDOM.render(React.createElement(Div_main, { data: payload }), mount, adminBalanceGuardSyncSelectors);
   }
 
-  function adminBalanceGuardRenderDelayNotice(show) {
+  function adminBalanceGuardRenderUnavailable() {
+    var mount = document.getElementById("div_main");
+    if (!mount || typeof React === "undefined" || typeof ReactDOM === "undefined") return;
+    var retryButton = React.createElement(
+      "button",
+      {
+        type: "button",
+        class: "mt-4 rounded-lg bg-blue-700 px-5 py-2.5 text-sm font-semibold text-white hover:bg-blue-800 focus:outline-none focus:ring-4 focus:ring-blue-300",
+        onClick: function () { window.set_main(); }
+      },
+      "다시 시도"
+    );
+    var body = React.createElement(
+      "div",
+      { class: "md:col-span-10 flex min-h-[320px] items-center justify-center" },
+      React.createElement(
+        "div",
+        { role: "alert", class: "w-full rounded-lg border border-amber-200 bg-white px-6 py-12 text-center shadow" },
+        React.createElement("h2", { class: "text-xl font-bold text-gray-900" }, "정산 데이터를 확인하지 못했습니다."),
+        React.createElement("p", { class: "mt-3 text-sm text-gray-600" }, "자동 재시도를 마쳤습니다. 잠시 후 다시 시도해 주세요."),
+        retryButton
+      )
+    );
+    var menu = typeof Div_operation_menu === "function"
+      ? React.createElement(Div_operation_menu)
+      : null;
+    ReactDOM.render(
+      React.createElement(
+        "div",
+        { class: "grid w-full grid-cols-1 items-center justify-center px-[10px] py-[20px] md:grid-cols-12 md:px-[100px]" },
+        menu,
+        body
+      ),
+      mount
+    );
+  }
+
+  function adminBalanceGuardRenderDelayNotice(show, hasLastGood) {
     var mount = document.getElementById("div_main");
     if (!mount || !mount.parentNode) return;
     var notice = document.getElementById("webr-admin-balance-delay");
@@ -332,7 +369,9 @@ async function set_main() {
     notice.id = "webr-admin-balance-delay";
     notice.className = "mx-auto mt-4 max-w-screen-xl rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-center text-sm text-amber-900";
     var message = document.createElement("span");
-    message.textContent = "정산 집계가 지연되고 있습니다. 마지막 정상값 또는 로딩 화면을 유지합니다. ";
+    message.textContent = hasLastGood
+      ? "정산 집계가 지연되고 있습니다. 마지막 정상값을 표시합니다. "
+      : "정산 데이터를 확인하지 못했습니다. 자동 재시도를 마쳤습니다. ";
     var retry = document.createElement("button");
     retry.type = "button";
     retry.className = "font-semibold underline underline-offset-2";
@@ -349,13 +388,17 @@ async function set_main() {
       try {
         var payload = await adminBalanceGuardLoad();
         adminBalanceGuardState.lastGood = payload;
-        adminBalanceGuardRenderDelayNotice(false);
+        adminBalanceGuardRenderDelayNotice(false, false);
         adminBalanceGuardRender(payload);
         return true;
       } catch (error) {
-        adminBalanceGuardRenderDelayNotice(true);
-        console.warn("admin balance guard kept " + (adminBalanceGuardState.lastGood ? "last-good" : "skeleton"));
-        if (adminBalanceGuardState.lastGood) adminBalanceGuardRender(adminBalanceGuardState.lastGood);
+        adminBalanceGuardRenderDelayNotice(true, !!adminBalanceGuardState.lastGood);
+        console.warn("admin balance guard rendered " + (adminBalanceGuardState.lastGood ? "last-good" : "terminal-unavailable"));
+        if (adminBalanceGuardState.lastGood) {
+          adminBalanceGuardRender(adminBalanceGuardState.lastGood);
+        } else {
+          adminBalanceGuardRenderUnavailable();
+        }
         return false;
       }
     })();
@@ -389,6 +432,7 @@ async function set_main() {
     contract: ADMIN_BALANCE_GUARD_CONTRACT,
     payloadPartial: adminBalanceGuardPayloadPartial,
     payloadValid: adminBalanceGuardPayloadValid,
+    renderUnavailable: adminBalanceGuardRenderUnavailable,
     load: adminBalanceGuardLoad,
     getMain: adminBalanceGuardGetMain
   });
