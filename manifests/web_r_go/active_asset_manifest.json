@@ -2819,9 +2819,11 @@
       "dependencies": [],
       "order": 198,
       "consuming_routes": [
-        "*"
+        "/webr/notebook/new/",
+        "/webr/notebook/run/*",
+        "/webr/notebook/view/*"
       ],
-      "fault_domain": "shell"
+      "fault_domain": "page"
     },
     {
       "logical_path": "scripts_go/web_r_go_20260629_1025/scripts_v2/common/tailwind_config/tailwind_config_20260503_1355.js",
@@ -2833,9 +2835,11 @@
       "dependencies": [],
       "order": 199,
       "consuming_routes": [
-        "*"
+        "/webr/notebook/new/",
+        "/webr/notebook/run/*",
+        "/webr/notebook/view/*"
       ],
-      "fault_domain": "shell"
+      "fault_domain": "page"
     },
     {
       "logical_path": "scripts_go/web_r_go_20260629_1025/scripts_v2/common/tailwind_config/tailwind_config_20260725_1120.js",
@@ -2847,9 +2851,11 @@
       "dependencies": [],
       "order": 200,
       "consuming_routes": [
-        "*"
+        "/webr/notebook/new/",
+        "/webr/notebook/run/*",
+        "/webr/notebook/view/*"
       ],
-      "fault_domain": "shell"
+      "fault_domain": "page"
     },
     {
       "logical_path": "scripts_go/web_r_go_20260629_1025/scripts_v2/community/set_main_solid_edit_20260504_0027.js",
@@ -4447,7 +4453,7 @@
       "consuming_routes": [
         "*"
       ],
-      "fault_domain": "page"
+      "fault_domain": "shell"
     },
     {
       "logical_path": "scripts_go/web_r_go_20260629_1025/styles_v2/community/community_tailwind_20260725_2245.min.css",
@@ -4599,9 +4605,11 @@
       "dependencies": [],
       "order": 324,
       "consuming_routes": [
-        "*"
+        "/webr/notebook/new/",
+        "/webr/notebook/run/*",
+        "/webr/notebook/view/*"
       ],
-      "fault_domain": "shell"
+      "fault_domain": "page"
     },
     {
       "logical_path": "scripts_go/web_r_go_20260629_1025/vendor/flowbite/flowbite_4_0_1.min.css",
@@ -4643,9 +4651,11 @@
       ],
       "order": 327,
       "consuming_routes": [
-        "*"
+        "/webr/notebook/new/",
+        "/webr/notebook/run/*",
+        "/webr/notebook/view/*"
       ],
-      "fault_domain": "shell"
+      "fault_domain": "page"
     },
     {
       "logical_path": "styles/community_digest_read_20260511.css",
