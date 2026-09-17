@@ -140,6 +140,18 @@
     return normalized;
   }
 
+  function normalizeSectionMetadata(keys) {
+    if (keys === undefined) { return []; }
+    if (!Array.isArray(keys) || keys.length > summarySectionKeys.length + 1) { return null; }
+    var seen = Object.create(null);
+    for (var index = 0; index < keys.length; index += 1) {
+      var key = keys[index];
+      if ((summarySectionKeys.indexOf(key) < 0 && key !== "statistics") || seen[key]) { return null; }
+      seen[key] = true;
+    }
+    return keys.slice();
+  }
+
   function normalizeSummary(payload, requireComplete) {
     var statistics = payload && normalizeUsableStatistics(payload.statistics);
     if (
@@ -153,7 +165,16 @@
     ) {
       return null;
     }
+    var unavailable = normalizeSectionMetadata(payload.unavailable_sections);
+    var stale = normalizeSectionMetadata(payload.stale_sections);
+    var revision = cleanBoundedText(payload.book_visibility_revision, 256);
+    if (!unavailable || !stale || stale.some(function invalidStale(key) {
+      return key === "books" || unavailable.indexOf(key) < 0;
+    })) { return null; }
     var normalized = {
+      unavailable_sections: unavailable,
+      stale_sections: stale,
+      book_visibility_revision: revision,
       ok: true,
       complete: payload.complete === true && !!statistics,
       statistics: statistics || {
@@ -173,6 +194,14 @@
         .map(normalizeSummaryItem)
         .filter(Boolean);
     }
+    // A cached row is not a visibility check. Legacy responses and explicit
+    // unavailable books cannot repopulate this lane through browser storage.
+    if (!revision || unavailable.indexOf("books") >= 0) {
+      normalized.sections.books = [];
+      if (unavailable.indexOf("books") < 0) { unavailable.push("books"); }
+    }
+    if (unavailable.length) { normalized.complete = false; }
+    if (requireComplete && !normalized.complete) { return null; }
     return normalized;
   }
 
@@ -232,12 +261,17 @@
     if (!live || !cachedSummary || live.complete === true) {
       return live;
     }
+    // The server owns per-lane provenance in the current contract.
+    if (Array.isArray(livePayload.unavailable_sections)) { return live; }
     summarySectionKeys.forEach(function retainLastGoodSection(key) {
+      if (key === "books" || live.unavailable_sections.indexOf(key) >= 0) { return; }
+      if ((key === "lectures" || key === "youtube") &&
+          (live.sections.lectures.length || live.sections.youtube.length)) { return; }
       if (!live.sections[key].length && cachedSummary.sections[key].length) {
         live.sections[key] = cachedSummary.sections[key];
       }
     });
-    if (!liveStatistics) {
+    if (!liveStatistics && live.unavailable_sections.indexOf("statistics") < 0) {
       live.statistics = cachedSummary.statistics;
     }
     return live;
@@ -270,6 +304,9 @@
   function cachedSummaryResponse() {
     var preview = normalizeSummary(cachedSummary, true);
     preview.complete = false;
+    preview.sections.books = [];
+    preview.book_visibility_revision = "";
+    preview.unavailable_sections.push("books");
     servedCachedSummary = true;
     return {
       ok: true,
@@ -293,7 +330,7 @@
         return response.json().then(function inspectPublicSummary(payload) {
           var normalized = mergeWithCachedSummary(payload);
           if (!normalized) {
-            return payload;
+            return {ok: false, complete: false};
           }
           if (normalized.complete === true) {
             completeLiveSummarySeen = true;
