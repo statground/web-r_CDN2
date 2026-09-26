@@ -551,6 +551,18 @@ const IntroNoticeList = /* @__PURE__ */ (() => {
   function resetNoticeBackendCache() {
     Object.keys(noticeBackendCache).forEach((key) => delete noticeBackendCache[key]);
   }
+  function noticeListPayloadReady(data) {
+    if (!data || typeof data !== "object" || Array.isArray(data) || data.pending === true || data.ok === false ||
+      !data.count || typeof data.count !== "object" || data.count.cnt == null || data.count.cnt === "" ||
+      !data.list || typeof data.list !== "object" || Array.isArray(data.list)) {
+      return false;
+    }
+    const total = Number(data.count.cnt);
+    return Number.isSafeInteger(total) && total >= 0 && (total === 0 || Object.keys(data.list).length > 0);
+  }
+  function NoticeListUnavailable(props) {
+    return /* @__PURE__ */ React.createElement("div", { role: "alert", class: "rounded-lg border border-amber-200 bg-amber-50 px-4 py-4 text-sm text-amber-800" }, /* @__PURE__ */ React.createElement("p", null, "\uACF5\uC9C0 \uBAA9\uB85D\uC744 \uBD88\uB7EC\uC624\uC9C0 \uBABB\uD588\uC2B5\uB2C8\uB2E4. \uC7A0\uC2DC \uD6C4 \uB2E4\uC2DC \uC2DC\uB3C4\uD574 \uC8FC\uC138\uC694."), /* @__PURE__ */ React.createElement("button", { type: "button", onClick: props.retry, class: "mt-3 inline-flex rounded-lg border border-amber-300 bg-white px-3 py-2 font-semibold text-amber-900 hover:bg-amber-100" }, "\uB2E4\uC2DC \uC2DC\uB3C4"));
+  }
   function NoticePaginationButton(props) {
     const baseClass = "inline-flex h-9 min-w-9 items-center justify-center rounded-lg border px-3 text-sm font-semibold transition";
     const activeClass = "border-blue-700 bg-blue-700 text-white";
@@ -634,16 +646,24 @@ const IntroNoticeList = /* @__PURE__ */ (() => {
       let data = noticeBackendCache[backendPage];
       if (!data) {
         request_data.append("page", backendPage);
-        data = await fetch("/blank/ajax_board/get_article_list/", {
+        const response = await fetch("/blank/ajax_board/get_article_list/", {
           method: "post",
           headers: { "X-CSRFToken": getCookie("csrftoken") },
           body: request_data
-        }).then((res) => res.json());
-        noticeBackendCache[backendPage] = data;
+        });
+        if (!response.ok)
+          throw new Error("notice list request failed");
+        data = await response.json();
       }
+      if (!noticeListPayloadReady(data)) {
+        delete noticeBackendCache[backendPage];
+        throw new Error("notice list is unavailable");
+      }
+      noticeBackendCache[backendPage] = data;
       article_counter = Number(data["count"] && data["count"].cnt || 0);
       page_num = noticeClampPage(page_num);
       const rows = noticeRowsForPage(Object.values(data.list || {}), page_num);
+      toggle_page = false;
       ReactDOM.render(
         /* @__PURE__ */ React.createElement(
           ArticleList,
@@ -656,7 +676,7 @@ const IntroNoticeList = /* @__PURE__ */ (() => {
       );
     } catch (err) {
       console.error("[notice list] load failed:", err);
-      ReactDOM.render(/* @__PURE__ */ React.createElement("div", { class: "rounded-lg border border-amber-200 bg-amber-50 px-4 py-4 text-sm text-amber-800" }, "\uACF5\uC9C0 \uBAA9\uB85D\uC744 \uBD88\uB7EC\uC624\uC9C0 \uBABB\uD588\uC2B5\uB2C8\uB2E4."), document.getElementById("div_article_list"));
+      ReactDOM.render(/* @__PURE__ */ React.createElement(NoticeListUnavailable, { retry: () => get_article_list(mode2, requestedPage) }), document.getElementById("div_article_list"));
     } finally {
       toggle_page = false;
     }
