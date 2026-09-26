@@ -50,6 +50,14 @@
     search: window.location.search
   };
   window.WebRBookPages = window.WebRBookPages || {};
+  window.WebRBookIsCuratedAffiliateLink = function isCuratedAffiliateLink(rawURL) {
+    try {
+      const url = new URL(rawURL);
+      return url.protocol === "https:" && url.origin === window.location.origin && !url.username && !url.password && !url.search && !url.hash && /^\/book\/affiliate\/curated\/00[1-8]\/(?:yes24|kyobo)\/$/.test(url.pathname);
+    } catch (_) {
+      return false;
+    }
+  };
   window.WebRBookSafeStores = function safeStores(rows, requireHTTPS = false) {
     if (!Array.isArray(rows))
       return [];
@@ -179,6 +187,8 @@
     function Div_PriceCompare({ stores, gridCols = "grid-cols-3" }) {
       if (!stores || stores.length === 0)
         return null;
+      const isAffiliateLink = window.WebRBookIsCuratedAffiliateLink;
+      const hasAffiliateLink = stores.some((store) => isAffiliateLink(store.link));
       const logoMap = {
         "\uAD50\uBCF4\uBB38\uACE0": "https://cdn.jsdelivr.net/gh/statground/web-R_CDN@f3e464e95616fa13712baa6adbbb0b6cda7ee821/images/book/kyobobook2.png",
         "Yes24": "https://cdn.jsdelivr.net/gh/statground/web-R_CDN@f3e464e95616fa13712baa6adbbb0b6cda7ee821/images/book/yes24.png",
@@ -194,11 +204,11 @@
         {
           href: store.link,
           target: "_blank",
-          rel: "noreferrer noopener",
+          rel: isAffiliateLink(store.link) ? "nofollow sponsored noreferrer noopener" : "noreferrer noopener",
           className: "bd-btn inline-block bg-gray-100 text-gray-700 px-3 py-2 rounded hover:bg-gray-200"
         },
         purchaseMarkets.includes(store.name) ? "\uAD6C\uB9E4\uD558\uB7EC \uAC00\uAE30" : "\uBCF4\uB7EC\uAC00\uAE30"
-      ))))));
+      ))))), hasAffiliateLink ? /* @__PURE__ */ React.createElement("p", { className: "mt-3 text-xs text-gray-500" }, "이 링크를 통해 구매하면 수수료를 제공받을 수 있습니다.") : null);
     }
     function Div_BookMeta({ title, subtitle }) {
       return /* @__PURE__ */ React.createElement("div", { className: "bd-card" }, /* @__PURE__ */ React.createElement("div", { className: "bd-row flex items-start" }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("h1", { className: "bd-title text-2xl font-bold mb-1.5" }, title), /* @__PURE__ */ React.createElement("p", { className: "bd-sub text-gray-500" }, subtitle))));
@@ -232,7 +242,8 @@
       const coverMaxHeightDesktop = 520;
       const priceGridCols = isDesktop ? "grid-cols-3" : "grid-cols-2";
       const recoGridCols = isDesktop ? "grid-cols-4" : "grid-cols-2";
-      const randomStoreLink = stores && stores.length > 0 ? stores[Math.floor(Math.random() * stores.length)].link : "";
+      const randomStore = stores && stores.length > 0 ? stores[Math.floor(Math.random() * stores.length)] : null;
+      const randomStoreLink = randomStore ? randomStore.link : "";
       const coverImage = /* @__PURE__ */ React.createElement(
         "img",
         {
@@ -242,7 +253,7 @@
           style: { height: "auto", maxHeight: isDesktop ? coverMaxHeightDesktop : "none" }
         }
       );
-      const coverContent = randomStoreLink ? /* @__PURE__ */ React.createElement("a", { href: randomStoreLink, target: "_blank", rel: "noreferrer noopener" }, coverImage) : coverImage;
+      const coverContent = randomStoreLink ? /* @__PURE__ */ React.createElement("a", { href: randomStoreLink, target: "_blank", rel: window.WebRBookIsCuratedAffiliateLink(randomStoreLink) ? "nofollow sponsored noreferrer noopener" : "noreferrer noopener" }, coverImage) : coverImage;
       const coverBox = /* @__PURE__ */ React.createElement("div", { className: "rounded-lg overflow-hidden relative", style: { width: isDesktop ? coverWidthDesktop : "50%", maxWidth: isDesktop ? coverWidthDesktop : "360px" } }, coverContent);
       return /* @__PURE__ */ React.createElement("main", { className: "max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-8 pb-28" }, /* @__PURE__ */ React.createElement(Div_page_header, { title: header_title, subtitle: bookData.title }), /* @__PURE__ */ React.createElement("section", { id: "book-detail", className: "w-full" }, /* @__PURE__ */ React.createElement("div", { className: isDesktop ? "flex gap-6 items-start" : "flex flex-col gap-4 items-stretch" }, /* @__PURE__ */ React.createElement("aside", { className: isDesktop ? "shrink-0" : "w-full flex justify-center", style: { width: isDesktop ? coverWidthDesktop : "100%" } }, coverBox), /* @__PURE__ */ React.createElement("section", { className: isDesktop ? "flex-1 flex flex-col gap-4" : "w-full flex flex-col gap-4" }, /* @__PURE__ */ React.createElement("div", { className: "my-4" }, /* @__PURE__ */ React.createElement(Div_BookMeta, { title: bookData.title, subtitle: bookData.subtitle })), /* @__PURE__ */ React.createElement("div", { className: "my-4" }, /* @__PURE__ */ React.createElement(Div_PriceCompare, { stores, gridCols: priceGridCols })), /* @__PURE__ */ React.createElement(Div_BookDescription, { content: bookData.introduction, plainText }), /* @__PURE__ */ React.createElement(Div_BookContents, { content: bookData.contents, plainText }), /* @__PURE__ */ React.createElement(Div_PublisherReview, { content: bookData.publisher_review, plainText }), /* @__PURE__ */ React.createElement(
         Div_ProductInfo,
@@ -401,17 +412,18 @@
     function MarketButtons({ stores }) {
       if (!stores || stores.length === 0)
         return null;
-      return /* @__PURE__ */ React.createElement("div", { class: "flex flex-wrap gap-2 w-full" }, stores.map((store) => /* @__PURE__ */ React.createElement(
+      const isAffiliateLink = window.WebRBookIsCuratedAffiliateLink;
+      return /* @__PURE__ */ React.createElement("div", { class: "w-full" }, /* @__PURE__ */ React.createElement("div", { class: "flex flex-wrap gap-2 w-full" }, stores.map((store) => /* @__PURE__ */ React.createElement(
         "a",
         {
           key: store.name,
           href: store.link,
           target: "_blank",
-          rel: "noreferrer noopener",
+          rel: isAffiliateLink(store.link) ? "nofollow sponsored noreferrer noopener" : "noreferrer noopener",
           class: "text-gray-700 bg-gray-100 border border-gray-300 rounded-lg text-sm px-4 py-2 hover:bg-gray-200"
         },
         store.name
-      )));
+      ))), stores.some((store) => isAffiliateLink(store.link)) ? /* @__PURE__ */ React.createElement("p", { class: "mt-2 text-xs text-gray-500" }, "이 링크를 통해 구매하면 수수료를 제공받을 수 있습니다.") : null);
     }
     function BookInfoPanel({ bookData, stores, curatedCatalog = false }) {
       if (!bookData) {
