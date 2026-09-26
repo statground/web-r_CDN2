@@ -11,6 +11,7 @@ except ImportError:
 
 ROOT = Path(__file__).resolve().parents[1]
 PORTAL_JS = ROOT / "scripts_go/web_r_go_20260629_1025/scripts_v2/index/set_main_compact_portal_20260801_0138.js"
+PORTAL_CSS = ROOT / "scripts_go/web_r_go_20260629_1025/styles_v2/index/home_compact_portal_20260729_1530.css"
 UNAVAILABLE = "공지사항을 확인하지 못했습니다. 잠시 후 다시 시도해 주세요."
 
 
@@ -69,6 +70,7 @@ class HomeNoticeStatusTests(unittest.TestCase):
 
         page.route("**/*", fulfill)
         page.goto("https://home.test/")
+        page.add_style_tag(path=str(PORTAL_CSS))
         page.add_script_tag(path=str(PORTAL_JS))
         page.evaluate("window.set_main()")
         notice_body = page.locator(".webr-home-compact__rail-card").filter(
@@ -80,6 +82,9 @@ class HomeNoticeStatusTests(unittest.TestCase):
         page, body, state, errors = self.render({"body": summary([], unavailable=("notices",), complete=False)})
         page.locator('#webr-home-portal[data-home-summary-state="partial"]').wait_for()
         body.get_by_text(UNAVAILABLE).wait_for()
+        self.assertEqual(body.locator(".webr-home-compact__notice-unavailable").evaluate(
+            "node => getComputedStyle(node).backgroundColor"
+        ), "rgb(255, 251, 235)")
         self.assertEqual(body.get_by_text("공지사항 전체 보기").count(), 0)
         self.assertEqual(body.get_by_role("link", name="공지사항으로 이동").get_attribute("href"), "/intro/notice/")
         self.assertIn("R 자료 유지", page.locator(".webr-home-compact__category-grid").inner_text())
