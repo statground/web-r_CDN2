@@ -39,6 +39,15 @@
 #book-detail .bd-book{border:1px solid var(--border);border-radius:14px;padding:12px;background:#fff;}
 #book-detail .bd-aspect{width:100%;aspect-ratio:3/4;border-radius:10px;overflow:hidden;background:#eef2f7;}
 #book-detail .bd-aspect img{width:100%;height:100%;object-fit:cover;display:block;}
+/* Plain-text catalog metadata is displayed as text nodes, with spacing restored
+   from sentence and chapter boundaries rather than interpreted as HTML. */
+#book-detail .bd-text-section{background:#fff;border:1px solid var(--border);border-radius:var(--r);padding:clamp(18px,2.5vw,28px);box-shadow:0 8px 24px rgba(2,6,23,.045);min-width:0;}
+#book-detail .bd-text-section h3{font-size:20px;line-height:1.4;font-weight:750;color:#111827;margin:0 0 18px;padding-bottom:12px;border-bottom:1px solid #e8edf4;}
+#book-detail .bd-plain-prose p{font-size:16px;line-height:1.9;color:#334155;margin:0 0 1.15em;word-break:keep-all;overflow-wrap:anywhere;}
+#book-detail .bd-plain-prose p:last-child{margin-bottom:0;}
+#book-detail .bd-plain-toc{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;list-style:none;margin:0;padding:0;}
+#book-detail .bd-plain-toc li{font-size:15px;line-height:1.7;color:#334155;background:#f8fafc;border:1px solid #e8edf4;border-radius:10px;padding:12px 14px;word-break:keep-all;overflow-wrap:anywhere;}
+@media(max-width:700px){#book-detail .bd-plain-toc{grid-template-columns:minmax(0,1fr);}#book-detail .bd-text-section{padding:18px;}#book-detail .bd-plain-prose p{font-size:15px;line-height:1.85;}}
 
 /* ---- Tabs (radio, no JS) ---- */
 #book-detail .bd-tabwrap{--tabgap:8px;}

@@ -50,6 +50,26 @@
     search: window.location.search
   };
   window.WebRBookPages = window.WebRBookPages || {};
+  window.WebRBookSafeStores = function safeStores(rows) {
+    if (!Array.isArray(rows))
+      return [];
+    const seen = new Set();
+    return rows.map((row) => {
+      const name = String((row && row.marketplace) || "").trim();
+      const rawURL = String((row && row.url) || "").trim();
+      if (!name || !rawURL || /\s/.test(rawURL))
+        return null;
+      try {
+        const url = new URL(rawURL);
+        if (!["http:", "https:"].includes(url.protocol) || !url.hostname || url.username || url.password || seen.has(name))
+          return null;
+        seen.add(name);
+        return { name, link: url.href };
+      } catch (_) {
+        return null;
+      }
+    }).filter(Boolean);
+  };
 })();
 (function() {
   window.WebRBookPages = window.WebRBookPages || {};
@@ -101,7 +121,45 @@
       const shuffled = [...array].sort(() => 0.5 - Math.random());
       return shuffled.slice(0, n);
     }
-    const HtmlSection = ({ title, html, plainText }) => /* @__PURE__ */ React.createElement("section", { className: "prose max-w-none prose-neutral" }, title ? /* @__PURE__ */ React.createElement("h3", { className: "m-0 mb-2 font-semibold text-xl" }, title) : null, plainText ? /* @__PURE__ */ React.createElement("div", { style: { whiteSpace: "pre-wrap" } }, html) : /* @__PURE__ */ React.createElement("div", { dangerouslySetInnerHTML: { __html: sanitizeHtml(html) } }));
+    function plainParagraphs(content) {
+      return String(content || "").replace(/\r\n?/g, "\n").split(/\n\s*\n/).flatMap((block) => {
+        const sentences = block.replace(/[ \t]+/g, " ").trim().split(/(?<=[.!?。])\s+(?=\S)/u).filter(Boolean);
+        const paragraphs = [];
+        let current = "";
+        sentences.forEach((sentence) => {
+          if (current && current.length + sentence.length > 260) {
+            paragraphs.push(current);
+            current = "";
+          }
+          current += (current ? " " : "") + sentence;
+        });
+        if (current)
+          paragraphs.push(current);
+        return paragraphs;
+      });
+    }
+    function plainContentsItems(content) {
+      const original = String(content || "").replace(/\r\n?/g, "\n").trim();
+      if (!original)
+        return [];
+      if (original.includes("\n"))
+        return original.split(/\n+/).map((line) => line.trim()).filter(Boolean);
+      const text = original.replace(/\s+/g, " ");
+      const marker = /(^|\s)(Part\s+\d+\.?|제\s*\d+\s*장|제\s*\d+\s*절|\d+\s*장|[IVX]+\.(?=\s)|[IVX]+(?=\s+[가-힣])|\d+(?:\.\d+)+(?=\s)|\d+(?=\s+[가-힣A-Za-z])|부록(?:\s+\d+)?|참고문헌|찾아보기)(?=\s|$)/giu;
+      const starts = [...text.matchAll(marker)].map((match) => match.index + match[1].length);
+      if (starts.length < 2)
+        return [text];
+      const items = [];
+      if (starts[0] > 0)
+        items.push(text.slice(0, starts[0]).trim());
+      starts.forEach((start, index) => items.push(text.slice(start, starts[index + 1] || text.length).trim()));
+      return items.filter(Boolean);
+    }
+    function PlainTextSection({ title, content, contents = false }) {
+      const items = contents ? plainContentsItems(content) : plainParagraphs(content);
+      return /* @__PURE__ */ React.createElement("section", { className: "bd-text-section", "aria-label": title }, /* @__PURE__ */ React.createElement("h3", null, title), contents && items.length > 1 ? /* @__PURE__ */ React.createElement("ol", { className: "bd-plain-toc" }, items.map((item, index) => /* @__PURE__ */ React.createElement("li", { key: index }, item))) : /* @__PURE__ */ React.createElement("div", { className: "bd-plain-prose" }, items.map((item, index) => /* @__PURE__ */ React.createElement("p", { key: index }, item))));
+    }
+    const HtmlSection = ({ title, html, plainText, contents = false }) => plainText ? /* @__PURE__ */ React.createElement(PlainTextSection, { title, content: html, contents }) : /* @__PURE__ */ React.createElement("section", { className: "prose max-w-none prose-neutral" }, title ? /* @__PURE__ */ React.createElement("h3", { className: "m-0 mb-2 font-semibold text-xl" }, title) : null, /* @__PURE__ */ React.createElement("div", { dangerouslySetInnerHTML: { __html: sanitizeHtml(html) } }));
     function Div_RecommendedBooks({ books, gridCols = "grid-cols-4" }) {
       return /* @__PURE__ */ React.createElement("div", { className: "bd-card my-4" }, /* @__PURE__ */ React.createElement("div", { className: "bd-row" }, /* @__PURE__ */ React.createElement("h2", { className: "font-semibold text-xl" }, "\uD568\uAED8 \uBCF4\uBA74 \uC88B\uC740 \uCC45")), /* @__PURE__ */ React.createElement("div", { className: `grid ${gridCols} gap-3 mt-3` }, books.map((book) => /* @__PURE__ */ React.createElement(
         "a",
@@ -144,7 +202,7 @@
       return /* @__PURE__ */ React.createElement("div", { className: "bd-card" }, /* @__PURE__ */ React.createElement("div", { className: "bd-row flex items-start" }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("h1", { className: "bd-title text-2xl font-bold mb-1.5" }, title), /* @__PURE__ */ React.createElement("p", { className: "bd-sub text-gray-500" }, subtitle))));
     }
     const Div_BookDescription = ({ content, plainText }) => content ? /* @__PURE__ */ React.createElement(HtmlSection, { title: "\uCC45 \uC18C\uAC1C", html: content, plainText }) : null;
-    const Div_BookContents = ({ content, plainText }) => content ? /* @__PURE__ */ React.createElement(HtmlSection, { title: "\uBAA9\uCC28", html: content, plainText }) : null;
+    const Div_BookContents = ({ content, plainText }) => content ? /* @__PURE__ */ React.createElement(HtmlSection, { title: "\uBAA9\uCC28", html: content, plainText, contents: true }) : null;
     const Div_PublisherReview = ({ content, plainText }) => content ? /* @__PURE__ */ React.createElement(HtmlSection, { title: "\uCD9C\uD310\uC0AC \uB9AC\uBDF0", html: content, plainText }) : null;
     function Div_ProductInfo({ published_at, page_cnt, size, publisher }) {
       if (!published_at && !page_cnt && !size && !publisher)
@@ -226,7 +284,16 @@
       if (bookData.isbn)
         subtitleParts.push(`ISBN ${bookData.isbn}`);
       bookData.subtitle = subtitleParts.join(" \xB7 ");
-      const stores = values.filter((item) => item.uuid_board_category === sub).map((item) => ({ name: String(item.marketplace || "").trim(), link: String(item.url || "").trim() })).filter((store) => store.name && /^https?:\/\/[^\s/]+/i.test(store.link)).filter((store, index, self) => index === self.findIndex((s) => s.name === store.name));
+      let stores = window.WebRBookSafeStores(values.filter((item) => item.uuid_board_category === sub));
+      if (bookData.content_format === "plain_text") {
+        const requestData = new FormData();
+        requestData.append("tag_sub", bookData.board_url_sub || sub);
+        const infoResponse = await fetch("/book/ajax_get_book_info/", { method: "POST", body: requestData });
+        if (infoResponse.ok) {
+          const info = await infoResponse.json();
+          stores = window.WebRBookSafeStores(info && info.links);
+        }
+      }
       const uniqueRecommended = [...new Map(
         values.filter((item) => item.uuid_board_category !== sub).map((item) => [item.uuid_board_category, item])
       ).values()];
@@ -381,7 +448,7 @@
         headers: { "X-CSRFToken": getCookie("csrftoken") },
         body: requestData
       }).then((res) => res.json());
-      const stores = listData.raw.filter((item) => item.uuid_board_category === currentSub).map((item) => ({ name: String(item.marketplace || "").trim(), link: String(item.url || "").trim() })).filter((store) => store.name && /^https?:\/\/[^\s/]+/i.test(store.link)).filter((store, index, self) => index === self.findIndex((s) => s.name === store.name));
+      const stores = window.WebRBookSafeStores(bookData && bookData.content_format === "plain_text" ? bookData.links : listData.raw.filter((item) => item.uuid_board_category === currentSub));
       ReactDOM.render(/* @__PURE__ */ React.createElement(BookInfoPanel, { bookData, stores, curatedCatalog }), document.getElementById("div_book_info"));
     }
     function renderArticleList(data, mode) {
