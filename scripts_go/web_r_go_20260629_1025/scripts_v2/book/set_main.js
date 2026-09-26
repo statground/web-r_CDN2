@@ -50,7 +50,7 @@
     search: window.location.search
   };
   window.WebRBookPages = window.WebRBookPages || {};
-  window.WebRBookSafeStores = function safeStores(rows) {
+  window.WebRBookSafeStores = function safeStores(rows, requireHTTPS = false) {
     if (!Array.isArray(rows))
       return [];
     const seen = new Set();
@@ -61,7 +61,7 @@
         return null;
       try {
         const url = new URL(rawURL);
-        if (!["http:", "https:"].includes(url.protocol) || !url.hostname || url.username || url.password || seen.has(name))
+        if ((requireHTTPS ? url.protocol !== "https:" : !["http:", "https:"].includes(url.protocol)) || !url.hostname || url.username || url.password || seen.has(name))
           return null;
         seen.add(name);
         return { name, link: url.href };
@@ -286,12 +286,17 @@
       bookData.subtitle = subtitleParts.join(" \xB7 ");
       let stores = window.WebRBookSafeStores(values.filter((item) => item.uuid_board_category === sub));
       if (bookData.content_format === "plain_text") {
-        const requestData = new FormData();
-        requestData.append("tag_sub", bookData.board_url_sub || sub);
-        const infoResponse = await fetch("/book/ajax_get_book_info/", { method: "POST", body: requestData });
-        if (infoResponse.ok) {
-          const info = await infoResponse.json();
-          stores = window.WebRBookSafeStores(info && info.links);
+        stores = [];
+        try {
+          const requestData = new FormData();
+          requestData.append("tag_sub", bookData.board_url_sub || sub);
+          const infoResponse = await fetch("/book/ajax_get_book_info/", { method: "POST", body: requestData });
+          if (infoResponse.ok) {
+            const info = await infoResponse.json();
+            stores = window.WebRBookSafeStores(info && info.links, true);
+          }
+        } catch (_) {
+          // Metadata remains visible when optional marketplace lookup fails.
         }
       }
       const uniqueRecommended = [...new Map(
@@ -448,7 +453,8 @@
         headers: { "X-CSRFToken": getCookie("csrftoken") },
         body: requestData
       }).then((res) => res.json());
-      const stores = window.WebRBookSafeStores(bookData && bookData.content_format === "plain_text" ? bookData.links : listData.raw.filter((item) => item.uuid_board_category === currentSub));
+      const curatedBook = bookData && bookData.content_format === "plain_text";
+      const stores = window.WebRBookSafeStores(curatedBook ? bookData.links : listData.raw.filter((item) => item.uuid_board_category === currentSub), curatedBook);
       ReactDOM.render(/* @__PURE__ */ React.createElement(BookInfoPanel, { bookData, stores, curatedCatalog }), document.getElementById("div_book_info"));
     }
     function renderArticleList(data, mode) {
