@@ -53,6 +53,7 @@
   var bookRecoveryWanted = false;
   var bookRecoverySuspended = false;
   var bookRecoveryLastStarted = 0;
+  var noticeRetryInFlight = false;
 
   function element(tagName, className, text) {
     var node = document.createElement(tagName);
@@ -475,10 +476,57 @@
     });
   }
 
-  function renderNotices(items) {
+  function noticeSummaryUnavailable(payload) {
+    if (!payload || !payload.sections || !Array.isArray(payload.sections.notices)) {
+      return true;
+    }
+    var unavailable = payload.unavailable_sections;
+    var stale = payload.stale_sections;
+    if (Array.isArray(unavailable)) {
+      return unavailable.indexOf("notices") >= 0 ||
+        (Array.isArray(stale) && stale.indexOf("notices") >= 0);
+    }
+    return payload.complete !== true;
+  }
+
+  function retryUnavailableNotices() {
+    if (noticeRetryInFlight) {
+      return;
+    }
+    noticeRetryInFlight = true;
+    var button = refs.noticesBody.querySelector(".webr-home-compact__notice-retry");
+    if (button) {
+      button.disabled = true;
+      button.textContent = "확인 중...";
+    }
+    requestSummary().then(function renderRetriedNotices(payload) {
+      noticeRetryInFlight = false;
+      renderNotices(normalizedItems(payload, "notices"), payload);
+    }).catch(function keepNoticesUnavailable() {
+      noticeRetryInFlight = false;
+      renderNotices([], null);
+    });
+  }
+
+  function renderNotices(items, payload) {
     refs.noticesBody.replaceChildren();
     var rows = items.slice(0, 3);
     if (!rows.length) {
+      if (noticeSummaryUnavailable(payload)) {
+        var unavailable = element("div", "webr-home-compact__notice-unavailable");
+        unavailable.setAttribute("role", "status");
+        unavailable.appendChild(element("p", "", "공지사항을 확인하지 못했습니다. 잠시 후 다시 시도해 주세요."));
+        var actions = element("div", "webr-home-compact__notice-actions");
+        var retry = element("button", "webr-home-compact__notice-retry", noticeRetryInFlight ? "확인 중..." : "다시 시도");
+        retry.type = "button";
+        retry.disabled = noticeRetryInFlight;
+        retry.addEventListener("click", retryUnavailableNotices);
+        actions.appendChild(retry);
+        actions.appendChild(link("/intro/notice/", "webr-home-compact__notice-visit", "공지사항으로 이동"));
+        unavailable.appendChild(actions);
+        refs.noticesBody.appendChild(unavailable);
+        return;
+      }
       refs.noticesBody.appendChild(link("/intro/notice/", "webr-home-compact__empty", "공지사항 전체 보기"));
       return;
     }
@@ -582,7 +630,7 @@
       renderCategory(definition, item);
     });
     renderStatistics(payload.statistics);
-    renderNotices(normalizedItems(payload, "notices"));
+    renderNotices(normalizedItems(payload, "notices"), payload);
     renderMedia(payload);
     renderActivity(normalizedItems(payload, "activity"));
     if (payload.complete === true) {
@@ -607,7 +655,7 @@
       renderCategory(definition, null);
     });
     renderStatistics({});
-    renderNotices([]);
+    renderNotices([], null);
     renderMedia({ sections: {} });
     renderActivity([]);
     refs.section.setAttribute("aria-busy", "false");
