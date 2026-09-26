@@ -101,7 +101,7 @@
       const shuffled = [...array].sort(() => 0.5 - Math.random());
       return shuffled.slice(0, n);
     }
-    const HtmlSection = ({ title, html }) => /* @__PURE__ */ React.createElement("section", { className: "prose max-w-none prose-neutral" }, title ? /* @__PURE__ */ React.createElement("h3", { className: "m-0 mb-2 font-semibold text-xl" }, title) : null, /* @__PURE__ */ React.createElement("div", { dangerouslySetInnerHTML: { __html: sanitizeHtml(html) } }));
+    const HtmlSection = ({ title, html, plainText }) => /* @__PURE__ */ React.createElement("section", { className: "prose max-w-none prose-neutral" }, title ? /* @__PURE__ */ React.createElement("h3", { className: "m-0 mb-2 font-semibold text-xl" }, title) : null, plainText ? /* @__PURE__ */ React.createElement("div", { style: { whiteSpace: "pre-wrap" } }, html) : /* @__PURE__ */ React.createElement("div", { dangerouslySetInnerHTML: { __html: sanitizeHtml(html) } }));
     function Div_RecommendedBooks({ books, gridCols = "grid-cols-4" }) {
       return /* @__PURE__ */ React.createElement("div", { className: "bd-card my-4" }, /* @__PURE__ */ React.createElement("div", { className: "bd-row" }, /* @__PURE__ */ React.createElement("h2", { className: "font-semibold text-xl" }, "\uD568\uAED8 \uBCF4\uBA74 \uC88B\uC740 \uCC45")), /* @__PURE__ */ React.createElement("div", { className: `grid ${gridCols} gap-3 mt-3` }, books.map((book) => /* @__PURE__ */ React.createElement(
         "a",
@@ -117,6 +117,8 @@
       ))));
     }
     function Div_PriceCompare({ stores, gridCols = "grid-cols-3" }) {
+      if (!stores || stores.length === 0)
+        return null;
       const logoMap = {
         "\uAD50\uBCF4\uBB38\uACE0": "https://cdn.jsdelivr.net/gh/statground/web-R_CDN@f3e464e95616fa13712baa6adbbb0b6cda7ee821/images/book/kyobobook2.png",
         "Yes24": "https://cdn.jsdelivr.net/gh/statground/web-R_CDN@f3e464e95616fa13712baa6adbbb0b6cda7ee821/images/book/yes24.png",
@@ -141,15 +143,16 @@
     function Div_BookMeta({ title, subtitle }) {
       return /* @__PURE__ */ React.createElement("div", { className: "bd-card" }, /* @__PURE__ */ React.createElement("div", { className: "bd-row flex items-start" }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("h1", { className: "bd-title text-2xl font-bold mb-1.5" }, title), /* @__PURE__ */ React.createElement("p", { className: "bd-sub text-gray-500" }, subtitle))));
     }
-    const Div_BookDescription = ({ content }) => content ? /* @__PURE__ */ React.createElement(HtmlSection, { title: "\uCC45 \uC18C\uAC1C", html: content }) : null;
-    const Div_BookContents = ({ content }) => content ? /* @__PURE__ */ React.createElement(HtmlSection, { title: "\uBAA9\uCC28", html: content }) : null;
-    const Div_PublisherReview = ({ content }) => content ? /* @__PURE__ */ React.createElement(HtmlSection, { title: "\uCD9C\uD310\uC0AC \uB9AC\uBDF0", html: content }) : null;
+    const Div_BookDescription = ({ content, plainText }) => content ? /* @__PURE__ */ React.createElement(HtmlSection, { title: "\uCC45 \uC18C\uAC1C", html: content, plainText }) : null;
+    const Div_BookContents = ({ content, plainText }) => content ? /* @__PURE__ */ React.createElement(HtmlSection, { title: "\uBAA9\uCC28", html: content, plainText }) : null;
+    const Div_PublisherReview = ({ content, plainText }) => content ? /* @__PURE__ */ React.createElement(HtmlSection, { title: "\uCD9C\uD310\uC0AC \uB9AC\uBDF0", html: content, plainText }) : null;
     function Div_ProductInfo({ published_at, page_cnt, size, publisher }) {
       if (!published_at && !page_cnt && !size && !publisher)
         return null;
       return /* @__PURE__ */ React.createElement("div", { className: "bd-card" }, /* @__PURE__ */ React.createElement("h3", { className: "m-0 mb-2 font-semibold text-xl" }, "\uCC45 \uC815\uBCF4"), /* @__PURE__ */ React.createElement("table", { className: "w-full", style: { fontSize: "14px" } }, /* @__PURE__ */ React.createElement("tbody", null, published_at ? /* @__PURE__ */ React.createElement("tr", null, /* @__PURE__ */ React.createElement("th", { className: "text-left px-4 py-2 font-medium" }, "\uCD9C\uAC04"), /* @__PURE__ */ React.createElement("td", { className: "py-2" }, published_at)) : null, page_cnt ? /* @__PURE__ */ React.createElement("tr", null, /* @__PURE__ */ React.createElement("th", { className: "text-left px-4 py-2 font-medium" }, "\uD398\uC774\uC9C0 \uC218"), /* @__PURE__ */ React.createElement("td", { className: "py-2" }, page_cnt)) : null, size ? /* @__PURE__ */ React.createElement("tr", null, /* @__PURE__ */ React.createElement("th", { className: "text-left px-4 py-2 font-medium" }, "\uD06C\uAE30"), /* @__PURE__ */ React.createElement("td", { className: "py-2" }, size)) : null, publisher ? /* @__PURE__ */ React.createElement("tr", null, /* @__PURE__ */ React.createElement("th", { className: "text-left px-4 py-2 font-medium" }, "\uCD9C\uD310\uC0AC"), /* @__PURE__ */ React.createElement("td", { className: "py-2" }, publisher)) : null)));
     }
     function Div_BookDetail({ bookData, stores, recommendedBooks }) {
+      const plainText = bookData.content_format === "plain_text";
       const [isDesktop, setIsDesktop] = React.useState(typeof window !== "undefined" ? window.innerWidth >= 1024 : true);
       React.useEffect(() => {
         let rafId = null;
@@ -169,8 +172,8 @@
       const coverMaxHeightDesktop = 520;
       const priceGridCols = isDesktop ? "grid-cols-3" : "grid-cols-2";
       const recoGridCols = isDesktop ? "grid-cols-4" : "grid-cols-2";
-      const randomStoreLink = stores && stores.length > 0 ? stores[Math.floor(Math.random() * stores.length)].link : "#";
-      return /* @__PURE__ */ React.createElement("main", { className: "max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-8 pb-28" }, /* @__PURE__ */ React.createElement(Div_page_header, { title: header_title, subtitle: bookData.title }), /* @__PURE__ */ React.createElement("section", { id: "book-detail", className: "w-full" }, /* @__PURE__ */ React.createElement("div", { className: isDesktop ? "flex gap-6 items-start" : "flex flex-col gap-4 items-stretch" }, /* @__PURE__ */ React.createElement("aside", { className: isDesktop ? "shrink-0" : "w-full flex justify-center", style: { width: isDesktop ? coverWidthDesktop : "100%" } }, /* @__PURE__ */ React.createElement("div", { className: "rounded-lg overflow-hidden relative", style: { width: isDesktop ? coverWidthDesktop : "50%", maxWidth: isDesktop ? coverWidthDesktop : "360px" } }, /* @__PURE__ */ React.createElement("a", { href: randomStoreLink, target: "_blank", rel: "noreferrer noopener" }, /* @__PURE__ */ React.createElement(
+      const randomStoreLink = stores && stores.length > 0 ? stores[Math.floor(Math.random() * stores.length)].link : "";
+      const coverImage = /* @__PURE__ */ React.createElement(
         "img",
         {
           className: "w-full rounded-lg block object-contain",
@@ -178,7 +181,10 @@
           alt: bookData.title,
           style: { height: "auto", maxHeight: isDesktop ? coverMaxHeightDesktop : "none" }
         }
-      )))), /* @__PURE__ */ React.createElement("section", { className: isDesktop ? "flex-1 flex flex-col gap-4" : "w-full flex flex-col gap-4" }, /* @__PURE__ */ React.createElement("div", { className: "my-4" }, /* @__PURE__ */ React.createElement(Div_BookMeta, { title: bookData.title, subtitle: bookData.subtitle })), /* @__PURE__ */ React.createElement("div", { className: "my-4" }, /* @__PURE__ */ React.createElement(Div_PriceCompare, { stores, gridCols: priceGridCols })), /* @__PURE__ */ React.createElement(Div_BookDescription, { content: bookData.introduction }), /* @__PURE__ */ React.createElement(Div_BookContents, { content: bookData.contents }), /* @__PURE__ */ React.createElement(Div_PublisherReview, { content: bookData.publisher_review }), /* @__PURE__ */ React.createElement(
+      );
+      const coverContent = randomStoreLink ? /* @__PURE__ */ React.createElement("a", { href: randomStoreLink, target: "_blank", rel: "noreferrer noopener" }, coverImage) : coverImage;
+      const coverBox = /* @__PURE__ */ React.createElement("div", { className: "rounded-lg overflow-hidden relative", style: { width: isDesktop ? coverWidthDesktop : "50%", maxWidth: isDesktop ? coverWidthDesktop : "360px" } }, coverContent);
+      return /* @__PURE__ */ React.createElement("main", { className: "max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-8 pb-28" }, /* @__PURE__ */ React.createElement(Div_page_header, { title: header_title, subtitle: bookData.title }), /* @__PURE__ */ React.createElement("section", { id: "book-detail", className: "w-full" }, /* @__PURE__ */ React.createElement("div", { className: isDesktop ? "flex gap-6 items-start" : "flex flex-col gap-4 items-stretch" }, /* @__PURE__ */ React.createElement("aside", { className: isDesktop ? "shrink-0" : "w-full flex justify-center", style: { width: isDesktop ? coverWidthDesktop : "100%" } }, coverBox), /* @__PURE__ */ React.createElement("section", { className: isDesktop ? "flex-1 flex flex-col gap-4" : "w-full flex flex-col gap-4" }, /* @__PURE__ */ React.createElement("div", { className: "my-4" }, /* @__PURE__ */ React.createElement(Div_BookMeta, { title: bookData.title, subtitle: bookData.subtitle })), /* @__PURE__ */ React.createElement("div", { className: "my-4" }, /* @__PURE__ */ React.createElement(Div_PriceCompare, { stores, gridCols: priceGridCols })), /* @__PURE__ */ React.createElement(Div_BookDescription, { content: bookData.introduction, plainText }), /* @__PURE__ */ React.createElement(Div_BookContents, { content: bookData.contents, plainText }), /* @__PURE__ */ React.createElement(Div_PublisherReview, { content: bookData.publisher_review, plainText }), /* @__PURE__ */ React.createElement(
         Div_ProductInfo,
         {
           published_at: bookData.published_at,
@@ -220,7 +226,7 @@
       if (bookData.isbn)
         subtitleParts.push(`ISBN ${bookData.isbn}`);
       bookData.subtitle = subtitleParts.join(" \xB7 ");
-      const stores = values.filter((item) => item.uuid_board_category === sub).map((item) => ({ name: item.marketplace, link: item.url || "#" })).filter((store, index, self) => index === self.findIndex((s) => s.name === store.name));
+      const stores = values.filter((item) => item.uuid_board_category === sub).map((item) => ({ name: String(item.marketplace || "").trim(), link: String(item.url || "").trim() })).filter((store) => store.name && /^https?:\/\/[^\s/]+/i.test(store.link)).filter((store, index, self) => index === self.findIndex((s) => s.name === store.name));
       const uniqueRecommended = [...new Map(
         values.filter((item) => item.uuid_board_category !== sub).map((item) => [item.uuid_board_category, item])
       ).values()];
@@ -374,7 +380,7 @@
         body: requestData
       }).then((res) => res.json());
       const listData = await ensureBookList();
-      const stores = listData.raw.filter((item) => item.uuid_board_category === currentSub).map((item) => ({ name: item.marketplace, link: item.url || "#" })).filter((store, index, self) => index === self.findIndex((s) => s.name === store.name));
+      const stores = listData.raw.filter((item) => item.uuid_board_category === currentSub).map((item) => ({ name: String(item.marketplace || "").trim(), link: String(item.url || "").trim() })).filter((store) => store.name && /^https?:\/\/[^\s/]+/i.test(store.link)).filter((store, index, self) => index === self.findIndex((s) => s.name === store.name));
       ReactDOM.render(/* @__PURE__ */ React.createElement(BookInfoPanel, { bookData, stores }), document.getElementById("div_book_info"));
     }
     function renderArticleList(data, mode) {
