@@ -254,15 +254,89 @@
     bindCheckAll(root);
   }
 
+  var bookRecoveryTimer = null;
+  var bookRecoveryInFlight = false;
+  var bookRecoveryFailures = 0;
+
+  function bookRecoveryRoot() {
+    if (!/^\/book\/?$/.test(window.location.pathname)) {
+      return null;
+    }
+    var main = document.getElementById("div_main");
+    return main && main.querySelector("[data-webr-book-hub][data-webr-book-retry]");
+  }
+
+  function scheduleBookRecovery(delay) {
+    if (bookRecoveryTimer !== null || bookRecoveryInFlight || document.hidden || !bookRecoveryRoot()) {
+      return;
+    }
+    bookRecoveryTimer = window.setTimeout(runBookRecovery, delay);
+  }
+
+  function runBookRecovery() {
+    bookRecoveryTimer = null;
+    if (bookRecoveryInFlight || document.hidden || !bookRecoveryRoot()) {
+      return;
+    }
+    var route = window.location.pathname + window.location.search;
+    var url = new URL(window.location.href);
+    url.searchParams.set("fragment", "content");
+    bookRecoveryInFlight = true;
+    window.fetch(url.toString(), {
+      credentials: "same-origin",
+      cache: "no-store",
+      headers: { "Accept": "text/html", "X-Requested-With": "fetch" }
+    }).then(function (response) {
+      if (!response.ok) {
+        throw new Error("Book fragment unavailable");
+      }
+      return response.text();
+    }).then(function (html) {
+      if (route !== window.location.pathname + window.location.search || !bookRecoveryRoot()) {
+        return;
+      }
+      var fragment = new DOMParser().parseFromString(html, "text/html");
+      var refreshed = fragment.querySelector("[data-webr-book-hub]");
+      if (!refreshed || refreshed.hasAttribute("data-webr-book-retry")) {
+        throw new Error("Book authority still unavailable");
+      }
+      var main = document.getElementById("div_main");
+      main.replaceChildren(refreshed);
+      bookRecoveryFailures = 0;
+      bind(main);
+    }).catch(function () {
+      bookRecoveryFailures += 1;
+    }).finally(function () {
+      bookRecoveryInFlight = false;
+      if (bookRecoveryRoot()) {
+        scheduleBookRecovery(Math.min(15000, 2000 * Math.pow(2, Math.min(bookRecoveryFailures, 3))));
+      }
+    });
+  }
+
+  document.addEventListener("visibilitychange", function () {
+    if (document.hidden) {
+      if (bookRecoveryTimer !== null) {
+        window.clearTimeout(bookRecoveryTimer);
+        bookRecoveryTimer = null;
+      }
+    } else {
+      scheduleBookRecovery(0);
+    }
+  });
+
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", function () {
       bind(document);
+      scheduleBookRecovery(2000);
     });
   } else {
     bind(document);
+    scheduleBookRecovery(2000);
   }
 
   document.addEventListener("htmx:afterSwap", function (event) {
     bind(event.target || document);
+    scheduleBookRecovery(2000);
   });
 })();
