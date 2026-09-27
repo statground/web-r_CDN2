@@ -39,19 +39,19 @@ class BookAffiliateDisclosureTests(unittest.TestCase):
         cls.browser.close()
         cls.playwright.stop()
 
-    def page_for(self, path, links=None, render=True):
+    def page_for(self, path, links=None, render=True, book=None):
         page = self.browser.new_page()
         self.addCleanup(page.close)
         errors = []
         page.on("pageerror", lambda error: errors.append(str(error)))
-        info = {**BOOK, "links": links or []}
+        info = {**BOOK, **(book or {}), "links": links or []}
 
         def fulfill(route):
             request_path = urlsplit(route.request.url).path
             if request_path == path:
                 route.fulfill(status=200, content_type="text/html", body='<div id="div_main"></div>')
             elif request_path == "/book/ajax_get_book_list/":
-                route.fulfill(status=200, content_type="application/json", body=json.dumps({"book": BOOK}))
+                route.fulfill(status=200, content_type="application/json", body=json.dumps({"book": info}))
             elif request_path == "/book/ajax_get_book_info/":
                 route.fulfill(status=200, content_type="application/json", body=json.dumps(info))
             elif request_path == "/blank/ajax_board/get_article_list/":
@@ -125,6 +125,25 @@ class BookAffiliateDisclosureTests(unittest.TestCase):
                 self.assertGreaterEqual(direct_links.count(), 1)
                 for link in direct_links.all():
                     self.assertNotIn("sponsored", link.get_attribute("rel").split())
+                self.assertEqual(errors, [])
+
+    def test_isbn_registration_region_requires_verified_api_label(self):
+        for value, expected in (
+            (None, 0),
+            ("", 0),
+            ("   ", 0),
+            ("South Korea (978-89)", 1),
+        ):
+            with self.subTest(value=value):
+                page, errors = self.page_for("/book/001/", book={"isbn_registration_group_label": value})
+                page.evaluate("window.WebRBookPages.detail()")
+                row = page.locator("#book-detail tr").filter(has=page.locator('th[data-webr-i18n="ISBN 등록 지역"]'))
+                self.assertEqual(row.count(), expected)
+                if expected:
+                    self.assertEqual(row.locator("td").inner_text(), value)
+                    self.assertEqual(row.locator("td").get_attribute("data-webr-user-content"), "")
+                    self.assertIn("책의 언어나 인쇄 국가", row.locator("th").get_attribute("title"))
+                    self.assertEqual(row.locator("th").get_attribute("title"), row.locator("th").get_attribute("aria-description"))
                 self.assertEqual(errors, [])
 
 

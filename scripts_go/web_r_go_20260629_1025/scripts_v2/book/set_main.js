@@ -216,10 +216,26 @@
     const Div_BookDescription = ({ content, plainText }) => content ? /* @__PURE__ */ React.createElement(HtmlSection, { title: "\uCC45 \uC18C\uAC1C", html: content, plainText }) : null;
     const Div_BookContents = ({ content, plainText }) => content ? /* @__PURE__ */ React.createElement(HtmlSection, { title: "\uBAA9\uCC28", html: content, plainText, contents: true }) : null;
     const Div_PublisherReview = ({ content, plainText }) => content ? /* @__PURE__ */ React.createElement(HtmlSection, { title: "\uCD9C\uD310\uC0AC \uB9AC\uBDF0", html: content, plainText }) : null;
-    function Div_ProductInfo({ published_at, page_cnt, size, publisher }) {
-      if (!published_at && !page_cnt && !size && !publisher)
+    function Div_ProductInfo({ published_at, page_cnt, size, publisher, isbn_registration_group_label }) {
+      const isbnRegistrationGroup = typeof isbn_registration_group_label === "string" ? isbn_registration_group_label.trim() : "";
+      if (!published_at && !page_cnt && !size && !publisher && !isbnRegistrationGroup)
         return null;
-      return /* @__PURE__ */ React.createElement("div", { className: "bd-card" }, /* @__PURE__ */ React.createElement("h3", { className: "m-0 mb-2 font-semibold text-xl" }, "\uCC45 \uC815\uBCF4"), /* @__PURE__ */ React.createElement("table", { className: "w-full", style: { fontSize: "14px" } }, /* @__PURE__ */ React.createElement("tbody", null, published_at ? /* @__PURE__ */ React.createElement("tr", null, /* @__PURE__ */ React.createElement("th", { className: "text-left px-4 py-2 font-medium" }, "\uCD9C\uAC04"), /* @__PURE__ */ React.createElement("td", { className: "py-2" }, published_at)) : null, page_cnt ? /* @__PURE__ */ React.createElement("tr", null, /* @__PURE__ */ React.createElement("th", { className: "text-left px-4 py-2 font-medium" }, "\uD398\uC774\uC9C0 \uC218"), /* @__PURE__ */ React.createElement("td", { className: "py-2" }, page_cnt)) : null, size ? /* @__PURE__ */ React.createElement("tr", null, /* @__PURE__ */ React.createElement("th", { className: "text-left px-4 py-2 font-medium" }, "\uD06C\uAE30"), /* @__PURE__ */ React.createElement("td", { className: "py-2" }, size)) : null, publisher ? /* @__PURE__ */ React.createElement("tr", null, /* @__PURE__ */ React.createElement("th", { className: "text-left px-4 py-2 font-medium" }, "\uCD9C\uD310\uC0AC"), /* @__PURE__ */ React.createElement("td", { className: "py-2" }, publisher)) : null)));
+      const row = (label, value, attributes = {}) => {
+        if (!value) return null;
+        const valueAttributes = attributes["data-webr-i18n"] ? { "data-webr-user-content": "" } : {};
+        return /* @__PURE__ */ React.createElement("tr", null, /* @__PURE__ */ React.createElement("th", { className: "text-left px-4 py-2 font-medium", ...attributes }, label), /* @__PURE__ */ React.createElement("td", { className: "py-2", ...valueAttributes }, value));
+      };
+      return /* @__PURE__ */ React.createElement("div", { className: "bd-card" }, /* @__PURE__ */ React.createElement("h3", { className: "m-0 mb-2 font-semibold text-xl" }, "\uCC45 \uC815\uBCF4"), /* @__PURE__ */ React.createElement("table", { className: "w-full", style: { fontSize: "14px" } }, /* @__PURE__ */ React.createElement("tbody", null,
+        row("\uCD9C\uAC04", published_at),
+        row("\uD398\uC774\uC9C0 \uC218", page_cnt),
+        row("\uD06C\uAE30", size),
+        row("\uCD9C\uD310\uC0AC", publisher),
+        row("ISBN 등록 지역", isbnRegistrationGroup, {
+          "data-webr-i18n": "ISBN 등록 지역",
+          title: "ISBN 번호의 등록 그룹입니다. 책의 언어나 인쇄 국가를 뜻하지 않습니다.",
+          "aria-description": "ISBN 번호의 등록 그룹입니다. 책의 언어나 인쇄 국가를 뜻하지 않습니다."
+        })
+      )));
     }
     function Div_BookDetail({ bookData, stores, recommendedBooks }) {
       const plainText = bookData.content_format === "plain_text";
@@ -261,7 +277,8 @@
           published_at: bookData.published_at,
           page_cnt: bookData.page_cnt,
           size: bookData.size,
-          publisher: bookData.publisher
+          publisher: bookData.publisher,
+          isbn_registration_group_label: bookData.isbn_registration_group_label
         }
       ), /* @__PURE__ */ React.createElement("div", { className: "my-4" }, /* @__PURE__ */ React.createElement(Div_RecommendedBooks, { books: recommendedBooks, gridCols: recoGridCols }))))));
     }
