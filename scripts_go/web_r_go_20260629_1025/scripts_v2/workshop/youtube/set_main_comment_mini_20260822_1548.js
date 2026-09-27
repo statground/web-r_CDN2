@@ -17,6 +17,8 @@ let youtubeListCanWrite = false;
 let youtubeSearchQuery = "";
 let youtubeLoadedItems = [];
 let youtubeSpotlightKey = "";
+let youtubeListError = "";
+let youtubeRetryTimer = null;
 const PAGE_SIZE = 20;
 const class_txt_file_delete = "rounded-lg hover:bg-red-100 cursor-pointer";
 const ENDPOINTS = {
@@ -76,6 +78,10 @@ function clearInfiniteScroll() {
   if (window.__workshopListScrollHandler) {
     window.removeEventListener("scroll", window.__workshopListScrollHandler);
     window.__workshopListScrollHandler = null;
+  }
+  if (youtubeRetryTimer) {
+    window.clearTimeout(youtubeRetryTimer);
+    youtubeRetryTimer = null;
   }
 }
 function bindInfiniteScroll(handler) {
@@ -683,35 +689,92 @@ async function get_my_comment_list() {
     target
   );
 }
-async function get_article_list_youtube(mode_value) {
+function renderYoutubeList() {
+  const target = document.getElementById("div_article_list");
+  if (!target) return;
+  if (youtubeLoadedItems.length) {
+    const placeholderId = "div_article_list_" + (page_num + 1);
+    ReactDOM.render(/* @__PURE__ */ React.createElement(YoutubeCatalog, { items: youtubeLoadedItems, totalCount: article_counter, placeholderId }), target);
+    const controls = document.getElementById(placeholderId);
+    if (!controls) return;
+    controls.replaceChildren();
+    controls.className = "flex min-h-[48px] flex-col items-center justify-center gap-2 py-6";
+    controls.setAttribute("aria-live", "polite");
+    if (youtubeListError) {
+      const message = document.createElement("p");
+      message.className = "text-sm text-amber-800";
+      message.textContent = youtubeListError;
+      controls.appendChild(message);
+    }
+    if (page_num * PAGE_SIZE < article_counter || youtubeListError) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "rounded-lg border border-blue-200 bg-white px-5 py-2.5 font-semibold text-blue-700 hover:bg-blue-50 disabled:opacity-60";
+      button.textContent = toggle_page ? "영상을 불러오는 중…" : youtubeListError ? "다시 시도" : "영상 더 보기";
+      button.disabled = toggle_page;
+      button.addEventListener("click", () => get_article_list_youtube("next"));
+      controls.appendChild(button);
+    }
+    return;
+  }
+  if (youtubeListError) {
+    ReactDOM.render(/* @__PURE__ */ React.createElement("div", { class: "flex min-h-[280px] flex-col items-center justify-center gap-3 rounded-lg border border-amber-200 bg-amber-50 p-8", role: "status" }, /* @__PURE__ */ React.createElement("p", { class: "text-amber-900" }, youtubeListError), /* @__PURE__ */ React.createElement("button", { type: "button", class: "rounded-lg bg-blue-600 px-5 py-2.5 font-semibold text-white", onClick: () => get_article_list_youtube("init") }, "다시 시도")), target);
+    return;
+  }
+  if (page_num > 0) {
+    ReactDOM.render(/* @__PURE__ */ React.createElement(YoutubeCatalog, { items: [], totalCount: 0 }), target);
+  }
+}
+async function get_article_list_youtube(mode_value, retryCount = 0) {
+  if (toggle_page) return;
+  if (youtubeRetryTimer) {
+    window.clearTimeout(youtubeRetryTimer);
+    youtubeRetryTimer = null;
+  }
+  const initializing = mode_value === "init";
+  if (initializing && retryCount === 0) {
+    page_num = 0;
+    article_counter = 0;
+    youtubeLoadedItems = [];
+    youtubeSpotlightKey = "";
+    youtubeListError = "";
+    ReactDOM.render(/* @__PURE__ */ React.createElement(Div_article_list_skeleton, null), document.getElementById("div_article_list"));
+  }
+  const requestedPage = page_num + 1;
   const request_data = new FormData();
   request_data.append("tag", url);
   request_data.append("tag_sub", sub);
   request_data.append("txt_search", youtubeSearchQuery);
+  request_data.append("page", requestedPage);
   toggle_page = true;
-  if (mode_value === "init") {
-    page_num = 1;
-    youtubeLoadedItems = [];
-    youtubeSpotlightKey = "";
-    ReactDOM.render(/* @__PURE__ */ React.createElement(Div_article_list_skeleton, null), document.getElementById("div_article_list"));
-  } else {
-    page_num += 1;
-    const nextTarget = document.getElementById("div_article_list_" + page_num);
-    if (nextTarget) {
-      ReactDOM.render(
-        /* @__PURE__ */ React.createElement("div", { class: "py-6" }, /* @__PURE__ */ React.createElement(Div_article_list_skeleton, null)),
-        nextTarget
-      );
+  youtubeListError = "";
+  if (!initializing) renderYoutubeList();
+  try {
+    const data = await postForm("/blank/ajax_board/get_article_list_youtube/", request_data);
+    if (!data || data.pending || data.ok === false || !data.count || !data.list) {
+      throw new Error("youtube list is pending");
     }
+    const chunk = Object.keys(data.list).map((key) => data.list[key]);
+    const total = Number(data.count.cnt);
+    if (!Number.isFinite(total) || total < 0 || (requestedPage > 1 && chunk.length === 0 && total > page_num * PAGE_SIZE)) {
+      throw new Error("youtube list is incomplete");
+    }
+    article_counter = total;
+    page_num = requestedPage;
+    youtubeLoadedItems = dedupeYoutubeItems(youtubeLoadedItems.concat(chunk));
+  } catch (error) {
+    youtubeListError = "영상 목록을 잠시 불러오지 못했습니다.";
+    if (retryCount < 4) {
+      const delay = Math.min(1500 * Math.pow(2, retryCount), 12000);
+      youtubeRetryTimer = window.setTimeout(() => {
+        youtubeRetryTimer = null;
+        if (window.location.pathname === init_url) get_article_list_youtube(mode_value, retryCount + 1);
+      }, delay);
+    }
+  } finally {
+    toggle_page = false;
+    renderYoutubeList();
   }
-  request_data.append("page", page_num);
-  const data = await postForm("/blank/ajax_board/get_article_list_youtube/", request_data);
-  article_counter = Number(data && data.count ? data.count.cnt : 0);
-  const chunk = Object.keys(data.list || {}).map((key) => data.list[key]);
-  youtubeLoadedItems = dedupeYoutubeItems(youtubeLoadedItems.concat(chunk));
-  const placeholderId = "div_article_list_" + (page_num + 1);
-  ReactDOM.render(/* @__PURE__ */ React.createElement(YoutubeCatalog, { items: youtubeLoadedItems, totalCount: article_counter, placeholderId }), document.getElementById("div_article_list"));
-  toggle_page = false;
 }
 function render_article() {
   if (!data_article)
@@ -1096,7 +1159,7 @@ async function renderWorkshopListPage() {
   ReactDOM.render(/* @__PURE__ */ React.createElement(YouTubeListPage, { showWriteButton: youtubeListCanWrite }), document.getElementById("div_main"));
   get_article_list_youtube("init");
   bindInfiniteScroll(() => {
-    const isScrollEnded = window.innerHeight + window.scrollY + 1 >= document.body.offsetHeight;
+    const isScrollEnded = window.innerHeight + window.scrollY + 480 >= document.documentElement.scrollHeight;
     if (isScrollEnded && !toggle_page && page_num * PAGE_SIZE < article_counter) {
       get_article_list_youtube("next");
     }
