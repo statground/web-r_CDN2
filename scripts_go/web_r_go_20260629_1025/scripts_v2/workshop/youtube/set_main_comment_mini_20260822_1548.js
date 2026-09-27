@@ -19,6 +19,7 @@ let youtubeLoadedItems = [];
 let youtubeSpotlightKey = "";
 let youtubeListError = "";
 let youtubeRetryTimer = null;
+let youtubeListObserver = null;
 const PAGE_SIZE = 20;
 const class_txt_file_delete = "rounded-lg hover:bg-red-100 cursor-pointer";
 const ENDPOINTS = {
@@ -82,6 +83,10 @@ function clearInfiniteScroll() {
   if (youtubeRetryTimer) {
     window.clearTimeout(youtubeRetryTimer);
     youtubeRetryTimer = null;
+  }
+  if (youtubeListObserver) {
+    youtubeListObserver.disconnect();
+    youtubeListObserver = null;
   }
 }
 function bindInfiniteScroll(handler) {
@@ -690,6 +695,10 @@ async function get_my_comment_list() {
   );
 }
 function renderYoutubeList() {
+  if (youtubeListObserver) {
+    youtubeListObserver.disconnect();
+    youtubeListObserver = null;
+  }
   const target = document.getElementById("div_article_list");
   if (!target) return;
   if (youtubeLoadedItems.length) {
@@ -714,6 +723,18 @@ function renderYoutubeList() {
       button.disabled = toggle_page;
       button.addEventListener("click", () => get_article_list_youtube("next"));
       controls.appendChild(button);
+    }
+    if (!toggle_page && !youtubeListError && page_num * PAGE_SIZE < article_counter && "IntersectionObserver" in window) {
+      const observer = new IntersectionObserver((entries) => {
+        if (youtubeListObserver !== observer || !entries.some((entry) => entry.isIntersecting)) return;
+        observer.disconnect();
+        youtubeListObserver = null;
+        if (window.location.pathname === init_url && !toggle_page && page_num * PAGE_SIZE < article_counter) {
+          get_article_list_youtube("next");
+        }
+      }, { rootMargin: "0px 0px 160px 0px" });
+      youtubeListObserver = observer;
+      observer.observe(controls);
     }
     return;
   }
