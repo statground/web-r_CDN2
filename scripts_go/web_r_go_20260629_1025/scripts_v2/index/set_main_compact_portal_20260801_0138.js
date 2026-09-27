@@ -78,14 +78,17 @@
     return node;
   }
 
-  // Collected metadata has no trustworthy per-field language code. Only mark
-  // text whose Korean script establishes its language; leave other scripts and
-  // Latin-only titles unspecified instead of trusting the Book catalog's
-  // default language_code for an English or mixed-language title.
-  function sourceText(tagName, className, text) {
+  var supportedSourceLanguages = new Set(["ko", "en", "ja", "zh-Hans", "zh-Hant", "es", "fr", "de", "pt-BR", "ru", "id", "vi", "th", "ms", "fil", "hi", "ar", "it", "nl", "pl", "sv", "tr", "uk"]);
+
+  // The board and notice read models supply verified display languages. Other
+  // collected sources have no trustworthy per-field language code; mark only
+  // unambiguous Korean script and leave ambiguous text unspecified.
+  function sourceText(tagName, className, text, displayLanguage) {
     var node = element(tagName, className, text);
     var value = String(text || "");
-    if (/[\u1100-\u11ff\u3130-\u318f\uac00-\ud7a3]/.test(value) &&
+    if (supportedSourceLanguages.has(displayLanguage)) {
+      node.lang = displayLanguage;
+    } else if (/[\u1100-\u11ff\u3130-\u318f\uac00-\ud7a3]/.test(value) &&
         !/[\u0400-\u052f\u0600-\u08ff\u3040-\u30ff\u3400-\u9fff]/.test(value)) {
       node.lang = "ko";
     }
@@ -483,7 +486,7 @@
       anchor.appendChild(media);
     }
     var titleRow = element("span", "webr-home-compact__article-title-row");
-    titleRow.appendChild(sourceText("strong", "webr-home-compact__article-title", cleanText(item.title, 72)));
+    titleRow.appendChild(sourceText("strong", "webr-home-compact__article-title", cleanText(item.title, 72), item.title_language));
     if (item.is_new === true) {
       titleRow.appendChild(newBadge());
     }
@@ -494,7 +497,7 @@
     }
     var summary = cleanText(item.summary, 180);
     content.appendChild(summary
-      ? sourceText("span", "webr-home-compact__article-summary", summary)
+      ? sourceText("span", "webr-home-compact__article-summary", summary, item.summary_language)
       : uiElement("span", "webr-home-compact__article-summary", "최신 자료를 확인해 보세요."));
     anchor.appendChild(content);
     body.appendChild(anchor);
@@ -557,7 +560,7 @@
         controller.abort();
       }
     }, 20000);
-    return fetch(noticeEndpoint, {
+    return fetch(noticeEndpoint + "?lang=" + encodeURIComponent(activeLanguage()), {
       method: "GET",
       credentials: "same-origin",
       headers: { Accept: "application/json" },
@@ -584,6 +587,7 @@
         }
         return {
           title: cleanText(row.title, 96),
+          display_title_language: row.display_title_language,
           href: "/intro/notice/read/" + id + "/",
           published_at: row.created_at,
           is_new: row.is_new === true || row.is_new === 1
@@ -639,7 +643,7 @@
     rows.forEach(function appendNotice(item) {
       var anchor = link(item.href || "/intro/notice/", "webr-home-compact__notice");
       var titleRow = element("span", "webr-home-compact__notice-title-row");
-      titleRow.appendChild(sourceText("strong", "webr-home-compact__notice-title", cleanText(item.title, 76)));
+      titleRow.appendChild(sourceText("strong", "webr-home-compact__notice-title", cleanText(item.title, 76), item.display_title_language));
       if (item.is_new === true) {
         titleRow.appendChild(newBadge());
       }
@@ -792,7 +796,7 @@
         controller.abort();
       }
     }, 12000);
-    return fetch(summaryEndpoint, {
+    return fetch(summaryEndpoint + "?lang=" + encodeURIComponent(activeLanguage()), {
       method: "GET",
       credentials: "same-origin",
       headers: { Accept: "application/json" },
