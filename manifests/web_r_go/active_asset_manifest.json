@@ -4444,9 +4444,9 @@
     {
       "logical_path": "scripts_go/web_r_go_20260629_1025/scripts_v2/workshop/youtube/set_main_comment_mini_20260822_1548.js",
       "source_path": "scripts_go/web_r_go_20260629_1025/scripts_v2/workshop/youtube/set_main_comment_mini_20260822_1548.js",
-      "source_commit": "f69051a2538c5a4df01adcc6fd17e65b863f25b3",
-      "sha256": "cef1d7beb97268112c70d2d0fdca064ecac987428d6c425ff24fa368193c0380",
-      "bytes": 87585,
+      "source_commit": "55349eb9622bbdb33db5e4d123886b4a47283423",
+      "sha256": "221808860d976fbfbdc6b08fec8c774c4bbbbff7bb607a8e8438663151294177",
+      "bytes": 90517,
       "mime_type": "application/javascript; charset=utf-8",
       "dependencies": [],
       "order": 313,
