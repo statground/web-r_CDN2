@@ -69,6 +69,17 @@ function Div_main(props) {
     "\uC120\uD0DD"
   ))), /* @__PURE__ */ React.createElement("div", { class: "w-full bg-white border border-gray-200 rounded-lg shadow" }, /* @__PURE__ */ React.createElement("div", { class: "p-4 bg-white rounded-lg md:p-8 text-center" }, /* @__PURE__ */ React.createElement(Div_sub_title, { title: "\uACB0\uC81C \uD604\uD669" }), /* @__PURE__ */ React.createElement("dl", { class: "grid grid-cols-3 w-full gap-8 p-4 mx-auto text-gray-900 md:p-8" }, /* @__PURE__ */ React.createElement(Div_sub_card, { title: "\uCD1D \uD68C\uC6D0 \uC5C5\uADF8\uB808\uC774\uB4DC \uACB0\uC81C", value: props.data.count.amt_total["0"], unit: "\uC6D0" }), /* @__PURE__ */ React.createElement(Div_sub_card, { title: "\uBD80\uAC00\uC138 (10%)", value: props.data.count.amt_tax["0"], unit: "\uC6D0" }), /* @__PURE__ */ React.createElement(Div_sub_card, { title: "\uD1A0\uC2A4\uD398\uC774\uBA3C\uCE20 \uC218\uC218\uB8CC (3.63%)", value: props.data.count.amt_toss["0"], unit: "\uC6D0" }), /* @__PURE__ */ React.createElement(Div_sub_card, { title: "\uD1B5\uACC4\uB9C8\uB2F9 \uC218\uC218\uB8CC (10%)", value: props.data.count.amt_statground["0"], unit: "\uC6D0" }), /* @__PURE__ */ React.createElement(Div_sub_card, { title: "\uAE30\uD0C0\uC18C\uB4DD \uC138\uAE08 (8.8%)", value: props.data.count.amt_benefit_tax["0"], unit: "\uC6D0" }), /* @__PURE__ */ React.createElement(Div_sub_card, { title: "\uC815\uC0B0\uC561", value: props.data.count.amt_result["0"], unit: "\uC6D0" })))), /* @__PURE__ */ React.createElement("div", { class: "w-full bg-white border border-gray-200 rounded-lg shadow" }, /* @__PURE__ */ React.createElement("div", { class: "p-4 bg-white rounded-lg md:p-8 text-center" }, /* @__PURE__ */ React.createElement(Div_sub_title, { title: "\uACB0\uC81C \uBAA9\uB85D" }), /* @__PURE__ */ React.createElement("dl", { class: "flex flex-col justify-center items-center w-full p-4 mx-auto text-gray-900" }, payment_list)))));
 }
+function addCanceledHistoryLink() {
+  const target = document.getElementById("div_select") || document.getElementById("div_main");
+  if (!target) return;
+  let link = target.querySelector("[data-canceled-history-link]");
+  if (!link) link = document.createElement("a");
+  link.href = "/admin/balance_account/" + Number(year) + "/" + Number(month) + "/canceled/";
+  link.textContent = "취소된 결제만 보기";
+  link.dataset.canceledHistoryLink = "true";
+  link.className = "inline-flex items-center rounded-lg border border-blue-300 px-4 py-2 text-sm font-semibold text-blue-800 hover:bg-blue-50";
+  if (!link.isConnected) target.appendChild(link);
+}
 async function get_main() {
   const body = new URLSearchParams({ year: String(year || ""), month: String(month || "") });
   const data = await fetch("/admin/ajax_get_admin_balance_account/", {
@@ -84,9 +95,11 @@ async function get_main() {
   if (!data || data.ok === false || !data.count || !data.table) {
     const message = data && data.error ? data.error : "\uC815\uC0B0 \uB370\uC774\uD130\uB97C \uBD88\uB7EC\uC624\uC9C0 \uBABB\uD588\uC2B5\uB2C8\uB2E4.";
     document.getElementById("div_main").innerHTML = '<div class="max-w-screen-xl px-6 py-10 mx-auto text-center text-sm text-gray-500">' + message + "</div>";
+    addCanceledHistoryLink();
     return;
   }
   ReactDOM.render(/* @__PURE__ */ React.createElement(Div_main, { data }), document.getElementById("div_main"));
+  addCanceledHistoryLink();
   var currentYear = (/* @__PURE__ */ new Date()).getFullYear();
   for (var tempyear = 2015; tempyear <= currentYear; tempyear++) {
     var option = document.createElement("option");
@@ -316,7 +329,10 @@ async function set_main() {
   function adminBalanceGuardRender(payload) {
     var mount = document.getElementById("div_main");
     if (!mount || typeof React === "undefined" || typeof ReactDOM === "undefined" || typeof Div_main !== "function") return;
-    ReactDOM.render(React.createElement(Div_main, { data: payload }), mount, adminBalanceGuardSyncSelectors);
+    ReactDOM.render(React.createElement(Div_main, { data: payload }), mount, function () {
+      adminBalanceGuardSyncSelectors();
+      addCanceledHistoryLink();
+    });
   }
 
   function adminBalanceGuardRenderUnavailable() {
@@ -354,6 +370,7 @@ async function set_main() {
       ),
       mount
     );
+    addCanceledHistoryLink();
   }
 
   function adminBalanceGuardRenderDelayNotice(show, hasLastGood) {
