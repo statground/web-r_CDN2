@@ -516,7 +516,7 @@
       if (controller) {
         controller.abort();
       }
-    }, 14000);
+    }, 20000);
     return fetch(noticeEndpoint, {
       method: "GET",
       credentials: "same-origin",
