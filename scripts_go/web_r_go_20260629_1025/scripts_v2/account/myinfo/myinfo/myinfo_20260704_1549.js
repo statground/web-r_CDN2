@@ -16,6 +16,51 @@ function myInfoBool(value) {
 function myInfoRows(value) {
   return Object.values(value || {});
 }
+function myInfoIsAbandonedPayment(row) {
+  return myInfoBool(row && row.abandoned);
+}
+function myInfoTranslate(text) {
+  return window.WebRI18n?.t(text) || text;
+}
+const myInfoSubscriptionProducts = {
+  "3fe38b90-6cf9-45de-b732-2933ef100347": "정회원",
+  "ac3d82de-e6a5-4a48-8029-5f59d22749fa": "VIP회원",
+  "356e84f3-211c-4ac7-8aee-ca6f75017134": "정회원 팀",
+  "3e9192d3-b535-4047-929f-033ad6b02326": "VIP회원 팀"
+};
+function myInfoSubscriptionTitle(row) {
+  return myInfoTranslate(myInfoSubscriptionProducts[myInfoText(row.product_id)] || "정기구독");
+}
+function myInfoSubscriptionStatus(row) {
+  if (row.review_required) return myInfoTranslate("결제 상태 확인 필요");
+  const labels = {
+    active: "구독 중", ACTIVE: "구독 중", past_due: "결제 실패", paused: "일시정지",
+    SUSPENDED: "일시정지", canceled: "해지됨", CANCELLED: "해지됨", EXPIRED: "만료됨",
+    pending_card: "카드 등록 대기", APPROVAL_PENDING: "승인 대기", APPROVED: "결제 처리 중"
+  };
+  return myInfoTranslate(labels[myInfoText(row.status)] || "결제 처리 중");
+}
+function myInfoSubscriptionDate(value) {
+  if (!value) return "-";
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return "-";
+  return new Intl.DateTimeFormat(window.WebRI18n?.language || "ko", { dateStyle: "medium", timeZone: "Asia/Seoul" }).format(parsed);
+}
+async function myInfoFetchSubscriptions() {
+  const providers = ["toss", "paypal"];
+  const results = await Promise.allSettled(providers.map(async (provider) => {
+    const response = await fetch(`/api/subscriptions/${provider}/`, { credentials: "same-origin", cache: "no-store" });
+    if (!response.ok) throw new Error("unavailable");
+    const payload = await response.json();
+    if (payload.ok === false) throw new Error("unavailable");
+    const rows = payload.data ?? payload;
+    if (!Array.isArray(rows)) throw new Error("invalid_response");
+    return rows.filter((row) => row && typeof row === "object").map((row) => ({ ...row, provider }));
+  }));
+  const rows = results.flatMap((result) => result.status === "fulfilled" ? result.value : []);
+  rows.sort((left, right) => (Date.parse(right.created_at || "") || 0) - (Date.parse(left.created_at || "") || 0));
+  return { rows, incomplete: results.some((result) => result.status !== "fulfilled") };
+}
 const myInfoDefaultGenderOptions = [
   { name: "Male", label: "\uB0A8\uC131" },
   { name: "Female", label: "\uC5EC\uC131" },
@@ -1039,7 +1084,7 @@ function MyInfoOverview(props) {
   const activityLoading = props.loadingArticles || props.loadingComments || props.loadingPayments;
   const summaryOption = myInfoActivitySummaryOption(articleCount, commentCount, paymentCount);
   const paymentOption = myInfoPaymentAmountOption(paymentRows, paymentGranularity);
-  return /* @__PURE__ */ React.createElement("div", { className: "space-y-7" }, /* @__PURE__ */ React.createElement(MyInfoPanel, { title: "\uC800\uC7A5\uB41C \uAC1C\uC778\uC815\uBCF4" }, /* @__PURE__ */ React.createElement("div", { className: "grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3" }, /* @__PURE__ */ React.createElement(MyInfoField, { label: "\uC774\uBA54\uC77C", value: user.email }), /* @__PURE__ */ React.createElement(MyInfoField, { label: "\uB2C9\uB124\uC784", value: user.name }), /* @__PURE__ */ React.createElement(MyInfoField, { label: "\uC774\uB984", value: user.realname }), /* @__PURE__ */ React.createElement(MyInfoField, { label: "\uD68C\uC6D0 \uB4F1\uAE09", value: user.role }), /* @__PURE__ */ React.createElement(MyInfoField, { label: "\uC131\uBCC4", value: myInfoGenderLabel(user.gender, props.genderOptions) }), /* @__PURE__ */ React.createElement(MyInfoField, { label: "\uD68C\uC6D0\uB4F1\uAE09 \uB9CC\uB8CC\uC77C", value: user.expired_at || "\uBB34\uC81C\uD55C" }), /* @__PURE__ */ React.createElement(MyInfoField, { label: "\uAC00\uC785 \uC77C\uC790", value: user.date_joined }), /* @__PURE__ */ React.createElement(MyInfoField, { label: "\uCD5C\uADFC \uC218\uC815\uC77C", value: user.updated_at }), /* @__PURE__ */ React.createElement(MyInfoField, { label: "\uC774\uBA54\uC77C \uC218\uC2E0", value: myInfoNumber(user.email_subscription) === 1 ? "\uD5C8\uC6A9" : "\uAC70\uBD80" }))), /* @__PURE__ */ React.createElement(MyInfoPanel, { title: "\uC5F0\uB3D9\uB41C \uB85C\uADF8\uC778 \uBC29\uC2DD" }, /* @__PURE__ */ React.createElement("div", { className: "grid grid-cols-1 gap-4 sm:grid-cols-2" }, /* @__PURE__ */ React.createElement("div", { className: "rounded-lg border border-slate-200 bg-white px-5 py-4" }, /* @__PURE__ */ React.createElement("div", { className: "text-sm font-semibold text-slate-500" }, "\uC774\uBA54\uC77C \uB85C\uADF8\uC778"), /* @__PURE__ */ React.createElement("div", { className: "mt-3 text-base font-semibold text-slate-950" }, "\uC0AC\uC6A9 \uAC00\uB2A5"), /* @__PURE__ */ React.createElement("div", { className: "mt-2 break-words text-sm text-slate-500" }, user.email || "-")), /* @__PURE__ */ React.createElement("div", { className: "rounded-lg border border-slate-200 bg-white px-5 py-4" }, /* @__PURE__ */ React.createElement("div", { className: "text-sm font-semibold text-slate-500" }, "Google \uB85C\uADF8\uC778"), /* @__PURE__ */ React.createElement("div", { className: "mt-3 text-base font-semibold text-slate-950" }, google2.connected ? "\uC5F0\uB3D9\uB428" : "\uBBF8\uC5F0\uB3D9"), /* @__PURE__ */ React.createElement("div", { className: "mt-2 break-words text-sm text-slate-500" }, google2.connected ? google2.email || google2.name || "-" : "\uD558\uC704 \uBA54\uB274\uC5D0\uC11C Google \uACC4\uC815\uC744 \uC5F0\uACB0\uD560 \uC218 \uC788\uC2B5\uB2C8\uB2E4.")))), /* @__PURE__ */ React.createElement("div", { className: "grid grid-cols-1 gap-4 md:grid-cols-3" }, /* @__PURE__ */ React.createElement(MyInfoField, { label: "\uB0B4\uAC00 \uC4F4 \uAE00", value: props.loadingArticles ? "\uBD88\uB7EC\uC624\uB294 \uC911" : `${articleCount.toLocaleString("ko-KR")}\uAC1C` }), /* @__PURE__ */ React.createElement(MyInfoField, { label: "\uB0B4\uAC00 \uC4F4 \uB313\uAE00", value: props.loadingComments ? "\uBD88\uB7EC\uC624\uB294 \uC911" : `${commentCount.toLocaleString("ko-KR")}\uAC1C` }), /* @__PURE__ */ React.createElement(MyInfoField, { label: "\uACB0\uC81C \uB0B4\uC5ED", value: props.loadingPayments ? "\uBD88\uB7EC\uC624\uB294 \uC911" : `${paymentCount.toLocaleString("ko-KR")}\uAC74` })), /* @__PURE__ */ React.createElement("div", { className: "grid grid-cols-1 gap-7 md:grid-cols-2" }, /* @__PURE__ */ React.createElement(MyInfoPanel, { title: "\uB098\uC758 \uD65C\uB3D9 \uC694\uC57D" }, /* @__PURE__ */ React.createElement(MyInfoChart, { option: summaryOption, loading: activityLoading, className: "h-[260px] w-full" })), /* @__PURE__ */ React.createElement(MyInfoPanel, { title: "\uACB0\uC81C \uAE08\uC561", action: /* @__PURE__ */ React.createElement(MyInfoGranularityControl, { value: paymentGranularity, defaultValue: "month", onChange: setPaymentGranularity }) }, /* @__PURE__ */ React.createElement(MyInfoChart, { option: paymentOption, loading: props.loadingPayments, className: "h-[260px] w-full", empty: "\uACB0\uC81C \uCC28\uD2B8\uB97C \uD45C\uC2DC\uD560 \uB370\uC774\uD130\uAC00 \uC5C6\uC2B5\uB2C8\uB2E4." }))));
+  return /* @__PURE__ */ React.createElement("div", { className: "space-y-7" }, /* @__PURE__ */ React.createElement(MyInfoPanel, { title: "\uC800\uC7A5\uB41C \uAC1C\uC778\uC815\uBCF4" }, /* @__PURE__ */ React.createElement("div", { className: "grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3" }, /* @__PURE__ */ React.createElement(MyInfoField, { label: "\uC774\uBA54\uC77C", value: user.email }), /* @__PURE__ */ React.createElement(MyInfoField, { label: "\uB2C9\uB124\uC784", value: user.name }), /* @__PURE__ */ React.createElement(MyInfoField, { label: "\uC774\uB984", value: user.realname }), /* @__PURE__ */ React.createElement(MyInfoField, { label: "\uD68C\uC6D0 \uB4F1\uAE09", value: user.role }), /* @__PURE__ */ React.createElement(MyInfoField, { label: "\uC131\uBCC4", value: myInfoGenderLabel(user.gender, props.genderOptions) }), /* @__PURE__ */ React.createElement(MyInfoField, { label: "\uD68C\uC6D0\uB4F1\uAE09 \uB9CC\uB8CC\uC77C", value: user.expired_at || "\uBB34\uC81C\uD55C" }), /* @__PURE__ */ React.createElement(MyInfoField, { label: "\uAC00\uC785 \uC77C\uC790", value: user.date_joined }), /* @__PURE__ */ React.createElement(MyInfoField, { label: "\uCD5C\uADFC \uC218\uC815\uC77C", value: user.updated_at }), /* @__PURE__ */ React.createElement(MyInfoField, { label: "\uC774\uBA54\uC77C \uC218\uC2E0", value: myInfoNumber(user.email_subscription) === 1 ? "\uD5C8\uC6A9" : "\uAC70\uBD80" }))), /* @__PURE__ */ React.createElement(MyInfoPanel, { title: "\uC5F0\uB3D9\uB41C \uB85C\uADF8\uC778 \uBC29\uC2DD" }, /* @__PURE__ */ React.createElement("div", { className: "grid grid-cols-1 gap-4 sm:grid-cols-2" }, /* @__PURE__ */ React.createElement("div", { className: "rounded-lg border border-slate-200 bg-white px-5 py-4" }, /* @__PURE__ */ React.createElement("div", { className: "text-sm font-semibold text-slate-500" }, "\uC774\uBA54\uC77C \uB85C\uADF8\uC778"), /* @__PURE__ */ React.createElement("div", { className: "mt-3 text-base font-semibold text-slate-950" }, "\uC0AC\uC6A9 \uAC00\uB2A5"), /* @__PURE__ */ React.createElement("div", { className: "mt-2 break-words text-sm text-slate-500" }, user.email || "-")), /* @__PURE__ */ React.createElement("div", { className: "rounded-lg border border-slate-200 bg-white px-5 py-4" }, /* @__PURE__ */ React.createElement("div", { className: "text-sm font-semibold text-slate-500" }, "Google \uB85C\uADF8\uC778"), /* @__PURE__ */ React.createElement("div", { className: "mt-3 text-base font-semibold text-slate-950" }, google2.connected ? "\uC5F0\uB3D9\uB428" : "\uBBF8\uC5F0\uB3D9"), /* @__PURE__ */ React.createElement("div", { className: "mt-2 break-words text-sm text-slate-500" }, google2.connected ? google2.email || google2.name || "-" : "\uD558\uC704 \uBA54\uB274\uC5D0\uC11C Google \uACC4\uC815\uC744 \uC5F0\uACB0\uD560 \uC218 \uC788\uC2B5\uB2C8\uB2E4.")))), /* @__PURE__ */ React.createElement("div", { className: "grid grid-cols-1 gap-4 md:grid-cols-3" }, /* @__PURE__ */ React.createElement(MyInfoField, { label: "\uB0B4\uAC00 \uC4F4 \uAE00", value: props.loadingArticles ? "\uBD88\uB7EC\uC624\uB294 \uC911" : `${articleCount.toLocaleString("ko-KR")}\uAC1C` }), /* @__PURE__ */ React.createElement(MyInfoField, { label: "\uB0B4\uAC00 \uC4F4 \uB313\uAE00", value: props.loadingComments ? "\uBD88\uB7EC\uC624\uB294 \uC911" : `${commentCount.toLocaleString("ko-KR")}\uAC1C` }), /* @__PURE__ */ React.createElement(MyInfoField, { label: "\uACB0\uC81C \uB0B4\uC5ED", value: props.loadingPayments ? "\uBD88\uB7EC\uC624\uB294 \uC911" : props.paymentUnavailable ? "\uD655\uC778 \uBD88\uAC00" : `${paymentCount.toLocaleString("ko-KR")}\uAC74` })), /* @__PURE__ */ React.createElement("div", { className: "grid grid-cols-1 gap-7 md:grid-cols-2" }, /* @__PURE__ */ React.createElement(MyInfoPanel, { title: "\uB098\uC758 \uD65C\uB3D9 \uC694\uC57D" }, /* @__PURE__ */ React.createElement(MyInfoChart, { option: summaryOption, loading: activityLoading, className: "h-[260px] w-full" })), /* @__PURE__ */ React.createElement(MyInfoPanel, { title: "\uACB0\uC81C \uAE08\uC561", action: /* @__PURE__ */ React.createElement(MyInfoGranularityControl, { value: paymentGranularity, defaultValue: "month", onChange: setPaymentGranularity }) }, /* @__PURE__ */ React.createElement(MyInfoChart, { option: props.paymentUnavailable ? null : paymentOption, loading: props.loadingPayments, className: "h-[260px] w-full", empty: props.paymentUnavailable ? "\uACB0\uC81C \uB0B4\uC5ED \uD655\uC778 \uBD88\uAC00" : "\uACB0\uC81C \uCC28\uD2B8\uB97C \uD45C\uC2DC\uD560 \uB370\uC774\uD130\uAC00 \uC5C6\uC2B5\uB2C8\uB2E4." }))));
 }
 function MyInfoEmailForm(props) {
   const [email, setEmail] = React.useState(myInfoText((props.user || {}).email));
@@ -1214,14 +1259,16 @@ function MyInfoComments(props) {
 }
 function MyInfoPayments(props) {
   const [paymentGranularity, setPaymentGranularity] = React.useState("month");
-  const rows = myInfoRows((props.data || {}).list);
+  const rows = myInfoRows((props.data || {}).list).filter((row) => props.includeAbandoned || !myInfoIsAbandonedPayment(row));
+  const settledRows = rows.filter((row) => !myInfoIsAbandonedPayment(row));
   const signatureDataURL = myInfoText((props.data || {}).statement_signature_data_url);
   const signatureURL = myInfoText((props.data || {}).statement_signature_url) || myInfoText(myInfoGlobals().payment_statement_signature_url);
-  const chartOption = myInfoPaymentAmountOption(rows, paymentGranularity);
+  const chartOption = myInfoPaymentAmountOption(settledRows, paymentGranularity);
   return React.createElement(
     MyInfoPanel,
-    { title: "\uACB0\uC81C \uB0B4\uC5ED", action: React.createElement(MyInfoGranularityControl, { value: paymentGranularity, defaultValue: "month", onChange: setPaymentGranularity }) },
-    props.loading ? React.createElement(MyInfoChartSkeleton, { className: "h-[280px] w-full" }) : rows.length === 0 ? React.createElement(MyInfoTableEmpty, null, "\uACB0\uC81C \uB0B4\uC5ED\uC774 \uC5C6\uC2B5\uB2C8\uB2E4.") : React.createElement(
+    { title: "\uACB0\uC81C \uB0B4\uC5ED", action: React.createElement("div", { className: "flex flex-wrap items-center gap-4" }, React.createElement("label", { className: "inline-flex cursor-pointer items-center gap-2 text-sm text-slate-700" }, React.createElement("input", { type: "checkbox", checked: !!props.includeAbandoned, onChange: (event) => props.onIncludeAbandonedChange(event.target.checked), className: "rounded border-slate-300" }), myInfoTranslate("중단한 결제 시도 보기")), React.createElement(MyInfoGranularityControl, { value: paymentGranularity, defaultValue: "month", onChange: setPaymentGranularity })) },
+    props.unavailable ? React.createElement(MyInfoMessage, { tone: "red" }, myInfoTranslate("결제 내역을 확인하지 못했습니다. 잠시 후 다시 시도해 주세요.")) : null,
+    props.loading ? React.createElement(MyInfoChartSkeleton, { className: "h-[280px] w-full" }) : rows.length === 0 ? props.unavailable ? null : React.createElement(MyInfoTableEmpty, null, "\uACB0\uC81C \uB0B4\uC5ED\uC774 \uC5C6\uC2B5\uB2C8\uB2E4.") : React.createElement(
       "div",
       null,
       React.createElement("div", { className: "mb-6" }, React.createElement(MyInfoChart, { option: chartOption, className: "h-[280px] w-full", empty: "\uACB0\uC81C \uCC28\uD2B8\uB97C \uD45C\uC2DC\uD560 \uB370\uC774\uD130\uAC00 \uC5C6\uC2B5\uB2C8\uB2E4." })),
@@ -1259,12 +1306,12 @@ function MyInfoPayments(props) {
               React.createElement("td", { className: "px-3 py-3 text-slate-600" }, myInfoText(row.order_id) || "-"),
               React.createElement("td", { className: "px-3 py-3 text-slate-600" }, myInfoDate(row.created_at)),
               React.createElement("td", { className: "px-3 py-3 text-slate-600" }, myInfoText(row.method) || "-"),
-              React.createElement("td", { className: "px-3 py-3" }, React.createElement("span", { className: "rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700" }, myInfoStatusText(row.status))),
-              React.createElement("td", { className: "px-3 py-3 text-right font-semibold text-slate-950" }, myInfoMoney(row.amount)),
+              React.createElement("td", { className: "px-3 py-3" }, React.createElement("span", { className: `rounded-full border px-3 py-1 text-xs font-semibold ${myInfoIsAbandonedPayment(row) ? "border-slate-200 bg-slate-50 text-slate-700" : "border-emerald-200 bg-emerald-50 text-emerald-700"}` }, myInfoIsAbandonedPayment(row) ? myInfoTranslate("결제 중단") : myInfoStatusText(row.status))),
+              React.createElement("td", { className: "px-3 py-3 text-right font-semibold text-slate-950" }, myInfoIsAbandonedPayment(row) ? myInfoTranslate("결제되지 않음") : myInfoMoney(row.amount)),
               React.createElement(
                 "td",
                 { className: "px-3 py-3 text-center" },
-                React.createElement(
+                myInfoIsAbandonedPayment(row) ? "-" : React.createElement(
                   "button",
                   {
                     type: "button",
@@ -1280,6 +1327,39 @@ function MyInfoPayments(props) {
         )
       )
     )
+  );
+}
+function MyInfoSubscriptions(props) {
+  const rows = props.data.rows || [];
+  return React.createElement(MyInfoPanel, {
+    title: myInfoTranslate("내 구독"),
+    action: React.createElement("a", { href: "/intro/membership/subscription/", className: "text-sm font-semibold text-blue-700 hover:underline" }, myInfoTranslate("구독 관리"))
+  },
+    props.data.incomplete ? React.createElement(MyInfoMessage, { tone: "red" }, myInfoTranslate("일부 구독 내역을 확인할 수 없습니다. 잠시 후 다시 확인해 주세요.")) : null,
+    props.data.loading ? React.createElement("p", { className: "text-sm text-slate-500" }, myInfoTranslate("구독 내역을 불러오는 중입니다.")) :
+      rows.length === 0 && !props.data.incomplete ? React.createElement(MyInfoTableEmpty, null, myInfoTranslate("구독 내역이 없습니다.")) :
+        React.createElement("div", { className: "grid gap-3 sm:grid-cols-2" }, rows.map((row) => React.createElement("article", { key: `${row.provider}:${row.id}`, className: "rounded-xl border border-slate-200 bg-slate-50 p-5" },
+          React.createElement("div", { className: "flex flex-wrap items-start justify-between gap-2" },
+            React.createElement("h3", { className: "font-bold text-slate-950" }, myInfoSubscriptionTitle(row)),
+            React.createElement("span", { className: "rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700" }, myInfoSubscriptionStatus(row))),
+          React.createElement("p", { className: "mt-2 text-sm text-slate-600" }, `${row.provider === "paypal" ? "PayPal" : myInfoTranslate("카드 자동결제")} · ${myInfoTranslate(row.interval === "year" ? "연별 결제" : "월별 결제")}`),
+          React.createElement("p", { className: "mt-2 text-sm text-slate-600" }, `${myInfoTranslate(row.renew ? "다음 결제일" : "이용 기간 종료일")}: ${myInfoSubscriptionDate(row.renew ? row.next_charge_at : row.period_end)}`)
+        )))
+  );
+}
+function MyInfoSidebarSubscriptions(props) {
+  const rows = (props.data.rows || []).slice(0, 3);
+  return React.createElement("section", { className: "mt-5 border-t border-slate-200 px-2 pt-4" },
+    React.createElement("div", { className: "flex items-center justify-between gap-2" },
+      React.createElement("h2", { className: "text-sm font-bold text-slate-950" }, myInfoTranslate("내 구독")),
+      React.createElement("a", { href: myInfoSectionPath("subscriptions"), className: "text-xs font-semibold text-blue-700 hover:underline" }, myInfoTranslate("전체 보기"))),
+    props.data.loading ? React.createElement("p", { className: "mt-3 text-xs text-slate-500" }, myInfoTranslate("불러오는 중")) :
+      React.createElement("div", { className: "mt-3 space-y-2" },
+        rows.map((row) => React.createElement("a", { key: `${row.provider}:${row.id}`, href: myInfoSectionPath("subscriptions"), className: "block rounded-lg border border-slate-200 px-3 py-2 hover:bg-slate-50" },
+          React.createElement("span", { className: "block truncate text-xs font-semibold text-slate-950" }, myInfoSubscriptionTitle(row)),
+          React.createElement("span", { className: "mt-1 block text-xs text-slate-500" }, myInfoSubscriptionStatus(row)))),
+        props.data.incomplete ? React.createElement("p", { className: "text-xs text-amber-800" }, myInfoTranslate("일부 구독 확인 불가")) : null,
+        rows.length === 0 && !props.data.incomplete ? React.createElement("p", { className: "text-xs text-slate-500" }, myInfoTranslate("구독 내역이 없습니다.")) : null)
   );
 }
 function renderMyInfoGoogleButton(onLinked, setMessage, attempt = 0) {
@@ -1382,7 +1462,7 @@ function MyInfoConnection(props) {
   return /* @__PURE__ */ React.createElement(MyInfoPanel, { title: "\uACC4\uC815 \uD65C\uB3D9" }, /* @__PURE__ */ React.createElement("div", { className: "mb-7 grid grid-cols-1 gap-5" }, /* @__PURE__ */ React.createElement(MyInfoChart, { option: visitCalendarOption, loading: props.loading, className: "h-[290px] w-full", empty: "\uBC29\uBB38 \uCE98\uB9B0\uB354\uB97C \uD45C\uC2DC\uD560 \uB370\uC774\uD130\uAC00 \uC5C6\uC2B5\uB2C8\uB2E4." }), /* @__PURE__ */ React.createElement(MyInfoChart, { option: appCalendarOption, loading: props.loading, className: "h-[290px] w-full", empty: "\uC571 \uC811\uC18D \uCE98\uB9B0\uB354\uB97C \uD45C\uC2DC\uD560 \uB370\uC774\uD130\uAC00 \uC5C6\uC2B5\uB2C8\uB2E4." })), /* @__PURE__ */ React.createElement("div", { className: "mb-3 flex flex-row items-center justify-between gap-3 sm:flex-col sm:items-start" }, /* @__PURE__ */ React.createElement("h3", { className: "text-base font-bold text-slate-950" }, "\uD65C\uB3D9 \uCD94\uC774"), /* @__PURE__ */ React.createElement(MyInfoGranularityControl, { value: trendGranularity, onChange: setTrendGranularity })), /* @__PURE__ */ React.createElement("div", { className: "mb-7" }, /* @__PURE__ */ React.createElement(MyInfoChart, { option: trendOption, loading: props.loading, className: "h-[300px] w-full", empty: "\uD65C\uB3D9 \uCD94\uC774\uB97C \uD45C\uC2DC\uD560 \uB370\uC774\uD130\uAC00 \uC5C6\uC2B5\uB2C8\uB2E4." })));
 }
 const MYINFO_BASE_PATH = "/account/myinfo/";
-const MYINFO_SECTION_KEYS = ["overview", "articles", "comments", "payments", "connection", "email", "password", "profile", "google"];
+const MYINFO_SECTION_KEYS = ["overview", "articles", "comments", "payments", "subscriptions", "connection", "email", "password", "profile", "google"];
 function myInfoNormalizeSectionKey(value) {
   const key = myInfoText(value).replace(/^#/, "").replace(/^\/+|\/+$/g, "").toLowerCase();
   return MYINFO_SECTION_KEYS.includes(key) ? key : "";
@@ -1436,6 +1516,7 @@ function MyInfoApp() {
         { key: "articles", label: "\uB0B4\uAC00 \uC4F4 \uAE00" },
         { key: "comments", label: "\uB0B4\uAC00 \uC4F4 \uB313\uAE00" },
         { key: "payments", label: "\uACB0\uC81C \uB0B4\uC5ED" },
+        { key: "subscriptions", label: "\uB0B4 \uAD6C\uB3C5" },
         { key: "connection", label: "\uACC4\uC815 \uD65C\uB3D9" },
         { key: "team", label: "\uAE30\uAD00/\uD300 \uAD00\uB9AC", href: "/account/team/" }
       ]
@@ -1474,6 +1555,10 @@ function MyInfoApp() {
   const [articles, setArticles] = React.useState({});
   const [comments, setComments] = React.useState({});
   const [payments, setPayments] = React.useState({});
+  const [paymentUnavailable, setPaymentUnavailable] = React.useState(false);
+  const [includeAbandoned, setIncludeAbandoned] = React.useState(false);
+  const paymentRequest = React.useRef(0);
+  const [subscriptions, setSubscriptions] = React.useState({ rows: [], loading: true, incomplete: false });
   const [connection, setConnection] = React.useState({});
   function patchDataLoading(key, value) {
     setDataLoading((prev) => ({ ...prev, [key]: value }));
@@ -1506,12 +1591,29 @@ function MyInfoApp() {
       setter(payload || {});
     }).finally(() => patchDataLoading(key, false));
   }
+  function loadPayments(withAbandoned) {
+    const request = ++paymentRequest.current;
+    patchDataLoading("payments", true);
+    fetch(`/account/ajax_get_myinfo_payment/?include_abandoned=${withAbandoned ? "1" : "0"}`, { credentials: "same-origin", cache: "no-store" }).then(async (response) => {
+      if (!response.ok) throw new Error("payment_unavailable");
+      const payload = await response.json();
+      if (payload.ok === false || !payload.list) throw new Error("payment_unavailable");
+      if (request === paymentRequest.current) {
+        setPayments(payload);
+        setPaymentUnavailable(false);
+      }
+    }).catch(() => {
+      if (request === paymentRequest.current) setPaymentUnavailable(true);
+    }).finally(() => {
+      if (request === paymentRequest.current) patchDataLoading("payments", false);
+    });
+  }
   function loadSectionData(section = active) {
     setDataLoading({ articles: false, comments: false, payments: false, connection: false });
     const loaders = {
       articles: () => loadPanelData("articles", "/account/ajax_get_myinfo_article/", setArticles),
       comments: () => loadPanelData("comments", "/account/ajax_get_myinfo_comment/", setComments),
-      payments: () => loadPanelData("payments", "/account/ajax_get_myinfo_payment/", setPayments),
+      payments: () => loadPayments(includeAbandoned),
       connection: () => loadPanelData("connection", "/account/ajax_get_myinfo_connection/", setConnection)
     };
     myInfoSectionDataKeys(section).forEach((key) => loaders[key]());
@@ -1527,6 +1629,7 @@ function MyInfoApp() {
       return;
     }
     loadPage(active);
+    myInfoFetchSubscriptions().then((data) => setSubscriptions({ ...data, loading: false })).catch(() => setSubscriptions({ rows: [], loading: false, incomplete: true }));
     const onHash = () => {
       const legacyURL2 = myInfoLegacyHashRedirectURL();
       if (legacyURL2)
@@ -1541,14 +1644,15 @@ function MyInfoApp() {
     setOpenGroups((prev) => ({ ...prev, [key]: !prev[key] }));
   }
   const content = {
-    overview: /* @__PURE__ */ React.createElement(MyInfoOverview, { user, googleIdentity, genderOptions, articles, comments, payments, loadingArticles: dataLoading.articles, loadingComments: dataLoading.comments, loadingPayments: dataLoading.payments }),
+    overview: /* @__PURE__ */ React.createElement("div", { className: "space-y-7" }, React.createElement(MyInfoOverview, { user, googleIdentity, genderOptions, articles, comments, payments, paymentUnavailable, loadingArticles: dataLoading.articles, loadingComments: dataLoading.comments, loadingPayments: dataLoading.payments }), React.createElement(MyInfoSubscriptions, { data: subscriptions })),
     email: /* @__PURE__ */ React.createElement(MyInfoEmailForm, { user, reload: () => loadAccountData(active) }),
     password: /* @__PURE__ */ React.createElement(MyInfoPasswordForm, null),
     profile: /* @__PURE__ */ React.createElement(MyInfoProfileForm, { user, genderOptions, reload: () => loadAccountData(active) }),
     google: /* @__PURE__ */ React.createElement(MyInfoGooglePanel, { identity: googleIdentity, onLinked: (identity) => setGoogleIdentity(identity), reload: () => loadAccountData(active) }),
     articles: /* @__PURE__ */ React.createElement(MyInfoArticles, { data: articles, loading: dataLoading.articles }),
     comments: /* @__PURE__ */ React.createElement(MyInfoComments, { data: comments, loading: dataLoading.comments }),
-    payments: /* @__PURE__ */ React.createElement(MyInfoPayments, { data: payments, loading: dataLoading.payments, user }),
+    payments: /* @__PURE__ */ React.createElement(MyInfoPayments, { data: payments, loading: dataLoading.payments, unavailable: paymentUnavailable, user, includeAbandoned, onIncludeAbandonedChange: (next) => { setIncludeAbandoned(next); loadPayments(next); } }),
+    subscriptions: /* @__PURE__ */ React.createElement(MyInfoSubscriptions, { data: subscriptions }),
     connection: /* @__PURE__ */ React.createElement(MyInfoConnection, { data: connection, loading: dataLoading.connection })
   }[active];
   return React.createElement(
@@ -1604,7 +1708,8 @@ function MyInfoApp() {
               })
             )
           ))
-        )
+        ),
+        React.createElement(MyInfoSidebarSubscriptions, { data: subscriptions })
       ),
       React.createElement(
         "div",
