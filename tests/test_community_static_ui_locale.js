@@ -12,6 +12,16 @@ const translations = {
   '전체보기': 'View All',
   '작성자': 'Author',
   '표시할 글이 없습니다.': 'No posts to display.',
+  '전체 출처': 'All Sources',
+  '총 {total}건 / {page} / {pages}페이지': '{total} posts · Page {page} of {pages}',
+  '원글: ': 'Original post: ',
+  '내가 쓴 댓글': 'My comments',
+  '댓글 내용': 'Comment text',
+  '댓글 ({count})': 'Comments ({count})',
+  '작성자 차단': 'Block author',
+  '제목을 입력해주세요.': 'Enter a title.',
+  '내용을 입력해주세요.': 'Enter content.',
+  '비밀글로 작성하기 (본인과 관리자만 읽을 수 있습니다.)': 'Post privately.',
 };
 const window = {
   WebRI18n: { language: 'en', t: source => source },
@@ -19,10 +29,11 @@ const window = {
   addEventListener(name, callback) { listeners[name] = callback; },
 };
 const root = {};
+const elements = {};
 let renders = 0;
 const context = vm.createContext({
   window,
-  document: { getElementById(id) { return id === 'div_main' ? root : null; } },
+  document: { getElementById(id) { return elements[id] || (id === 'div_main' ? root : null); } },
   location: { pathname: '/community/' },
   url: 'all',
   sub: '',
@@ -48,6 +59,7 @@ const boardTab = vm.runInContext('DivBoardTabs()', context);
 const encoded = JSON.stringify(boardTab);
 assert.ok(encoded.includes('View All'));
 assert.ok(encoded.includes('General Discussion'));
+assert.ok(JSON.stringify(vm.runInContext('SourceFilterButton({value:"",label:"전체 출처"})', context)).includes('All Sources'));
 
 context.article = { title: '자유게시판', user_nickname: '작성자', category_url: 'free', uuid: 'source-uuid' };
 const article = vm.runInContext('LatestArticleItem({data:article})', context);
@@ -55,6 +67,20 @@ const articleJSON = JSON.stringify(article);
 assert.ok(articleJSON.includes('자유게시판'), 'authored title remains unchanged');
 assert.ok(articleJSON.includes('작성자'), 'author nickname remains unchanged');
 assert.ok(articleJSON.includes('General Discussion'), 'category UI label is localized');
+
+const pagination = vm.runInContext('ArticlePagination({totalCount:125,currentPage:2,pageSize:10,onPageChange:()=>{}})', context);
+assert.ok(JSON.stringify(pagination).includes('125 posts · Page 2 of 13'));
+const sidebarComment = vm.runInContext('SidebarCommentItem({data:{uuid_article:"post-1",article_title:"원래 제목",content:"내가 쓴 본문",display_content_language:"ko",display_article_title_language:"ko"}})', context);
+const commentJSON = JSON.stringify(sidebarComment);
+assert.ok(commentJSON.includes('Original post: '));
+assert.ok(commentJSON.includes('원래 제목'));
+assert.ok(commentJSON.includes('내가 쓴 본문'));
+assert.ok(commentJSON.includes('"data-webr-user-content":"comment"'));
+assert.ok(commentJSON.includes('"data-webr-user-content":"title"'));
+assert.ok(commentJSON.includes('"lang":"ko"'));
+assert.equal(vm.runInContext('communityT("댓글 ({count})",{count:7})', context), 'Comments (7)');
+assert.equal(vm.runInContext('communityT("내가 쓴 댓글")', context), 'My comments');
+assert.equal(vm.runInContext('communityT("작성자 차단")', context), 'Block author');
 
 window.WebRI18n.t = source => source;
 vm.runInContext('renderListPageShell()', context);
@@ -64,3 +90,17 @@ window.WebRI18n.t = source => translations[source] || source;
 listeners['webr:language-change']({ detail: { language: 'en' } });
 assert.equal(renders, 2, 'catalog arrival rerenders the same-locale static shell');
 assert.equal(vm.runInContext('communityState.uiLocaleSignature', context), 'en|General Discussion');
+
+context.mode = 'edit';
+elements.txt_title = { value: 'authored title' };
+elements.txt_content = { value: 'typed draft' };
+elements.chk_secret = { checked: true, labels: [{ textContent: '' }] };
+elements.div_button_list = {};
+window.WebRI18n.language = 'ja';
+listeners['webr:language-change']({ detail: { language: 'ja' } });
+assert.equal(elements.txt_title.value, 'authored title');
+assert.equal(elements.txt_title.placeholder, 'Enter a title.');
+assert.equal(elements.txt_content.value, 'typed draft');
+assert.equal(elements.txt_content.placeholder, 'Enter content.');
+assert.equal(elements.chk_secret.checked, true);
+assert.equal(elements.chk_secret.labels[0].textContent, 'Post privately.');
