@@ -78,6 +78,20 @@
     return node;
   }
 
+  // Collected metadata has no trustworthy per-field language code. Only mark
+  // text whose Korean script establishes its language; leave other scripts and
+  // Latin-only titles unspecified instead of trusting the Book catalog's
+  // default language_code for an English or mixed-language title.
+  function sourceText(tagName, className, text) {
+    var node = element(tagName, className, text);
+    var value = String(text || "");
+    if (/[\u1100-\u11ff\u3130-\u318f\uac00-\ud7a3]/.test(value) &&
+        !/[\u0400-\u052f\u0600-\u08ff\u3040-\u30ff\u3400-\u9fff]/.test(value)) {
+      node.lang = "ko";
+    }
+    return node;
+  }
+
   function uiLink(href, className, text) {
     var node = link(href, className, text);
     node.setAttribute("data-webr-ui", "");
@@ -469,7 +483,7 @@
       anchor.appendChild(media);
     }
     var titleRow = element("span", "webr-home-compact__article-title-row");
-    titleRow.appendChild(element("strong", "webr-home-compact__article-title", cleanText(item.title, 72)));
+    titleRow.appendChild(sourceText("strong", "webr-home-compact__article-title", cleanText(item.title, 72)));
     if (item.is_new === true) {
       titleRow.appendChild(newBadge());
     }
@@ -480,7 +494,7 @@
     }
     var summary = cleanText(item.summary, 180);
     content.appendChild(summary
-      ? element("span", "webr-home-compact__article-summary", summary)
+      ? sourceText("span", "webr-home-compact__article-summary", summary)
       : uiElement("span", "webr-home-compact__article-summary", "최신 자료를 확인해 보세요."));
     anchor.appendChild(content);
     body.appendChild(anchor);
@@ -625,7 +639,7 @@
     rows.forEach(function appendNotice(item) {
       var anchor = link(item.href || "/intro/notice/", "webr-home-compact__notice");
       var titleRow = element("span", "webr-home-compact__notice-title-row");
-      titleRow.appendChild(element("strong", "webr-home-compact__notice-title", cleanText(item.title, 76)));
+      titleRow.appendChild(sourceText("strong", "webr-home-compact__notice-title", cleanText(item.title, 76)));
       if (item.is_new === true) {
         titleRow.appendChild(newBadge());
       }
@@ -681,7 +695,7 @@
     var type = uiElement("span", "webr-home-compact__media-type", media.type);
     anchor.appendChild(type);
     var titleRow = element("span", "webr-home-compact__media-title-row");
-    titleRow.appendChild(element("strong", "webr-home-compact__media-title", cleanText(media.item.title, 88)));
+    titleRow.appendChild(sourceText("strong", "webr-home-compact__media-title", cleanText(media.item.title, 88)));
     if (media.item.is_new === true) {
       titleRow.appendChild(newBadge());
     }
