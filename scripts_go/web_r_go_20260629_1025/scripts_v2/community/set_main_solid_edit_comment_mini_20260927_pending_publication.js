@@ -159,10 +159,16 @@ function isCommunityArticleListIncomplete(data) {
 }
 function communityArticleListPendingMessage(data) {
   const message = data && typeof data.message === "string" ? data.message.trim() : "";
+  if (message === "게시글 목록을 일시적으로 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.") {
+    return communityT(message);
+  }
   return message || communityT("\uAC8C\uC2DC\uAE00 \uBAA9\uB85D\uC744 \uC77C\uC2DC\uC801\uC73C\uB85C \uBD88\uB7EC\uC624\uC9C0 \uBABB\uD588\uC2B5\uB2C8\uB2E4. \uC7A0\uC2DC \uD6C4 \uB2E4\uC2DC \uC2DC\uB3C4\uD574 \uC8FC\uC138\uC694.");
 }
 function communityArticleListPartialMessage(data) {
   const message = data && typeof data.message === "string" ? data.message.trim() : "";
+  if (message === "일부 커뮤니티 자료를 일시적으로 불러오지 못했습니다.") {
+    return communityT(message);
+  }
   return message || communityT("\uD655\uC778\uB41C \uAC8C\uC2DC\uAE00\uB9CC \uBCF4\uC5EC\uB4DC\uB9BD\uB2C8\uB2E4. \uC804\uCCB4 \uBAA9\uB85D\uC740 \uC7A0\uC2DC \uD6C4 \uB2E4\uC2DC \uD655\uC778\uD574 \uC8FC\uC138\uC694.");
 }
 function communitySidebarRows(data, limit) {

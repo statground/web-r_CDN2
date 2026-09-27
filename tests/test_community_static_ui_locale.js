@@ -22,6 +22,8 @@ const translations = {
   '제목을 입력해주세요.': 'Enter a title.',
   '내용을 입력해주세요.': 'Enter content.',
   '비밀글로 작성하기 (본인과 관리자만 읽을 수 있습니다.)': 'Post privately.',
+  '게시글 목록을 일시적으로 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.': 'Posts are temporarily unavailable. Please try again shortly.',
+  '일부 커뮤니티 자료를 일시적으로 불러오지 못했습니다.': 'Some community content is temporarily unavailable.',
 };
 const window = {
   WebRI18n: { language: 'en', t: source => source },
@@ -81,6 +83,9 @@ assert.ok(commentJSON.includes('"lang":"ko"'));
 assert.equal(vm.runInContext('communityT("댓글 ({count})",{count:7})', context), 'Comments (7)');
 assert.equal(vm.runInContext('communityT("내가 쓴 댓글")', context), 'My comments');
 assert.equal(vm.runInContext('communityT("작성자 차단")', context), 'Block author');
+assert.equal(vm.runInContext('communityArticleListPendingMessage({message:"게시글 목록을 일시적으로 불러오지 못했습니다. 잠시 후 다시 시도해 주세요."})', context), 'Posts are temporarily unavailable. Please try again shortly.');
+assert.equal(vm.runInContext('communityArticleListPartialMessage({message:"일부 커뮤니티 자료를 일시적으로 불러오지 못했습니다."})', context), 'Some community content is temporarily unavailable.');
+assert.equal(vm.runInContext('communityArticleListPartialMessage({message:"Unknown source status"})', context), 'Unknown source status', 'unrecognized source text is never guessed or translated');
 
 window.WebRI18n.t = source => source;
 vm.runInContext('renderListPageShell()', context);
