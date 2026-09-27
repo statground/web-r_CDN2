@@ -2684,6 +2684,7 @@ function showPendingArticlePublication(uuid) {
         body
       }).then((res) => res.json());
       if (response && !response.pending && response.uuid === uuid) {
+        clearCommunityCreateRequestID();
         location.href = init_url + "read/" + uuid + "/";
         return;
       }
@@ -2696,6 +2697,33 @@ function showPendingArticlePublication(uuid) {
   });
   panel.append(heading, explanation, identifier, check, result);
   container.replaceChildren(panel);
+}
+let communityCreateRequestID = "";
+const communityCreateRequestStorageKey = "web-r:community:create:" + location.pathname;
+function stableCommunityCreateRequestID() {
+  if (!communityCreateRequestID) {
+    try {
+      communityCreateRequestID = sessionStorage.getItem(communityCreateRequestStorageKey) || "";
+    } catch (_) {
+    }
+  }
+  if (!/^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(communityCreateRequestID)) {
+    communityCreateRequestID = globalThis.crypto && crypto.randomUUID ? crypto.randomUUID() : "";
+    if (communityCreateRequestID) {
+      try {
+        sessionStorage.setItem(communityCreateRequestStorageKey, communityCreateRequestID);
+      } catch (_) {
+      }
+    }
+  }
+  return communityCreateRequestID;
+}
+function clearCommunityCreateRequestID() {
+  communityCreateRequestID = "";
+  try {
+    sessionStorage.removeItem(communityCreateRequestStorageKey);
+  } catch (_) {
+  }
 }
 async function submit_write() {
   const txt_title = document.getElementById("txt_title").value.trim();
@@ -2717,13 +2745,25 @@ async function submit_write() {
     request_data.append("txt_title", txt_title);
     request_data.append("txt_content", txt_content);
     request_data.append("chk_secret", chk_secret);
+    const requestID = stableCommunityCreateRequestID();
+    if (!requestID) {
+      alert("요청 ID를 생성할 수 없습니다. 보안 연결에서 다시 시도해 주세요.");
+      communityState.toggle_click_submit = false;
+      ReactDOM.render(/* @__PURE__ */ React.createElement(Div_button, null), document.getElementById("div_button_list"));
+      return;
+    }
+    request_data.append("request_id", requestID);
     const data = await fetch("/blank/ajax_board/insert_article/", {
       method: "POST",
       headers: { "X-CSRFToken": getCookie("csrftoken") },
       body: request_data
     }).then((res) => res.json());
-    if (data && data.error) {
-      alert(data.error);
+    if (data && data.pending && data.uuid) {
+      showPendingArticlePublication(data.uuid);
+      return;
+    }
+    if (!data || data.error || !data.uuid) {
+      alert(data && data.error || "게시글 저장 상태를 확인하지 못했습니다. 같은 화면에서 다시 시도해 주세요.");
       communityState.toggle_click_submit = false;
       ReactDOM.render(/* @__PURE__ */ React.createElement(Div_button, null), document.getElementById("div_button_list"));
       return;
@@ -2741,6 +2781,7 @@ async function submit_write() {
       showPendingArticlePublication(data.uuid);
       return;
     }
+    clearCommunityCreateRequestID();
     location.href = init_url + "read/" + data.uuid + "/";
   }
   communityState.toggle_click_submit = false;
