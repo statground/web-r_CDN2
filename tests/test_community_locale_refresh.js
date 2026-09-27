@@ -16,6 +16,7 @@ const context = vm.createContext({
   window,
   document: { getElementById() { return null; } },
   FormData,
+  location: { pathname: '/community/free/' },
   url: 'free',
   sub: '',
   mode: '',
