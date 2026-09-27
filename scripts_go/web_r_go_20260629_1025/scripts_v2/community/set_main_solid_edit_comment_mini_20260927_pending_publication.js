@@ -10,7 +10,7 @@ const COMMUNITY_COMMENT_DELETE_TOMBSTONE_MS = 3e5;
 const COMMUNITY_TABBED_URLS = ["all", "free", "rcommunity", "notebook", "mine", "commented"];
 const COMMUNITY_BOARD_CARD_KEYS = ["free", "notebook", "rcommunity"];
 let header_title = "";
-let header_subtitle = "\uCEE4\uBBA4\uB2C8\uD2F0";
+let header_subtitle = communityT("\uCEE4\uBBA4\uB2C8\uD2F0");
 const communityArticlePageCache = {};
 const communityArticlePrefetching = {};
 const communityCardLastGood = {};
@@ -18,9 +18,19 @@ let communityLocaleEpoch = 0;
 function communityDisplayLocale() {
   return window.WebRI18n && window.WebRI18n.language || "ko";
 }
+function communityT(source) {
+  const i18n = window.WebRI18n;
+  if (!i18n || typeof i18n.t !== "function") return source;
+  const translated = i18n.t(source);
+  return typeof translated === "string" && translated ? translated : source;
+}
+function communityUILocaleSignature() {
+  return communityDisplayLocale() + "|" + communityT("\uC790\uC720\uAC8C\uC2DC\uD310");
+}
 const communityState = {
   page_num: 1,
   displayLocale: communityDisplayLocale(),
+  uiLocaleSignature: "",
   article_counter: 0,
   toggle_page: false,
   toggle_click_submit: false,
@@ -75,7 +85,7 @@ function normalizeCommunityRoute() {
   } catch (e) {
   }
   header_title = getCommunityHeaderTitle(url);
-  header_subtitle = "\uCEE4\uBBA4\uB2C8\uD2F0";
+  header_subtitle = communityT("\uCEE4\uBBA4\uB2C8\uD2F0");
   init_url = getCommunityBaseUrl(url);
 }
 function getCommunityBaseUrl(boardUrl) {
@@ -98,16 +108,16 @@ function syncCommunityReadContext(article) {
 }
 function getCommunityHeaderTitle(boardUrl) {
   if (boardUrl === "all") {
-    return "\uCEE4\uBBA4\uB2C8\uD2F0";
+    return communityT("\uCEE4\uBBA4\uB2C8\uD2F0");
   }
   if (boardUrl === "free") {
-    return "\uC790\uC720 \uAC8C\uC2DC\uD310 / \uBB3B\uACE0 \uB2F5\uD558\uAE30";
+    return communityT("\uC790\uC720 \uAC8C\uC2DC\uD310 / \uBB3B\uACE0 \uB2F5\uD558\uAE30");
   }
   if (boardUrl === "rblogger") {
     return "R-Blogger";
   }
   if (boardUrl === "rproject") {
-    return "R Project 소식";
+    return communityT("R Project 소식");
   }
   if (boardUrl === "notebook") {
     return "Web-R Notebook";
@@ -116,15 +126,15 @@ function getCommunityHeaderTitle(boardUrl) {
     return "R Community";
   }
   if (boardUrl === "mine") {
-    return "\uB0B4\uAC00 \uC4F4 \uAE00";
+    return communityT("\uB0B4\uAC00 \uC4F4 \uAE00");
   }
   if (boardUrl === "commented") {
-    return "\uB0B4\uAC00 \uB313\uAE00\uC744 \uC4F4 \uAE00";
+    return communityT("\uB0B4\uAC00 \uB313\uAE00\uC744 \uC4F4 \uAE00");
   }
   if (boardUrl === "visitor") {
-    return "\uAC00\uC785 \uC778\uC0AC / \uBC29\uBA85\uB85D";
+    return communityT("\uAC00\uC785 \uC778\uC0AC / \uBC29\uBA85\uB85D");
   }
-  return "\uCEE4\uBBA4\uB2C8\uD2F0";
+  return communityT("\uCEE4\uBBA4\uB2C8\uD2F0");
 }
 function isTabbedCommunityUrl(boardUrl = url) {
   return COMMUNITY_TABBED_URLS.includes(boardUrl);
@@ -467,7 +477,7 @@ function AttachmentDropZone(props) {
       "\uAE30\uC874 \uCCA8\uBD80: ",
       file.file_name || file.origin_file_name || file.file_url
     ))),
-    files.length > 0 && /* @__PURE__ */ React.createElement("div", { class: "mt-3 flex flex-col gap-2" }, files.map((file, index) => /* @__PURE__ */ React.createElement("div", { key: file.name + "_" + index, class: "flex flex-row justify-between items-center gap-2 rounded-md bg-white border border-blue-100 px-3 py-2 text-sm" }, /* @__PURE__ */ React.createElement("span", { class: "truncate" }, file.name), /* @__PURE__ */ React.createElement("button", { type: "button", class: "text-xs text-red-600 hover:underline", onClick: () => onRemove(index) }, "\uC0AD\uC81C"))))
+    files.length > 0 && /* @__PURE__ */ React.createElement("div", { class: "mt-3 flex flex-col gap-2" }, files.map((file, index) => /* @__PURE__ */ React.createElement("div", { key: file.name + "_" + index, class: "flex flex-row justify-between items-center gap-2 rounded-md bg-white border border-blue-100 px-3 py-2 text-sm" }, /* @__PURE__ */ React.createElement("span", { class: "truncate" }, file.name), /* @__PURE__ */ React.createElement("button", { type: "button", class: "text-xs text-red-600 hover:underline", onClick: () => onRemove(index) }, communityT("\uC0AD\uC81C")))))
   );
 }
 function renderArticleAttachmentControl() {
@@ -879,7 +889,7 @@ function DivBoardTabs() {
     return null;
   }
   const activeTab = isTabbedCommunityUrl(url) ? url : "all";
-  return /* @__PURE__ */ React.createElement("div", { class: "flex w-full flex-col gap-2 pt-2 lg:flex-row lg:items-center lg:justify-between" }, /* @__PURE__ */ React.createElement("div", { class: "flex flex-wrap items-center gap-2" }, /* @__PURE__ */ React.createElement(TabButton, { active: activeTab === "all", onClick: () => handleChangeTab("all") }, "\uC804\uCCB4\uBCF4\uAE30"), /* @__PURE__ */ React.createElement(TabButton, { active: activeTab === "free", onClick: () => handleChangeTab("free") }, "\uC790\uC720\uAC8C\uC2DC\uD310"), /* @__PURE__ */ React.createElement(TabButton, { active: activeTab === "rcommunity", onClick: () => handleChangeTab("rcommunity") }, "R Community"), /* @__PURE__ */ React.createElement(TabButton, { active: activeTab === "notebook", onClick: () => handleChangeTab("notebook") }, "Web-R Notebook")), /* @__PURE__ */ React.createElement("div", { class: "flex flex-wrap items-center justify-start gap-2 lg:justify-end" }, /* @__PURE__ */ React.createElement(TabButton, { active: activeTab === "mine", onClick: () => handleChangeTab("mine") }, "\uB0B4\uAC00 \uC4F4 \uAE00"), /* @__PURE__ */ React.createElement(TabButton, { active: activeTab === "commented", onClick: () => handleChangeTab("commented") }, "\uB0B4\uAC00 \uB313\uAE00\uC744 \uC4F4 \uAE00")));
+  return /* @__PURE__ */ React.createElement("div", { class: "flex w-full flex-col gap-2 pt-2 lg:flex-row lg:items-center lg:justify-between" }, /* @__PURE__ */ React.createElement("div", { class: "flex flex-wrap items-center gap-2" }, /* @__PURE__ */ React.createElement(TabButton, { active: activeTab === "all", onClick: () => handleChangeTab("all") }, communityT("\uC804\uCCB4\uBCF4\uAE30")), /* @__PURE__ */ React.createElement(TabButton, { active: activeTab === "free", onClick: () => handleChangeTab("free") }, communityT("\uC790\uC720\uAC8C\uC2DC\uD310")), /* @__PURE__ */ React.createElement(TabButton, { active: activeTab === "rcommunity", onClick: () => handleChangeTab("rcommunity") }, "R Community"), /* @__PURE__ */ React.createElement(TabButton, { active: activeTab === "notebook", onClick: () => handleChangeTab("notebook") }, "Web-R Notebook")), /* @__PURE__ */ React.createElement("div", { class: "flex flex-wrap items-center justify-start gap-2 lg:justify-end" }, /* @__PURE__ */ React.createElement(TabButton, { active: activeTab === "mine", onClick: () => handleChangeTab("mine") }, communityT("\uB0B4\uAC00 \uC4F4 \uAE00")), /* @__PURE__ */ React.createElement(TabButton, { active: activeTab === "commented", onClick: () => handleChangeTab("commented") }, communityT("\uB0B4\uAC00 \uB313\uAE00\uC744 \uC4F4 \uAE00"))));
 }
 const SIDEBAR_CARD_CLASS = "flex h-full min-h-[220px] flex-col rounded-lg border border-slate-200 bg-white p-4 shadow-sm";
 const COMMUNITY_SIDEBAR_ITEM_LIMIT = 3;
@@ -907,14 +917,14 @@ function numberText(value) {
 function communityCategoryInfo(categoryUrl) {
   const cu = String(categoryUrl || "").trim().toLowerCase();
   const map = {
-    free: ["\uC790\uC720\uAC8C\uC2DC\uD310", "bg-blue-50 text-blue-700 border-blue-200"],
-    visitor: ["\uBC29\uBA85\uB85D", "bg-orange-50 text-orange-700 border-orange-200"],
+    free: [communityT("\uC790\uC720\uAC8C\uC2DC\uD310"), "bg-blue-50 text-blue-700 border-blue-200"],
+    visitor: [communityT("\uBC29\uBA85\uB85D"), "bg-orange-50 text-orange-700 border-orange-200"],
     rblogger: ["R-Blogger", "bg-violet-50 text-violet-700 border-violet-200"],
     rproject: ["R-Project", "bg-sky-50 text-sky-700 border-sky-200"],
     notebook: ["Notebook", "bg-emerald-50 text-emerald-700 border-emerald-200"],
     rcommunity: ["R Community", "bg-teal-50 text-teal-700 border-teal-200"]
   };
-  const picked = map[cu] || ["\uCEE4\uBBA4\uB2C8\uD2F0", "bg-slate-50 text-slate-700 border-slate-200"];
+  const picked = map[cu] || [communityT("\uCEE4\uBBA4\uB2C8\uD2F0"), "bg-slate-50 text-slate-700 border-slate-200"];
   return { label: picked[0], className: picked[1], categoryUrl: cu };
 }
 function rCommunitySourceLabel(article) {
@@ -1166,7 +1176,7 @@ function prefetchCommunityArticlePages(currentPage, totalPages, searchText) {
 }
 function latestArticleMetaParts(article) {
   const parts = [];
-  const author = article.user_nickname || "\uC791\uC131\uC790";
+  const author = article.user_nickname || communityT("\uC791\uC131\uC790");
   parts.push(author);
   const date = compactDate(article.created_at);
   if (date) {
@@ -1174,11 +1184,11 @@ function latestArticleMetaParts(article) {
   }
   const readText = numberText(article.cnt_read);
   if (readText) {
-    parts.push("\uC870\uD68C " + readText);
+    parts.push(communityT("\uC870\uD68C ") + readText);
   }
   const commentText = numberText(article.cnt_comment);
   if (commentText) {
-    parts.push("\uB313\uAE00 " + commentText);
+    parts.push(communityT("\uB313\uAE00 ") + commentText);
   }
   return parts;
 }
@@ -1186,7 +1196,7 @@ function LatestArticleItem(props) {
   const article = props.data || {};
   const info = communityCategoryInfo(article.category_url);
   const meta = latestArticleMetaParts(article);
-  const title = cleanBoardTitle(article.title) || "\uC81C\uBAA9 \uC5C6\uC74C";
+  const title = cleanBoardTitle(article.title) || communityT("\uC81C\uBAA9 \uC5C6\uC74C");
   const linkProps = { href: articleHrefFromData(article) };
   return /* @__PURE__ */ React.createElement("a", { ...linkProps, class: "group block w-full rounded-lg border border-transparent px-4 py-3 transition hover:border-blue-200 hover:bg-blue-50/70" }, /* @__PURE__ */ React.createElement("div", { class: "mb-1 flex flex-wrap items-center gap-2" }, /* @__PURE__ */ React.createElement("span", { class: "rounded-full border px-2 py-0.5 text-xs font-semibold " + info.className }, info.label), /* @__PURE__ */ React.createElement(RCommunitySourceChip, { article }), article.check_reader === "writer" && /* @__PURE__ */ React.createElement(WebRStatusBadge, { tone: "my", label: "MY" }), article.is_new === 1 && /* @__PURE__ */ React.createElement(WebRStatusBadge, { tone: "new", label: "NEW" })), /* @__PURE__ */ React.createElement("p", { lang: article.display_title_language || "ko", class: "whitespace-normal break-keep text-base font-bold leading-6 text-slate-950 group-hover:text-blue-800" }, title), /* @__PURE__ */ React.createElement("div", { class: "mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500" }, meta.map((part, index) => /* @__PURE__ */ React.createElement("span", { key: "latest_meta_" + index }, part))));
 }
@@ -1225,11 +1235,11 @@ function ArticlePagination(props) {
     }
     nodes.push(/* @__PURE__ */ React.createElement(PaginationButton, { key: "page_" + page, active: page === currentPage, onClick: () => onPageChange(page) }, page));
   });
-  return /* @__PURE__ */ React.createElement("nav", { class: "flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 pt-4" }, /* @__PURE__ */ React.createElement("p", { class: "text-sm text-slate-500" }, "\uCD1D ", totalCount.toLocaleString("ko-KR"), "\uAC74 / ", currentPage.toLocaleString("ko-KR"), " / ", totalPages.toLocaleString("ko-KR"), "\uD398\uC774\uC9C0"), /* @__PURE__ */ React.createElement("div", { class: "flex flex-wrap items-center gap-2" }, /* @__PURE__ */ React.createElement(PaginationButton, { disabled: currentPage <= 1, onClick: () => onPageChange(currentPage - 1) }, "\uC774\uC804"), nodes, /* @__PURE__ */ React.createElement(PaginationButton, { disabled: currentPage >= totalPages, onClick: () => onPageChange(currentPage + 1) }, "\uB2E4\uC74C")));
+  return /* @__PURE__ */ React.createElement("nav", { class: "flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 pt-4" }, /* @__PURE__ */ React.createElement("p", { class: "text-sm text-slate-500" }, "\uCD1D ", totalCount.toLocaleString("ko-KR"), "\uAC74 / ", currentPage.toLocaleString("ko-KR"), " / ", totalPages.toLocaleString("ko-KR"), "\uD398\uC774\uC9C0"), /* @__PURE__ */ React.createElement("div", { class: "flex flex-wrap items-center gap-2" }, /* @__PURE__ */ React.createElement(PaginationButton, { disabled: currentPage <= 1, onClick: () => onPageChange(currentPage - 1) }, communityT("\uC774\uC804")), nodes, /* @__PURE__ */ React.createElement(PaginationButton, { disabled: currentPage >= totalPages, onClick: () => onPageChange(currentPage + 1) }, communityT("\uB2E4\uC74C"))));
 }
 function SidebarCard(props) {
   const items = communitySidebarRows(props.data, props.limit);
-  const emptyText = isCommunitySidebarPending(props.data) ? "\uBD88\uB7EC\uC624\uB294 \uC911\uC785\uB2C8\uB2E4." : props.empty || "\uD45C\uC2DC\uD560 \uB0B4\uC6A9\uC774 \uC5C6\uC2B5\uB2C8\uB2E4.";
+  const emptyText = isCommunitySidebarPending(props.data) ? communityT("\uBD88\uB7EC\uC624\uB294 \uC911\uC785\uB2C8\uB2E4.") : props.empty || communityT("\uD45C\uC2DC\uD560 \uB0B4\uC6A9\uC774 \uC5C6\uC2B5\uB2C8\uB2E4.");
   return /* @__PURE__ */ React.createElement("div", { class: SIDEBAR_CARD_CLASS }, /* @__PURE__ */ React.createElement(Div_box_header, { title: props.title, count: items.length > 0 ? items.length : null }), items.length === 0 ? /* @__PURE__ */ React.createElement("div", { class: "flex min-h-[120px] items-center justify-center text-center text-sm text-slate-500" }, emptyText) : /* @__PURE__ */ React.createElement("div", { class: "mt-3 flex flex-col gap-2" }, items.map((item, index) => props.renderItem(item, index))));
 }
 function SidebarArticleItem(props) {
@@ -1237,15 +1247,15 @@ function SidebarArticleItem(props) {
   const info = communityCategoryInfo(article.category_url);
   const readText = numberText(article.cnt_read);
   const commentText = numberText(article.cnt_comment);
-  const title = cleanBoardTitle(article.title) || "\uC81C\uBAA9 \uC5C6\uC74C";
-  return /* @__PURE__ */ React.createElement("a", { href: articleHrefFromData(article), class: "group block rounded-md border border-transparent px-2 py-2 transition hover:border-blue-200 hover:bg-blue-50/60" }, /* @__PURE__ */ React.createElement("div", { class: "mb-1 flex min-w-0 flex-wrap items-center gap-1.5" }, /* @__PURE__ */ React.createElement("span", { class: "shrink-0 rounded-full border px-2 py-0.5 text-[11px] font-semibold leading-4 " + info.className }, info.label), /* @__PURE__ */ React.createElement(RCommunitySourceChip, { article }), article.check_reader === "writer" && /* @__PURE__ */ React.createElement(WebRStatusBadge, { tone: "my", label: "MY" }), article.is_new === 1 && /* @__PURE__ */ React.createElement(WebRStatusBadge, { tone: "new", label: "NEW" })), /* @__PURE__ */ React.createElement("p", { class: "truncate text-sm font-semibold leading-5 text-slate-950 group-hover:text-blue-800" }, title), /* @__PURE__ */ React.createElement("div", { class: "mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-slate-500" }, /* @__PURE__ */ React.createElement("span", { class: "max-w-[9rem] truncate font-medium text-slate-700" }, article.user_nickname || "\uC791\uC131\uC790"), compactDate(article.created_at) && /* @__PURE__ */ React.createElement("span", null, compactDate(article.created_at)), readText && /* @__PURE__ */ React.createElement("span", null, "\uC870\uD68C ", readText), commentText && /* @__PURE__ */ React.createElement("span", null, "\uB313\uAE00 ", commentText)));
+  const title = cleanBoardTitle(article.title) || communityT("\uC81C\uBAA9 \uC5C6\uC74C");
+  return /* @__PURE__ */ React.createElement("a", { href: articleHrefFromData(article), class: "group block rounded-md border border-transparent px-2 py-2 transition hover:border-blue-200 hover:bg-blue-50/60" }, /* @__PURE__ */ React.createElement("div", { class: "mb-1 flex min-w-0 flex-wrap items-center gap-1.5" }, /* @__PURE__ */ React.createElement("span", { class: "shrink-0 rounded-full border px-2 py-0.5 text-[11px] font-semibold leading-4 " + info.className }, info.label), /* @__PURE__ */ React.createElement(RCommunitySourceChip, { article }), article.check_reader === "writer" && /* @__PURE__ */ React.createElement(WebRStatusBadge, { tone: "my", label: "MY" }), article.is_new === 1 && /* @__PURE__ */ React.createElement(WebRStatusBadge, { tone: "new", label: "NEW" })), /* @__PURE__ */ React.createElement("p", { class: "truncate text-sm font-semibold leading-5 text-slate-950 group-hover:text-blue-800" }, title), /* @__PURE__ */ React.createElement("div", { class: "mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-slate-500" }, /* @__PURE__ */ React.createElement("span", { class: "max-w-[9rem] truncate font-medium text-slate-700" }, article.user_nickname || communityT("\uC791\uC131\uC790")), compactDate(article.created_at) && /* @__PURE__ */ React.createElement("span", null, compactDate(article.created_at)), readText && /* @__PURE__ */ React.createElement("span", null, communityT("\uC870\uD68C "), readText), commentText && /* @__PURE__ */ React.createElement("span", null, communityT("\uB313\uAE00 "), commentText)));
 }
 function SidebarCommentItem(props) {
   const comment = props.data || {};
   const href = articleHrefFromData({ uuid: comment.uuid_article, category_url: comment.article_category_url, url: comment.article_url });
   const content = stripHTMLText(comment.content) || "\uB313\uAE00 \uB0B4\uC6A9";
   const articleTitle = cleanBoardTitle(comment.article_title) || "\uC6D0\uAE00";
-  return /* @__PURE__ */ React.createElement("a", { href, class: "group block rounded-md border border-transparent px-2 py-2 transition hover:border-blue-200 hover:bg-blue-50/60" }, /* @__PURE__ */ React.createElement("p", { class: "truncate text-sm font-semibold leading-5 text-slate-950 group-hover:text-blue-800" }, content), /* @__PURE__ */ React.createElement("p", { class: "mt-1 truncate rounded bg-slate-50 px-2 py-1 text-xs text-slate-500" }, "\uC6D0\uAE00: ", articleTitle), /* @__PURE__ */ React.createElement("div", { class: "mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-slate-500" }, /* @__PURE__ */ React.createElement("span", { class: "max-w-[9rem] truncate font-medium text-slate-700" }, comment.user_nickname || "\uC791\uC131\uC790"), compactDate(comment.created_at) && /* @__PURE__ */ React.createElement("span", null, compactDate(comment.created_at))));
+  return /* @__PURE__ */ React.createElement("a", { href, class: "group block rounded-md border border-transparent px-2 py-2 transition hover:border-blue-200 hover:bg-blue-50/60" }, /* @__PURE__ */ React.createElement("p", { class: "truncate text-sm font-semibold leading-5 text-slate-950 group-hover:text-blue-800" }, content), /* @__PURE__ */ React.createElement("p", { class: "mt-1 truncate rounded bg-slate-50 px-2 py-1 text-xs text-slate-500" }, "\uC6D0\uAE00: ", articleTitle), /* @__PURE__ */ React.createElement("div", { class: "mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-slate-500" }, /* @__PURE__ */ React.createElement("span", { class: "max-w-[9rem] truncate font-medium text-slate-700" }, comment.user_nickname || communityT("\uC791\uC131\uC790")), compactDate(comment.created_at) && /* @__PURE__ */ React.createElement("span", null, compactDate(comment.created_at))));
 }
 function indexedRowsFromArray(rows) {
   const out = {};
@@ -1421,16 +1431,16 @@ function Div_new_article_list(props) {
   } else if (cu === "rcommunity" && props.data.url) {
     href = props.data.url;
   }
-  let category_title = "\uCEE4\uBBA4\uB2C8\uD2F0";
+  let category_title = communityT("\uCEE4\uBBA4\uB2C8\uD2F0");
   let category_title_color = " bg-blue-100 text-blue-700 border-blue-300";
   if (cu === "free") {
-    category_title = "\uC790\uC720\uAC8C\uC2DC\uD310";
+    category_title = communityT("\uC790\uC720\uAC8C\uC2DC\uD310");
     category_title_color = " bg-blue-100 text-blue-700 border-blue-300";
   } else if (cu === "rblogger") {
     category_title = "R-Blogger";
     category_title_color = " bg-purple-100 text-purple-700 border-purple-300";
   } else if (cu === "rproject") {
-    category_title = "R Project 소식";
+    category_title = communityT("R Project 소식");
     category_title_color = " bg-sky-100 text-sky-700 border-sky-300";
   } else if (cu === "notebook") {
     category_title = "Web-R Notebook";
@@ -1439,11 +1449,11 @@ function Div_new_article_list(props) {
     category_title = "R Community";
     category_title_color = " bg-teal-100 text-teal-700 border-teal-300";
   } else if (cu === "visitor") {
-    category_title = "\uBC29\uBA85\uB85D";
+    category_title = communityT("\uBC29\uBA85\uB85D");
     category_title_color = " bg-orange-100 text-orange-700 border-orange-300";
   }
   const linkProps = { href };
-  return /* @__PURE__ */ React.createElement("div", { class: "bg-white w-full" }, /* @__PURE__ */ React.createElement("a", { ...linkProps, class: "flex w-full flex-col px-6 py-4 space-y-1 cursor-pointer hover:bg-gray-50 rounded-lg mx-3 my-2" }, /* @__PURE__ */ React.createElement("div", { class: "flex flex-wrap items-center gap-2" }, /* @__PURE__ */ React.createElement("span", { class: "flex-shrink-0 whitespace-nowrap px-2 py-0.5 border rounded-full text-xs font-semibold" + category_title_color }, category_title), /* @__PURE__ */ React.createElement(RCommunitySourceChip, { article: props.data }), /* @__PURE__ */ React.createElement("span", { lang: props.data.display_title_language || "ko", class: "font-bold text-sm whitespace-normal break-keep" }, cleanBoardTitle(props.data.title) || "\uC81C\uBAA9 \uC5C6\uC74C"), /* @__PURE__ */ React.createElement("div", { class: "flex-shrink-0 flex items-center gap-1" }, /* @__PURE__ */ React.createElement(Span_btn_article_new, { toggle: props.data.is_new }), /* @__PURE__ */ React.createElement(Span_btn_article_secret, { toggle: props.data.is_secret }), /* @__PURE__ */ React.createElement(Span_btn_my_article, { toggle: props.data.check_reader }))), /* @__PURE__ */ React.createElement("div", { class: "flex flex-wrap items-center space-x-2" }, /* @__PURE__ */ React.createElement(Span_btn_user, { user_nickname: props.data.user_nickname, role: props.data.user_role }), /* @__PURE__ */ React.createElement(Span_btn_date, { date: props.data.created_at }), /* @__PURE__ */ React.createElement(Span_btn_article_read, { cnt_read: props.data.cnt_read }), /* @__PURE__ */ React.createElement(Span_btn_article_comment, { cnt_comment: props.data.cnt_comment }))));
+  return /* @__PURE__ */ React.createElement("div", { class: "bg-white w-full" }, /* @__PURE__ */ React.createElement("a", { ...linkProps, class: "flex w-full flex-col px-6 py-4 space-y-1 cursor-pointer hover:bg-gray-50 rounded-lg mx-3 my-2" }, /* @__PURE__ */ React.createElement("div", { class: "flex flex-wrap items-center gap-2" }, /* @__PURE__ */ React.createElement("span", { class: "flex-shrink-0 whitespace-nowrap px-2 py-0.5 border rounded-full text-xs font-semibold" + category_title_color }, category_title), /* @__PURE__ */ React.createElement(RCommunitySourceChip, { article: props.data }), /* @__PURE__ */ React.createElement("span", { lang: props.data.display_title_language || "ko", class: "font-bold text-sm whitespace-normal break-keep" }, cleanBoardTitle(props.data.title) || communityT("\uC81C\uBAA9 \uC5C6\uC74C")), /* @__PURE__ */ React.createElement("div", { class: "flex-shrink-0 flex items-center gap-1" }, /* @__PURE__ */ React.createElement(Span_btn_article_new, { toggle: props.data.is_new }), /* @__PURE__ */ React.createElement(Span_btn_article_secret, { toggle: props.data.is_secret }), /* @__PURE__ */ React.createElement(Span_btn_my_article, { toggle: props.data.check_reader }))), /* @__PURE__ */ React.createElement("div", { class: "flex flex-wrap items-center space-x-2" }, /* @__PURE__ */ React.createElement(Span_btn_user, { user_nickname: props.data.user_nickname, role: props.data.user_role }), /* @__PURE__ */ React.createElement(Span_btn_date, { date: props.data.created_at }), /* @__PURE__ */ React.createElement(Span_btn_article_read, { cnt_read: props.data.cnt_read }), /* @__PURE__ */ React.createElement(Span_btn_article_comment, { cnt_comment: props.data.cnt_comment }))));
 }
 function Div_new_comment(props) {
   return /* @__PURE__ */ React.createElement(SidebarCommentItem, { data: props.data });
@@ -1453,7 +1463,7 @@ function Div_sidebar_notice(props) {
 }
 async function get_article_famous_list() {
   function Div_article_list(props) {
-    return /* @__PURE__ */ React.createElement(SidebarCard, { title: "\uCD5C\uC2E0 \uC778\uAE30 \uAE00", data: props.data, limit: COMMUNITY_SIDEBAR_ITEM_LIMIT, renderItem: (article) => /* @__PURE__ */ React.createElement(SidebarArticleItem, { key: article.id || article.uuid, data: article }) });
+    return /* @__PURE__ */ React.createElement(SidebarCard, { title: communityT("\uCD5C\uC2E0 \uC778\uAE30 \uAE00"), data: props.data, limit: COMMUNITY_SIDEBAR_ITEM_LIMIT, renderItem: (article) => /* @__PURE__ */ React.createElement(SidebarArticleItem, { key: article.id || article.uuid, data: article }) });
   }
   const request_data = new FormData();
   const tag = getSidebarTag();
@@ -1464,11 +1474,11 @@ async function get_article_famous_list() {
 }
 async function get_my_article_list() {
   if (!gv_username) {
-    ReactDOM.render(/* @__PURE__ */ React.createElement(Div_sidebar_notice, { title: "\uB0B4\uAC00 \uC4F4 \uAE00", message: "\uB85C\uADF8\uC778\uC774 \uD544\uC694\uD569\uB2C8\uB2E4." }), document.getElementById("div_my_article_list"));
+    ReactDOM.render(/* @__PURE__ */ React.createElement(Div_sidebar_notice, { title: communityT("\uB0B4\uAC00 \uC4F4 \uAE00"), message: communityT("\uB85C\uADF8\uC778\uC774 \uD544\uC694\uD569\uB2C8\uB2E4.") }), document.getElementById("div_my_article_list"));
     return;
   }
   function Div_article_list(props) {
-    return /* @__PURE__ */ React.createElement(SidebarCard, { title: "\uB0B4\uAC00 \uC4F4 \uAE00", data: props.data, renderItem: (article) => /* @__PURE__ */ React.createElement(SidebarArticleItem, { key: article.id || article.uuid, data: article }) });
+    return /* @__PURE__ */ React.createElement(SidebarCard, { title: communityT("\uB0B4\uAC00 \uC4F4 \uAE00"), data: props.data, renderItem: (article) => /* @__PURE__ */ React.createElement(SidebarArticleItem, { key: article.id || article.uuid, data: article }) });
   }
   const request_data = new FormData();
   request_data.append("tag", getSidebarTag());
@@ -1481,7 +1491,7 @@ async function get_my_article_list() {
 }
 async function get_my_comment_list() {
   if (!gv_username) {
-    ReactDOM.render(/* @__PURE__ */ React.createElement(Div_sidebar_notice, { title: "\uB0B4\uAC00 \uC4F4 \uB313\uAE00", message: "\uB85C\uADF8\uC778\uC774 \uD544\uC694\uD569\uB2C8\uB2E4." }), document.getElementById("div_my_comment_list"));
+    ReactDOM.render(/* @__PURE__ */ React.createElement(Div_sidebar_notice, { title: "\uB0B4\uAC00 \uC4F4 \uB313\uAE00", message: communityT("\uB85C\uADF8\uC778\uC774 \uD544\uC694\uD569\uB2C8\uB2E4.") }), document.getElementById("div_my_comment_list"));
     return;
   }
   function Div_comment_list(props) {
@@ -1498,7 +1508,7 @@ async function get_my_comment_list() {
 }
 async function get_new_comment_list() {
   function Div_comment_list(props) {
-    return /* @__PURE__ */ React.createElement(SidebarCard, { title: "\uCD5C\uC2E0 \uB313\uAE00", data: props.data, limit: COMMUNITY_SIDEBAR_ITEM_LIMIT, renderItem: (comment) => /* @__PURE__ */ React.createElement(SidebarCommentItem, { key: comment.id || comment.uuid, data: comment }) });
+    return /* @__PURE__ */ React.createElement(SidebarCard, { title: communityT("\uCD5C\uC2E0 \uB313\uAE00"), data: props.data, limit: COMMUNITY_SIDEBAR_ITEM_LIMIT, renderItem: (comment) => /* @__PURE__ */ React.createElement(SidebarCommentItem, { key: comment.id || comment.uuid, data: comment }) });
   }
   const request_data = new FormData();
   const tag = getSidebarTag();
@@ -1521,7 +1531,7 @@ const R_COMMUNITY_SOURCE_FILTERS = [
 function SourceFilterButton({ value, label }) {
   const active = communitySourceGroup() === normalizeRCommunitySourceGroup(value);
   const cls = active ? "border-blue-500 bg-blue-600 text-white shadow-sm" : "border-slate-200 bg-white text-slate-700 hover:border-blue-300 hover:bg-blue-50";
-  return /* @__PURE__ */ React.createElement("button", { type: "button", onClick: () => handleChangeRCommunitySource(value), class: "rounded-full border px-3 py-1.5 text-xs font-bold transition " + cls }, label);
+  return /* @__PURE__ */ React.createElement("button", { type: "button", onClick: () => handleChangeRCommunitySource(value), class: "rounded-full border px-3 py-1.5 text-xs font-bold transition " + cls }, communityT(label));
 }
 function RCommunitySourceFilters() {
   if (normalizedCommunityTag() !== "rcommunity") {
@@ -1534,17 +1544,17 @@ function SearchScopeOption({ value, label }) {
   return /* @__PURE__ */ React.createElement("label", { class: "inline-flex cursor-pointer items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-50" }, /* @__PURE__ */ React.createElement("input", { type: "radio", name: "community_search_scope", value, checked, onChange: () => handleSearchScopeChange(value), class: "h-3.5 w-3.5 border-slate-300 text-blue-600 focus:ring-blue-500" }), label);
 }
 function SearchScopeOptions() {
-  return /* @__PURE__ */ React.createElement("div", { class: "flex flex-wrap items-center gap-2" }, /* @__PURE__ */ React.createElement(SearchScopeOption, { value: "title", label: "\uC81C\uBAA9\uB9CC" }), /* @__PURE__ */ React.createElement(SearchScopeOption, { value: "content", label: "\uC81C\uBAA9+\uB0B4\uC6A9" }));
+  return /* @__PURE__ */ React.createElement("div", { class: "flex flex-wrap items-center gap-2" }, /* @__PURE__ */ React.createElement(SearchScopeOption, { value: "title", label: communityT("\uC81C\uBAA9\uB9CC") }), /* @__PURE__ */ React.createElement(SearchScopeOption, { value: "content", label: communityT("\uC81C\uBAA9+\uB0B4\uC6A9") }));
 }
 function DivCommunityTopTools() {
   return /* @__PURE__ */ React.createElement("div", { class: "w-full border border-gray-200 rounded-xl p-4 bg-white space-y-4" }, /* @__PURE__ */ React.createElement("div", { class: "flex flex-wrap items-center justify-between gap-3" }, /* @__PURE__ */ React.createElement(DivBoardTabs, null), /* @__PURE__ */ React.createElement(
     "button",
     {
       type: "button",
-      onClick: () => gv_username === "" ? alert("\uB85C\uADF8\uC778\uC774 \uD544\uC694\uD569\uB2C8\uB2E4.") : location.href = init_url + "write/",
+      onClick: () => gv_username === "" ? alert(communityT("\uB85C\uADF8\uC778\uC774 \uD544\uC694\uD569\uB2C8\uB2E4.")) : location.href = init_url + "write/",
       class: "text-white bg-gradient-to-r from-blue-500 via-blue-600 to-blue-700 font-medium rounded-lg text-sm px-5 py-2.5 text-center hover:bg-gradient-to-br focus:ring-4 focus:outline-none focus:ring-blue-300"
     },
-    "\uAE00\uC4F0\uAE30"
+    communityT("\uAE00\uC4F0\uAE30")
   )), /* @__PURE__ */ React.createElement(RCommunitySourceFilters, null), /* @__PURE__ */ React.createElement("form", { class: "flex flex-col gap-2", onSubmit: (event) => {
     event.preventDefault();
     click_btn_search();
@@ -1558,7 +1568,7 @@ function DivCommunityTopTools() {
         communityState.searchText = event.currentTarget.value;
       },
       class: "bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg block w-full min-w-0 md:w-auto md:flex-1 p-2.5 focus:ring-blue-500 focus:border-blue-500",
-      placeholder: "\uCEE4\uBBA4\uB2C8\uD2F0 \uAE00 \uAC80\uC0C9"
+      placeholder: communityT("\uCEE4\uBBA4\uB2C8\uD2F0 \uAE00 \uAC80\uC0C9")
     }
   ), /* @__PURE__ */ React.createElement(
     "button",
@@ -1566,17 +1576,18 @@ function DivCommunityTopTools() {
       type: "submit",
       class: "w-full shrink-0 whitespace-nowrap text-white bg-gradient-to-r from-cyan-500 to-blue-500 font-medium rounded-lg text-sm px-5 py-2.5 text-center hover:bg-gradient-to-bl focus:ring-4 focus:outline-none focus:ring-cyan-300 md:w-auto"
     },
-    "\uAC80\uC0C9"
+    communityT("\uAC80\uC0C9")
   ))));
 }
 function DivCommunityWidgetHeader() {
-  return /* @__PURE__ */ React.createElement("div", { class: "grid w-full grid-cols-1 items-stretch gap-3 lg:grid-cols-2" }, /* @__PURE__ */ React.createElement(Div_sidelist_skeleton, { id: "div_article_famous_list", title: "\uCD5C\uADFC \uC778\uAE30 \uAE00" }), /* @__PURE__ */ React.createElement(Div_sidelist_skeleton, { id: "div_new_comment_list", title: "\uCD5C\uADFC \uB313\uAE00" }));
+  return /* @__PURE__ */ React.createElement("div", { class: "grid w-full grid-cols-1 items-stretch gap-3 lg:grid-cols-2" }, /* @__PURE__ */ React.createElement(Div_sidelist_skeleton, { id: "div_article_famous_list", title: communityT("\uCD5C\uADFC \uC778\uAE30 \uAE00") }), /* @__PURE__ */ React.createElement(Div_sidelist_skeleton, { id: "div_new_comment_list", title: communityT("\uCD5C\uADFC \uB313\uAE00") }));
 }
 function communityCardDefinitions() {
+  const empty = communityT("\uD45C\uC2DC\uD560 \uAE00\uC774 \uC5C6\uC2B5\uB2C8\uB2E4.");
   return [
-    { tag: "free", title: "\uC790\uC720\uAC8C\uC2DC\uD310", empty: "\uC790\uC720\uAC8C\uC2DC\uD310\uC5D0 \uD45C\uC2DC\uD560 \uAE00\uC774 \uC5C6\uC2B5\uB2C8\uB2E4." },
-    { tag: "notebook", title: "Web-R Notebook", empty: "Web-R Notebook\uC5D0 \uD45C\uC2DC\uD560 \uAE00\uC774 \uC5C6\uC2B5\uB2C8\uB2E4." },
-    { tag: "rcommunity", title: "R Community", empty: "R Community\uC5D0 \uD45C\uC2DC\uD560 \uAE00\uC774 \uC5C6\uC2B5\uB2C8\uB2E4." }
+    { tag: "free", title: communityT("\uC790\uC720\uAC8C\uC2DC\uD310"), empty },
+    { tag: "notebook", title: "Web-R Notebook", empty },
+    { tag: "rcommunity", title: "R Community", empty }
   ];
 }
 function isCommunityCardMode() {
@@ -1637,9 +1648,10 @@ function CommunityBoardCard(props) {
   return /* @__PURE__ */ React.createElement("section", { class: "flex min-h-[420px] flex-col rounded-lg border border-slate-200 bg-white p-5 shadow-sm" }, /* @__PURE__ */ React.createElement(Div_box_header, { title: def.title, count: totalCount > 0 ? totalCount.toLocaleString("ko-KR") : null }), body, !pending && !partial ? /* @__PURE__ */ React.createElement("div", { class: "mt-4" }, /* @__PURE__ */ React.createElement(ArticlePagination, { currentPage, totalCount, pageSize: COMMUNITY_CARD_PAGE_SIZE, onPageChange: (page) => goToCommunityCardPage(def.tag, page) })) : null);
 }
 function ListMain() {
-  return /* @__PURE__ */ React.createElement("div", { class: "flex flex-col justify-center items-center py-8 w-full max-w-screen-2xl mx-auto px-4 sm:px-6 lg:px-8" }, /* @__PURE__ */ React.createElement(Div_page_header, { title: header_title, subtitle: header_subtitle }), /* @__PURE__ */ React.createElement("div", { id: "div_community_list", class: "flex flex-col justify-center items-center w-full space-y-4" }, /* @__PURE__ */ React.createElement(DivCommunityTopTools, null), isCommunityCardMode() ? /* @__PURE__ */ React.createElement(CommunityCardShell, null) : /* @__PURE__ */ React.createElement("div", { id: "div_article_list", class: "w-full" }, /* @__PURE__ */ React.createElement("div", { class: "flex flex-col justify-center items-center border border-gray-300 rounded-xl space-y-4 w-full p-8" }, /* @__PURE__ */ React.createElement(Div_box_header, { title: "\uCD5C\uC2E0 \uAE00" }))), /* @__PURE__ */ React.createElement(DivCommunityWidgetHeader, null)));
+  return /* @__PURE__ */ React.createElement("div", { class: "flex flex-col justify-center items-center py-8 w-full max-w-screen-2xl mx-auto px-4 sm:px-6 lg:px-8" }, /* @__PURE__ */ React.createElement(Div_page_header, { title: header_title, subtitle: header_subtitle }), /* @__PURE__ */ React.createElement("div", { id: "div_community_list", class: "flex flex-col justify-center items-center w-full space-y-4" }, /* @__PURE__ */ React.createElement(DivCommunityTopTools, null), isCommunityCardMode() ? /* @__PURE__ */ React.createElement(CommunityCardShell, null) : /* @__PURE__ */ React.createElement("div", { id: "div_article_list", class: "w-full" }, /* @__PURE__ */ React.createElement("div", { class: "flex flex-col justify-center items-center border border-gray-300 rounded-xl space-y-4 w-full p-8" }, /* @__PURE__ */ React.createElement(Div_box_header, { title: communityT("\uCD5C\uC2E0 \uAE00") }))), /* @__PURE__ */ React.createElement(DivCommunityWidgetHeader, null)));
 }
 function renderListPageShell() {
+  communityState.uiLocaleSignature = communityUILocaleSignature();
   ReactDOM.render(/* @__PURE__ */ React.createElement(ListMain, null), document.getElementById("div_main"));
 }
 function buildCommunityCardForm(tag, page) {
@@ -1762,11 +1774,11 @@ async function get_article_list(loadMode, requestedPage = 1) {
   const localeEpoch = communityLocaleEpoch;
   function ArticleList(props) {
     const article_list = Object.keys(props.data || {}).map((key) => /* @__PURE__ */ React.createElement(LatestArticleItem, { key, data: props.data[key] }));
-    const listContent = article_list.length === 0 ? props.partialData ? null : /* @__PURE__ */ React.createElement("div", { class: "flex min-h-[160px] items-center justify-center rounded-lg bg-slate-50 text-sm text-slate-500" }, "\uD45C\uC2DC\uD560 \uCD5C\uC2E0 \uAE00\uC774 \uC5C6\uC2B5\uB2C8\uB2E4.") : /* @__PURE__ */ React.createElement("div", { class: "flex flex-col justify-center items-start w-full divide-y divide-slate-100" }, article_list);
+    const listContent = article_list.length === 0 ? props.partialData ? null : /* @__PURE__ */ React.createElement("div", { class: "flex min-h-[160px] items-center justify-center rounded-lg bg-slate-50 text-sm text-slate-500" }, communityT("\uD45C\uC2DC\uD560 \uCD5C\uC2E0 \uAE00\uC774 \uC5C6\uC2B5\uB2C8\uB2E4.")) : /* @__PURE__ */ React.createElement("div", { class: "flex flex-col justify-center items-start w-full divide-y divide-slate-100" }, article_list);
     if (!props.isMain) {
       return props.partialData ? /* @__PURE__ */ React.createElement("div", { class: "flex w-full flex-col gap-3" }, /* @__PURE__ */ React.createElement(CommunityArticlePartialNotice, { data: props.partialData }), listContent) : listContent;
     }
-    return /* @__PURE__ */ React.createElement("div", { class: "flex flex-col justify-center items-center border border-gray-300 rounded-xl space-y-4 w-full p-8" }, /* @__PURE__ */ React.createElement(Div_box_header, { title: props.title || "\uCD5C\uC2E0 \uAE00", count: communityState.article_counter > 0 ? communityState.article_counter.toLocaleString("ko-KR") : null }), props.partialData ? /* @__PURE__ */ React.createElement(CommunityArticlePartialNotice, { data: props.partialData }) : null, listContent, props.paginate !== false && /* @__PURE__ */ React.createElement(ArticlePagination, { currentPage: communityState.page_num, totalCount: communityState.article_counter }));
+    return /* @__PURE__ */ React.createElement("div", { class: "flex flex-col justify-center items-center border border-gray-300 rounded-xl space-y-4 w-full p-8" }, /* @__PURE__ */ React.createElement(Div_box_header, { title: props.title || communityT("\uCD5C\uC2E0 \uAE00"), count: communityState.article_counter > 0 ? communityState.article_counter.toLocaleString("ko-KR") : null }), props.partialData ? /* @__PURE__ */ React.createElement(CommunityArticlePartialNotice, { data: props.partialData }) : null, listContent, props.paginate !== false && /* @__PURE__ */ React.createElement(ArticlePagination, { currentPage: communityState.page_num, totalCount: communityState.article_counter }));
   }
   communityState.toggle_page = true;
   const request_data = new FormData();
@@ -1800,7 +1812,7 @@ async function get_article_list(loadMode, requestedPage = 1) {
     const targetId = replaceMainList ? "div_article_list" : `div_article_list_${communityState.page_num}`;
     if (!gv_username) {
       communityState.article_counter = 0;
-      ReactDOM.render(/* @__PURE__ */ React.createElement("div", { class: "flex min-h-[180px] w-full items-center justify-center rounded-xl border border-gray-300 bg-white p-8 text-sm text-slate-500" }, "\uB85C\uADF8\uC778\uC774 \uD544\uC694\uD569\uB2C8\uB2E4."), document.getElementById(targetId));
+      ReactDOM.render(/* @__PURE__ */ React.createElement("div", { class: "flex min-h-[180px] w-full items-center justify-center rounded-xl border border-gray-300 bg-white p-8 text-sm text-slate-500" }, communityT("\uB85C\uADF8\uC778\uC774 \uD544\uC694\uD569\uB2C8\uB2E4.")), document.getElementById(targetId));
       communityState.toggle_page = false;
       return;
     }
@@ -1814,7 +1826,7 @@ async function get_article_list(loadMode, requestedPage = 1) {
     const listData = activeTag === "mine" ? filterIndexedRows(privateData, searchText, communitySearchScope()) : commentsToCommentedArticleRows(privateData, searchText, communitySearchScope());
     communityState.article_counter = Object.keys(listData).length;
     ReactDOM.render(
-      /* @__PURE__ */ React.createElement(ArticleList, { data: listData, isMain: true, title: activeTag === "mine" ? "\uB0B4\uAC00 \uC4F4 \uAE00" : "\uB0B4\uAC00 \uB313\uAE00\uC744 \uC4F4 \uAE00", paginate: false }),
+      /* @__PURE__ */ React.createElement(ArticleList, { data: listData, isMain: true, title: activeTag === "mine" ? communityT("\uB0B4\uAC00 \uC4F4 \uAE00") : communityT("\uB0B4\uAC00 \uB313\uAE00\uC744 \uC4F4 \uAE00"), paginate: false }),
       document.getElementById(targetId)
     );
     communityState.toggle_page = false;
@@ -1971,10 +1983,10 @@ function Div_article_read_buttons(props) {
   const blockBtn = `text-slate-700 border border-slate-700 ${btnClass} py-1 hover:text-white hover:bg-slate-800 focus:ring-4 focus:outline-none focus:ring-slate-300`;
   const showBlockAuthor = canAdminBlockAuthor(props.data);
   const adminGridClass = showBlockAuthor ? "grid grid-cols-1 sm:grid-cols-3 justify-center items-center gap-2 w-full" : "grid grid-cols-2 justify-center items-center gap-2 w-full";
-  return /* @__PURE__ */ React.createElement("div", { class: "flex flex-col justify-center items-center w-full space-y-2" }, /* @__PURE__ */ React.createElement("div", { class: "flex flex-col justify-center items-center space-y-2 w-full" }, /* @__PURE__ */ React.createElement("button", { type: "button", onClick: () => gv_username ? location.href = init_url + "write/" : alert("\uB85C\uADF8\uC778\uC774 \uD544\uC694\uD569\uB2C8\uB2E4."), class: writeBtn }, "\uC0C8 \uAE00 \uC4F0\uAE30"), /* @__PURE__ */ React.createElement("a", { href: init_url, class: listBtn }, "\uBAA9\uB85D\uC73C\uB85C")), props.data.check_reader !== "user" && /* @__PURE__ */ React.createElement("div", { class: adminGridClass }, /* @__PURE__ */ React.createElement("button", { onClick: () => location.href = init_url + "edit/" + orderID + "/", class: editBtn }, "\uC218\uC815"), /* @__PURE__ */ React.createElement("button", { onClick: click_btn_delete, class: deleteBtn }, "\uC0AD\uC81C"), showBlockAuthor && /* @__PURE__ */ React.createElement("button", { onClick: () => adminBlockAuthor("article", orderID, props.data.user_nickname || "\uC791\uC131\uC790"), class: blockBtn }, "\uC791\uC131\uC790 \uCC28\uB2E8")));
+  return /* @__PURE__ */ React.createElement("div", { class: "flex flex-col justify-center items-center w-full space-y-2" }, /* @__PURE__ */ React.createElement("div", { class: "flex flex-col justify-center items-center space-y-2 w-full" }, /* @__PURE__ */ React.createElement("button", { type: "button", onClick: () => gv_username ? location.href = init_url + "write/" : alert(communityT("\uB85C\uADF8\uC778\uC774 \uD544\uC694\uD569\uB2C8\uB2E4.")), class: writeBtn }, communityT("\uC0C8 \uAE00 \uC4F0\uAE30")), /* @__PURE__ */ React.createElement("a", { href: init_url, class: listBtn }, communityT("\uBAA9\uB85D\uC73C\uB85C"))), props.data.check_reader !== "user" && /* @__PURE__ */ React.createElement("div", { class: adminGridClass }, /* @__PURE__ */ React.createElement("button", { onClick: () => location.href = init_url + "edit/" + orderID + "/", class: editBtn }, communityT("\uC218\uC815")), /* @__PURE__ */ React.createElement("button", { onClick: click_btn_delete, class: deleteBtn }, communityT("\uC0AD\uC81C")), showBlockAuthor && /* @__PURE__ */ React.createElement("button", { onClick: () => adminBlockAuthor("article", orderID, props.data.user_nickname || communityT("\uC791\uC131\uC790")), class: blockBtn }, "\uC791\uC131\uC790 \uCC28\uB2E8")));
 }
 function Div_article_read_header(props) {
-  const title = cleanBoardTitle(props.data.title) || "\uC81C\uBAA9 \uC5C6\uC74C";
+  const title = cleanBoardTitle(props.data.title) || communityT("\uC81C\uBAA9 \uC5C6\uC74C");
   return /* @__PURE__ */ React.createElement("div", { class: "flex flex-col justify-center items-start py-4 border-t border-b border-gray-200 w-full" }, /* @__PURE__ */ React.createElement("div", { class: "flex flex-row justify-start items-end w-full" }, /* @__PURE__ */ React.createElement("span", { lang: props.data.display_title_language || "ko", class: "flex flex-row justify-start items-center text-lg font-extrabold w-full space-x-2" }, title, /* @__PURE__ */ React.createElement("div", null), /* @__PURE__ */ React.createElement(Span_btn_article_new, { toggle: props.data.is_new }), /* @__PURE__ */ React.createElement(Span_btn_article_secret, { toggle: props.data.is_secret }), /* @__PURE__ */ React.createElement(Span_btn_my_article, { toggle: props.data.check_reader }))), /* @__PURE__ */ React.createElement("div", { class: "flex flex-row justify-end items-center w-full" }, /* @__PURE__ */ React.createElement("span", { class: "flex flex-row justify-end items-center text-md font-normal w-full space-x-2" }, /* @__PURE__ */ React.createElement(Span_btn_user, { user_nickname: props.data.user_nickname, role: props.data.user_role }), /* @__PURE__ */ React.createElement(Span_btn_date, { date: props.data.created_at }), /* @__PURE__ */ React.createElement(Span_btn_article_read, { cnt_read: props.data.cnt_read }), /* @__PURE__ */ React.createElement(Span_btn_article_comment, { cnt_comment: props.data.cnt_comment }))));
 }
 function Div_article_read_file() {
@@ -1995,7 +2007,7 @@ function Div_article_read_file() {
     return null;
   }
   if (isExternalSource) {
-    return /* @__PURE__ */ React.createElement("section", { class: "bg-white py-8 lg:py-16 antialiased" }, /* @__PURE__ */ React.createElement("div", { class: "w-full mx-auto px-4 space-y-2" }, /* @__PURE__ */ React.createElement("div", { class: "flex justify-between items-center mb-6" }, /* @__PURE__ */ React.createElement("h2", { class: "text-md lg:text-lg font-bold text-gray-900" }, "\uC6D0\uBB38 \uB9C1\uD06C")), /* @__PURE__ */ React.createElement("form", { class: "mb-3" }, /* @__PURE__ */ React.createElement("div", { class: "w-full bg-gray-50 rounded-lg border border-gray-200" })), /* @__PURE__ */ React.createElement("div", { class: "flex flex-row justify-start items-start w-full" }, /* @__PURE__ */ React.createElement(
+    return /* @__PURE__ */ React.createElement("section", { class: "bg-white py-8 lg:py-16 antialiased" }, /* @__PURE__ */ React.createElement("div", { class: "w-full mx-auto px-4 space-y-2" }, /* @__PURE__ */ React.createElement("div", { class: "flex justify-between items-center mb-6" }, /* @__PURE__ */ React.createElement("h2", { class: "text-md lg:text-lg font-bold text-gray-900" }, communityT("\uC6D0\uBB38 \uB9C1\uD06C"))), /* @__PURE__ */ React.createElement("form", { class: "mb-3" }, /* @__PURE__ */ React.createElement("div", { class: "w-full bg-gray-50 rounded-lg border border-gray-200" })), /* @__PURE__ */ React.createElement("div", { class: "flex flex-row justify-start items-start w-full" }, /* @__PURE__ */ React.createElement(
       "a",
       {
         href: data.url,
@@ -2006,7 +2018,7 @@ function Div_article_read_file() {
       data.url
     ))));
   }
-  return /* @__PURE__ */ React.createElement("section", { class: "bg-white py-8 lg:py-16 antialiased" }, /* @__PURE__ */ React.createElement("div", { class: "w-full mx-auto px-4 space-y-2" }, /* @__PURE__ */ React.createElement("div", { class: "flex justify-between items-center mb-6" }, /* @__PURE__ */ React.createElement("h2", { class: "text-md lg:text-lg font-bold text-gray-900" }, "\uCCA8\uBD80\uD30C\uC77C")), /* @__PURE__ */ React.createElement("form", { class: "mb-3" }, /* @__PURE__ */ React.createElement("div", { class: "w-full bg-gray-50 rounded-lg border border-gray-200" })), /* @__PURE__ */ React.createElement("div", { class: "flex flex-col justify-start items-start w-full gap-2" }, attachments.map((file, index) => /* @__PURE__ */ React.createElement(
+  return /* @__PURE__ */ React.createElement("section", { class: "bg-white py-8 lg:py-16 antialiased" }, /* @__PURE__ */ React.createElement("div", { class: "w-full mx-auto px-4 space-y-2" }, /* @__PURE__ */ React.createElement("div", { class: "flex justify-between items-center mb-6" }, /* @__PURE__ */ React.createElement("h2", { class: "text-md lg:text-lg font-bold text-gray-900" }, communityT("\uCCA8\uBD80\uD30C\uC77C"))), /* @__PURE__ */ React.createElement("form", { class: "mb-3" }, /* @__PURE__ */ React.createElement("div", { class: "w-full bg-gray-50 rounded-lg border border-gray-200" })), /* @__PURE__ */ React.createElement("div", { class: "flex flex-col justify-start items-start w-full gap-2" }, attachments.map((file, index) => /* @__PURE__ */ React.createElement(
     "a",
     {
       key: "article_file_" + index,
@@ -2123,7 +2135,7 @@ function canAdminBlockAuthor(data) {
   return isAdminViewer() && !!data && !isBotAuthor(data);
 }
 async function adminBlockAuthor(scope, uuid, label) {
-  const targetLabel = label || "\uC791\uC131\uC790";
+  const targetLabel = label || communityT("\uC791\uC131\uC790");
   if (!isAdminViewer()) {
     alert("\uAD00\uB9AC\uC790\uB9CC \uCC98\uB9AC\uD560 \uC218 \uC788\uC2B5\uB2C8\uB2E4.");
     return;
@@ -2200,14 +2212,14 @@ function Div_comment_button_list(props) {
   return /* @__PURE__ */ React.createElement("div", { class: "flex flex-wrap items-center gap-x-4 gap-y-2" }, isDepth1 && !loading && gv_username !== "" && canActOnComment && /* @__PURE__ */ React.createElement(ButtonComp, { text: "\uB300\uB313\uAE00", function: () => click_btn_reply_comment(data.uuid), url_image: "https://cdn.jsdelivr.net/gh/statground/web-R_CDN@f3e464e95616fa13712baa6adbbb0b6cda7ee821/images/svg/comment_re_reply.svg" }), data && data.check_comment_reader !== "user" && canActOnComment && /* @__PURE__ */ React.createElement(
     ButtonComp,
     {
-      text: "\uC218\uC815",
+      text: communityT("\uC218\uC815"),
       function: !loading ? () => click_btn_edit_comment(data.uuid) : void 0,
       url_image: !loading ? "https://cdn.jsdelivr.net/gh/statground/web-R_CDN@f3e464e95616fa13712baa6adbbb0b6cda7ee821/images/svg/comment_modify.svg" : null
     }
   ), data && data.check_comment_reader !== "user" && canActOnComment && /* @__PURE__ */ React.createElement(
     ButtonComp,
     {
-      text: "\uC0AD\uC81C",
+      text: communityT("\uC0AD\uC81C"),
       function: !loading ? () => comment_action("delete", data.uuid) : void 0,
       url_image: !loading ? "https://cdn.jsdelivr.net/gh/statground/web-R_CDN@f3e464e95616fa13712baa6adbbb0b6cda7ee821/images/svg/comment_delete.svg" : null
     }
@@ -2215,7 +2227,7 @@ function Div_comment_button_list(props) {
     ButtonComp,
     {
       text: "\uC791\uC131\uC790 \uCC28\uB2E8",
-      function: !loading ? () => adminBlockAuthor("comment", data.uuid, data.user_nickname || "\uC791\uC131\uC790") : void 0,
+      function: !loading ? () => adminBlockAuthor("comment", data.uuid, data.user_nickname || communityT("\uC791\uC131\uC790")) : void 0,
       url_image: null
     }
   ));
@@ -2281,7 +2293,7 @@ async function click_btn_edit_comment(uuid_comment) {
         value: "",
         class: "w-4 h-4 text-blue-600 bg-gray-100 border-gray-500 rounded focus:ring-blue-500 focus:ring-2"
       }
-    ), /* @__PURE__ */ React.createElement("label", { for: "chk_secret_" + props.uuid_comment, class: "ms-2 text-sm font-medium text-gray-900" }, "\uBE44\uBC00 \uB313\uAE00\uB85C \uC791\uC131\uD558\uAE30 (\uBCF8\uC778\uACFC \uAE00 \uC791\uC131\uC790, \uAD00\uB9AC\uC790\uB9CC \uC77D\uC744 \uC218 \uC788\uC2B5\uB2C8\uB2E4.)"), /* @__PURE__ */ React.createElement("div", { class: "w-fit", id: "btn_comment_editor_footer_button_" + props.uuid_comment }, /* @__PURE__ */ React.createElement(Div_btn_comment_editor_footer_button, { uuid_comment: props.uuid_comment, label: "\uC218\uC815", function: () => comment_action("edit", props.uuid_comment) }))));
+    ), /* @__PURE__ */ React.createElement("label", { for: "chk_secret_" + props.uuid_comment, class: "ms-2 text-sm font-medium text-gray-900" }, "\uBE44\uBC00 \uB313\uAE00\uB85C \uC791\uC131\uD558\uAE30 (\uBCF8\uC778\uACFC \uAE00 \uC791\uC131\uC790, \uAD00\uB9AC\uC790\uB9CC \uC77D\uC744 \uC218 \uC788\uC2B5\uB2C8\uB2E4.)"), /* @__PURE__ */ React.createElement("div", { class: "w-fit", id: "btn_comment_editor_footer_button_" + props.uuid_comment }, /* @__PURE__ */ React.createElement(Div_btn_comment_editor_footer_button, { uuid_comment: props.uuid_comment, label: communityT("\uC218\uC815"), function: () => comment_action("edit", props.uuid_comment) }))));
   }
   const target = Object.values(communityState.commentData || {}).find((item) => item.uuid === uuid_comment);
   const targetEl = document.getElementById("div_comment_" + uuid_comment);
@@ -2449,7 +2461,7 @@ async function comment_action(action, uuid_comment) {
     return;
   }
   const btnId = isNew ? "btn_comment_editor_footer_button" : "btn_comment_editor_footer_button_" + uuid_comment;
-  const buttonLabel = action === "edit" ? "\uC218\uC815" : "\uB4F1\uB85D";
+  const buttonLabel = action === "edit" ? communityT("\uC218\uC815") : "\uB4F1\uB85D";
   const btnEl = document.getElementById(btnId);
   if (btnEl) {
     ReactDOM.render(/* @__PURE__ */ React.createElement(Div_btn_comment_editor_footer_button_loading, { label: buttonLabel }), btnEl);
@@ -2623,18 +2635,18 @@ function Div_button() {
       onClick: () => click_btn_submit(),
       class: "text-white bg-gradient-to-r from-blue-500 via-blue-600 to-blue-700 font-medium rounded-lg text-sm px-5 py-2.5 text-center w-full hover:bg-gradient-to-br focus:ring-4 focus:outline-none focus:ring-blue-300"
     },
-    "\uC644\uB8CC"
+    communityT("\uC644\uB8CC")
   ), /* @__PURE__ */ React.createElement(
     "a",
     {
       href: init_url,
       class: "text-gray-900 text-center bg-white border border-gray-700 font-medium rounded-lg text-sm px-5 py-2.5 focus:outline-none hover:bg-gray-100 focus:ring-4 focus:ring-gray-100"
     },
-    "\uBAA9\uB85D\uC73C\uB85C"
+    communityT("\uBAA9\uB85D\uC73C\uB85C")
   ));
 }
 function Div_button_loading() {
-  return /* @__PURE__ */ React.createElement("div", { class: "grid grid-cols-2 justify-center items-center gap-2 w-full" }, /* @__PURE__ */ React.createElement("button", { type: "button", class: "text-white bg-gradient-to-r from-blue-500 via-blue-600 to-blue-700 font-medium rounded-lg text-sm px-5 py-2.5 text-center w-full cursor-not-allowed hover:bg-gradient-to-br focus:ring-4 focus:outline-none focus:ring-blue-300" }, /* @__PURE__ */ React.createElement("svg", { "aria-hidden": "true", role: "status", class: "inline w-4 h-4 me-3 text-gray-200 animate-spin dark:text-gray-600", viewBox: "0 0 100 101", fill: "none", xmlns: "http://www.w3.org/2000/svg" }, /* @__PURE__ */ React.createElement("path", { d: "M100 50.5908C100 78.2051 77.6142 100.591 50 100.591C22.3858 100.591 0 78.2051 0 50.5908C0 22.9766 22.3858 0.59082 50 0.59082C77.6142 0.59082 100 22.9766 100 50.5908ZM9.08144 50.5908C9.08144 73.1895 27.4013 91.5094 50 91.5094C72.5987 91.5094 90.9186 73.1895 90.9186 50.5908C90.9186 27.9921 72.5987 9.67226 50 9.67226C27.4013 9.67226 9.08144 27.9921 9.08144 50.5908Z", fill: "currentColor" }), /* @__PURE__ */ React.createElement("path", { d: "M93.9676 39.0409C96.393 38.4038 97.8624 35.9116 97.0079 33.5539C95.2932 28.8227 92.871 24.3692 89.8167 20.348C85.8452 15.1192 80.8826 10.7238 75.2124 7.41289C69.5422 4.10194 63.2754 1.94025 56.7698 1.05124C51.7666 0.367541 46.6976 0.446843 41.7345 1.27873C39.2613 1.69328 37.813 4.19778 38.4501 6.62326C39.0873 9.04874 41.5694 10.4717 44.0505 10.1071C47.8511 9.54855 51.7191 9.52689 55.5402 10.0491C60.8642 10.7766 65.9928 12.5457 70.6331 15.2552C75.2735 17.9648 79.3347 21.5619 82.5849 25.841C84.9175 28.9121 86.7997 32.2913 88.1811 35.8758C89.083 38.2158 91.5421 39.6781 93.9676 39.0409Z", fill: "#1C64F2" })), "\uC644\uB8CC"), /* @__PURE__ */ React.createElement("button", { type: "button", class: "text-gray-900 bg-white border border-gray-700 font-medium rounded-lg text-sm px-5 py-2.5 cursor-not-allowed focus:outline-none hover:bg-gray-100 focus:ring-4 focus:ring-gray-100" }, /* @__PURE__ */ React.createElement("svg", { "aria-hidden": "true", role: "status", class: "inline w-4 h-4 me-3 text-gray-200 animate-spin dark:text-gray-600", viewBox: "0 0 100 101", fill: "none", xmlns: "http://www.w3.org/2000/svg" }, /* @__PURE__ */ React.createElement("path", { d: "M100 50.5908C100 78.2051 77.6142 100.591 50 100.591C22.3858 100.591 0 78.2051 0 50.5908C0 22.9766 22.3858 0.59082 50 0.59082C77.6142 0.59082 100 22.9766 100 50.5908ZM9.08144 50.5908C9.08144 73.1895 27.4013 91.5094 50 91.5094C72.5987 91.5094 90.9186 73.1895 90.9186 50.5908C90.9186 27.9921 72.5987 9.67226 50 9.67226C27.4013 9.67226 9.08144 27.9921 9.08144 50.5908Z", fill: "currentColor" }), /* @__PURE__ */ React.createElement("path", { d: "M93.9676 39.0409C96.393 38.4038 97.8624 35.9116 97.0079 33.5539C95.2932 28.8227 92.871 24.3692 89.8167 20.348C85.8452 15.1192 80.8826 10.7238 75.2124 7.41289C69.5422 4.10194 63.2754 1.94025 56.7698 1.05124C51.7666 0.367541 46.6976 0.446843 41.7345 1.27873C39.2613 1.69328 37.813 4.19778 38.4501 6.62326C39.0873 9.04874 41.5694 10.4717 44.0505 10.1071C47.8511 9.54855 51.7191 9.52689 55.5402 10.0491C60.8642 10.7766 65.9928 12.5457 70.6331 15.2552C75.2735 17.9648 79.3347 21.5619 82.5849 25.841C84.9175 28.9121 86.7997 32.2913 88.1811 35.8758C89.083 38.2158 91.5421 39.6781 93.9676 39.0409Z", fill: "#1C64F2" })), "\uBAA9\uB85D\uC73C\uB85C"));
+  return /* @__PURE__ */ React.createElement("div", { class: "grid grid-cols-2 justify-center items-center gap-2 w-full" }, /* @__PURE__ */ React.createElement("button", { type: "button", class: "text-white bg-gradient-to-r from-blue-500 via-blue-600 to-blue-700 font-medium rounded-lg text-sm px-5 py-2.5 text-center w-full cursor-not-allowed hover:bg-gradient-to-br focus:ring-4 focus:outline-none focus:ring-blue-300" }, /* @__PURE__ */ React.createElement("svg", { "aria-hidden": "true", role: "status", class: "inline w-4 h-4 me-3 text-gray-200 animate-spin dark:text-gray-600", viewBox: "0 0 100 101", fill: "none", xmlns: "http://www.w3.org/2000/svg" }, /* @__PURE__ */ React.createElement("path", { d: "M100 50.5908C100 78.2051 77.6142 100.591 50 100.591C22.3858 100.591 0 78.2051 0 50.5908C0 22.9766 22.3858 0.59082 50 0.59082C77.6142 0.59082 100 22.9766 100 50.5908ZM9.08144 50.5908C9.08144 73.1895 27.4013 91.5094 50 91.5094C72.5987 91.5094 90.9186 73.1895 90.9186 50.5908C90.9186 27.9921 72.5987 9.67226 50 9.67226C27.4013 9.67226 9.08144 27.9921 9.08144 50.5908Z", fill: "currentColor" }), /* @__PURE__ */ React.createElement("path", { d: "M93.9676 39.0409C96.393 38.4038 97.8624 35.9116 97.0079 33.5539C95.2932 28.8227 92.871 24.3692 89.8167 20.348C85.8452 15.1192 80.8826 10.7238 75.2124 7.41289C69.5422 4.10194 63.2754 1.94025 56.7698 1.05124C51.7666 0.367541 46.6976 0.446843 41.7345 1.27873C39.2613 1.69328 37.813 4.19778 38.4501 6.62326C39.0873 9.04874 41.5694 10.4717 44.0505 10.1071C47.8511 9.54855 51.7191 9.52689 55.5402 10.0491C60.8642 10.7766 65.9928 12.5457 70.6331 15.2552C75.2735 17.9648 79.3347 21.5619 82.5849 25.841C84.9175 28.9121 86.7997 32.2913 88.1811 35.8758C89.083 38.2158 91.5421 39.6781 93.9676 39.0409Z", fill: "#1C64F2" })), communityT("\uC644\uB8CC")), /* @__PURE__ */ React.createElement("button", { type: "button", class: "text-gray-900 bg-white border border-gray-700 font-medium rounded-lg text-sm px-5 py-2.5 cursor-not-allowed focus:outline-none hover:bg-gray-100 focus:ring-4 focus:ring-gray-100" }, /* @__PURE__ */ React.createElement("svg", { "aria-hidden": "true", role: "status", class: "inline w-4 h-4 me-3 text-gray-200 animate-spin dark:text-gray-600", viewBox: "0 0 100 101", fill: "none", xmlns: "http://www.w3.org/2000/svg" }, /* @__PURE__ */ React.createElement("path", { d: "M100 50.5908C100 78.2051 77.6142 100.591 50 100.591C22.3858 100.591 0 78.2051 0 50.5908C0 22.9766 22.3858 0.59082 50 0.59082C77.6142 0.59082 100 22.9766 100 50.5908ZM9.08144 50.5908C9.08144 73.1895 27.4013 91.5094 50 91.5094C72.5987 91.5094 90.9186 73.1895 90.9186 50.5908C90.9186 27.9921 72.5987 9.67226 50 9.67226C27.4013 9.67226 9.08144 27.9921 9.08144 50.5908Z", fill: "currentColor" }), /* @__PURE__ */ React.createElement("path", { d: "M93.9676 39.0409C96.393 38.4038 97.8624 35.9116 97.0079 33.5539C95.2932 28.8227 92.871 24.3692 89.8167 20.348C85.8452 15.1192 80.8826 10.7238 75.2124 7.41289C69.5422 4.10194 63.2754 1.94025 56.7698 1.05124C51.7666 0.367541 46.6976 0.446843 41.7345 1.27873C39.2613 1.69328 37.813 4.19778 38.4501 6.62326C39.0873 9.04874 41.5694 10.4717 44.0505 10.1071C47.8511 9.54855 51.7191 9.52689 55.5402 10.0491C60.8642 10.7766 65.9928 12.5457 70.6331 15.2552C75.2735 17.9648 79.3347 21.5619 82.5849 25.841C84.9175 28.9121 86.7997 32.2913 88.1811 35.8758C89.083 38.2158 91.5421 39.6781 93.9676 39.0409Z", fill: "#1C64F2" })), communityT("\uBAA9\uB85D\uC73C\uB85C")));
 }
 async function check_file_upload() {
   const inputEl = document.getElementById("id_file_upload");
@@ -2661,7 +2673,7 @@ function Div_main_stop() {
       href: init_url,
       class: "text-gray-900 text-center bg-white border border-gray-700 font-medium rounded-lg text-sm px-5 py-2.5 w-[150px] focus:outline-none hover:bg-gray-100 focus:ring-4 focus:ring-gray-100"
     },
-    "\uBAA9\uB85D\uC73C\uB85C"
+    communityT("\uBAA9\uB85D\uC73C\uB85C")
   )));
 }
 function showPendingArticlePublication(uuid) {
@@ -2916,15 +2928,22 @@ async function set_main() {
 window.set_main = set_main;
 window.addEventListener("webr:language-change", (event) => {
   const next = String(event.detail && event.detail.language || "ko");
-  if (next === communityDisplayLocale() && next === communityState.displayLocale) return;
+  const signature = communityUILocaleSignature();
+  if (next === communityState.displayLocale && signature === communityState.uiLocaleSignature) return;
   communityState.displayLocale = next;
   communityLocaleEpoch += 1;
   Object.keys(communityArticlePageCache).forEach((key) => delete communityArticlePageCache[key]);
   Object.keys(communityCardLastGood).forEach((key) => delete communityCardLastGood[key]);
+  header_title = getCommunityHeaderTitle(url);
+  header_subtitle = communityT("\uCEE4\uBBA4\uB2C8\uD2F0");
   const pageMode = getCommunityMode();
   if (pageMode === "read") {
     void get_read_article("locale");
   } else if (pageMode !== "write" && pageMode !== "edit") {
+    if (typeof ReactDOM !== "undefined" && document.getElementById("div_main")) {
+      renderListPageShell();
+      refreshSidebarWidgets();
+    }
     if (isCommunityCardMode()) void getCommunityBoardCards();
     else void get_article_list("page", communityState.page_num || 1);
   }
