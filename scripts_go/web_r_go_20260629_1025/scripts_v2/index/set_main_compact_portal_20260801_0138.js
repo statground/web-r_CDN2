@@ -20,28 +20,28 @@
   });
   var productLinks = [
     {
-      label: "무료 서버 접속",
+      label: "Web-R 무료 서버",
       description: "기존 Web-R 무료 분석 서버",
       href: "/webr/",
       tone: "blue"
     },
     {
-      label: "정회원 서버",
+      label: "Web-R 정회원 서버",
       description: "정회원 전용 분석 환경",
       href: "/webr/member/",
       tone: "cyan"
-    },
-    {
-      label: "Web-R 2.0",
-      description: "새 분석 도구 모음",
-      href: "/webr/2.0/",
-      tone: "violet"
     },
     {
       label: "Web-R Notebook",
       description: "R 코드와 문서 작업 공간",
       href: "/webr/notebook/",
       tone: "emerald"
+    },
+    {
+      label: "Web-R 2.0 (beta)",
+      description: "바로 쓰는 도구와 학습",
+      href: "/webr/2.0/",
+      tone: "violet"
     }
   ];
   var refs = null;
