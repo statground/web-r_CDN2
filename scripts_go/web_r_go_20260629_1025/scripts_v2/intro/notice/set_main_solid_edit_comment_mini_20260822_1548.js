@@ -1484,6 +1484,16 @@ const IntroNoticeRead = /* @__PURE__ */ (() => {
       return /* @__PURE__ */ React.createElement("div", { class: "flex w-full flex-col items-center px-4 py-8 md:px-8" }, /* @__PURE__ */ React.createElement("div", { class: "w-full max-w-5xl" }, /* @__PURE__ */ React.createElement(Div_page_header, { title: header_title, subtitle: header_subtitle }), /* @__PURE__ */ React.createElement("div", { id: "div_article_read_buttons", class: "mb-4 flex w-full justify-end" }), /* @__PURE__ */ React.createElement("div", { class: "w-full space-y-4" }, /* @__PURE__ */ React.createElement("div", { class: "w-full", id: "div_community_read_header" }, /* @__PURE__ */ React.createElement("div", { class: "w-full rounded-lg border border-slate-200 bg-white p-5 animate-pulse" }, /* @__PURE__ */ React.createElement("div", { class: "mb-3 h-4 w-16 rounded bg-blue-100" }), /* @__PURE__ */ React.createElement("div", { class: "mb-3 h-6 w-4/5 rounded bg-slate-200" }), /* @__PURE__ */ React.createElement("div", { class: "h-4 w-2/5 rounded bg-slate-100" }))), /* @__PURE__ */ React.createElement("div", { class: "w-full rounded-lg border border-slate-200 bg-white p-5", id: "div_community_read_content" }, /* @__PURE__ */ React.createElement("div", { class: "h-48 w-full rounded bg-slate-100 animate-pulse" })), /* @__PURE__ */ React.createElement("div", { class: "w-full", id: "div_community_read_file" }), /* @__PURE__ */ React.createElement("div", { class: "w-full", id: "div_community_read_comment" }, /* @__PURE__ */ React.createElement("div", { class: "w-full rounded-lg border border-slate-200 bg-white p-5 animate-pulse" }, /* @__PURE__ */ React.createElement("div", { class: "mb-3 h-5 w-24 rounded bg-slate-200" }), /* @__PURE__ */ React.createElement("div", { class: "h-16 w-full rounded bg-slate-100" }))))));
     }
     ReactDOM.render(/* @__PURE__ */ React.createElement(Div_main, null), document.getElementById("div_main"));
+    const contentLoading = document.getElementById("div_community_read_content");
+    if (contentLoading) {
+      const status = document.createElement("p");
+      status.className = "mt-4 text-sm font-medium text-slate-600";
+      status.setAttribute("role", "status");
+      status.setAttribute("aria-live", "polite");
+      status.setAttribute("data-webr-i18n", "공지사항 확인 중...");
+      status.textContent = "공지사항 확인 중...";
+      contentLoading.appendChild(status);
+    }
     try {
       await get_read_article("init");
     } catch (e) {
