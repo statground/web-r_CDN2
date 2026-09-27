@@ -1560,6 +1560,33 @@ const IntroNoticeWrite = /* @__PURE__ */ (() => {
   function click_delete_file() {
     clearNoticeArticleFiles();
   }
+  let noticeCreateRequestID = "";
+  const noticeCreateRequestStorageKey = "web-r:notice:create:" + location.pathname;
+  function stableNoticeCreateRequestID() {
+    if (!noticeCreateRequestID) {
+      try {
+        noticeCreateRequestID = sessionStorage.getItem(noticeCreateRequestStorageKey) || "";
+      } catch (_) {
+      }
+    }
+    if (!/^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(noticeCreateRequestID)) {
+      noticeCreateRequestID = globalThis.crypto && crypto.randomUUID ? crypto.randomUUID() : "";
+      if (noticeCreateRequestID) {
+        try {
+          sessionStorage.setItem(noticeCreateRequestStorageKey, noticeCreateRequestID);
+        } catch (_) {
+        }
+      }
+    }
+    return noticeCreateRequestID;
+  }
+  function clearNoticeCreateRequestID() {
+    noticeCreateRequestID = "";
+    try {
+      sessionStorage.removeItem(noticeCreateRequestStorageKey);
+    } catch (_) {
+    }
+  }
   async function click_btn_submit() {
     let txt_title = document.getElementById("txt_title").value.trim();
     let txt_content = getNoticeEditorHTML(editor);
@@ -1578,6 +1605,14 @@ const IntroNoticeWrite = /* @__PURE__ */ (() => {
         request_data.append("txt_title", txt_title);
         request_data.append("txt_content", txt_content);
         request_data.append("chk_secret", chk_secret);
+        const requestID = stableNoticeCreateRequestID();
+        if (!requestID) {
+          alert("요청 ID를 생성할 수 없습니다. 보안 연결에서 다시 시도해 주세요.");
+          toggle_click_submit = false;
+          ReactDOM.render(/* @__PURE__ */ React.createElement(Div_button, null), document.getElementById("div_button_list"));
+          return;
+        }
+        request_data.append("request_id", requestID);
         const data2 = await fetch("/blank/ajax_board/insert_article/", {
           method: "post",
           headers: { "X-CSRFToken": getCookie("csrftoken") },
@@ -1587,8 +1622,8 @@ const IntroNoticeWrite = /* @__PURE__ */ (() => {
         }).then((res) => {
           return res;
         });
-        if (data2 && data2.error) {
-          alert(data2.error);
+        if (!data2 || data2.error || data2.pending || data2.publication_pending || !data2.uuid) {
+          alert(data2 && data2.error || "공지 공개 상태를 확인 중입니다. 잠시 후 같은 화면에서 다시 시도해 주세요.");
           toggle_click_submit = false;
           ReactDOM.render(/* @__PURE__ */ React.createElement(Div_button, null), document.getElementById("div_button_list"));
           return;
@@ -1602,6 +1637,7 @@ const IntroNoticeWrite = /* @__PURE__ */ (() => {
         } catch (error) {
           alert("\uAC8C\uC2DC\uAE00\uC740 \uC800\uC7A5\uB418\uC5C8\uC9C0\uB9CC \uD30C\uC77C \uC5C5\uB85C\uB4DC\uC5D0 \uC2E4\uD328\uD588\uC2B5\uB2C8\uB2E4: " + error.message);
         }
+        clearNoticeCreateRequestID();
         location.href = init_url + "read/" + data2.uuid + "/";
       }
       toggle_click_submit = false;
