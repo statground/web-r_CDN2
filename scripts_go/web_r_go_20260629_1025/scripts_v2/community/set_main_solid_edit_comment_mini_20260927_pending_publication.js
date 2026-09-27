@@ -14,8 +14,13 @@ let header_subtitle = "\uCEE4\uBBA4\uB2C8\uD2F0";
 const communityArticlePageCache = {};
 const communityArticlePrefetching = {};
 const communityCardLastGood = {};
+let communityLocaleEpoch = 0;
+function communityDisplayLocale() {
+  return window.WebRI18n && window.WebRI18n.language || "ko";
+}
 const communityState = {
   page_num: 1,
+  displayLocale: communityDisplayLocale(),
   article_counter: 0,
   toggle_page: false,
   toggle_click_submit: false,
@@ -1068,9 +1073,11 @@ function communityArticlePageCacheKey(page, searchText) {
     typeof gv_username === "undefined" || gv_username == null ? "" : String(gv_username),
     typeof window === "undefined" || window.gv_role == null ? "" : String(window.gv_role)
   ].join(":");
-  return [normalizedCommunityTag(), normalizedCommunityTagSub(), String(searchText || "").trim(), communitySearchScope(), communitySourceGroup(), viewer, String(page || 1)].join("|");
+  return [communityDisplayLocale(), normalizedCommunityTag(), normalizedCommunityTagSub(), String(searchText || "").trim(), communitySearchScope(), communitySourceGroup(), viewer, String(page || 1)].join("|");
 }
 function readCommunityArticlePageCache(page, searchText) {
+  // A translated snapshot can be withdrawn or invalidated by a source edit.
+  if (communityDisplayLocale() !== "ko") return null;
   const key = communityArticlePageCacheKey(page, searchText);
   const cached = communityArticlePageCache[key];
   if (!cached || Date.now() - cached.at > COMMUNITY_PAGE_CACHE_TTL_MS) {
@@ -1084,6 +1091,7 @@ function readCommunityArticlePageCache(page, searchText) {
   return cached.data;
 }
 function writeCommunityArticlePageCache(page, searchText, data) {
+  if (communityDisplayLocale() !== "ko") return;
   if (isCommunityArticleListIncomplete(data)) {
     return;
   }
@@ -1091,6 +1099,7 @@ function writeCommunityArticlePageCache(page, searchText, data) {
 }
 function buildCommunityArticleListForm(page, searchText) {
   const requestData = new FormData();
+  requestData.append("lang", communityDisplayLocale());
   requestData.append("tag", normalizedCommunityTag());
   const tagSub = normalizedCommunityTagSub();
   if (tagSub !== "") {
@@ -1108,12 +1117,14 @@ function buildCommunityArticleListForm(page, searchText) {
   return requestData;
 }
 async function fetchCommunityArticlePage(page, searchText) {
+  const localeEpoch = communityLocaleEpoch;
   const response = await fetch("/blank/ajax_board/get_article_list/", {
     method: "POST",
     headers: { "X-CSRFToken": getCookie("csrftoken") },
     body: buildCommunityArticleListForm(page, searchText)
   });
   const data = await response.json().catch(() => ({ ok: false, pending: true }));
+  if (localeEpoch !== communityLocaleEpoch) throw new Error("language changed");
   if (!response.ok || isCommunityArticleListIncomplete(data)) {
     throw new Error(communityArticleListPendingMessage(data));
   }
@@ -1177,7 +1188,7 @@ function LatestArticleItem(props) {
   const meta = latestArticleMetaParts(article);
   const title = cleanBoardTitle(article.title) || "\uC81C\uBAA9 \uC5C6\uC74C";
   const linkProps = { href: articleHrefFromData(article) };
-  return /* @__PURE__ */ React.createElement("a", { ...linkProps, class: "group block w-full rounded-lg border border-transparent px-4 py-3 transition hover:border-blue-200 hover:bg-blue-50/70" }, /* @__PURE__ */ React.createElement("div", { class: "mb-1 flex flex-wrap items-center gap-2" }, /* @__PURE__ */ React.createElement("span", { class: "rounded-full border px-2 py-0.5 text-xs font-semibold " + info.className }, info.label), /* @__PURE__ */ React.createElement(RCommunitySourceChip, { article }), article.check_reader === "writer" && /* @__PURE__ */ React.createElement(WebRStatusBadge, { tone: "my", label: "MY" }), article.is_new === 1 && /* @__PURE__ */ React.createElement(WebRStatusBadge, { tone: "new", label: "NEW" })), /* @__PURE__ */ React.createElement("p", { class: "whitespace-normal break-keep text-base font-bold leading-6 text-slate-950 group-hover:text-blue-800" }, title), /* @__PURE__ */ React.createElement("div", { class: "mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500" }, meta.map((part, index) => /* @__PURE__ */ React.createElement("span", { key: "latest_meta_" + index }, part))));
+  return /* @__PURE__ */ React.createElement("a", { ...linkProps, class: "group block w-full rounded-lg border border-transparent px-4 py-3 transition hover:border-blue-200 hover:bg-blue-50/70" }, /* @__PURE__ */ React.createElement("div", { class: "mb-1 flex flex-wrap items-center gap-2" }, /* @__PURE__ */ React.createElement("span", { class: "rounded-full border px-2 py-0.5 text-xs font-semibold " + info.className }, info.label), /* @__PURE__ */ React.createElement(RCommunitySourceChip, { article }), article.check_reader === "writer" && /* @__PURE__ */ React.createElement(WebRStatusBadge, { tone: "my", label: "MY" }), article.is_new === 1 && /* @__PURE__ */ React.createElement(WebRStatusBadge, { tone: "new", label: "NEW" })), /* @__PURE__ */ React.createElement("p", { lang: article.display_title_language || "ko", class: "whitespace-normal break-keep text-base font-bold leading-6 text-slate-950 group-hover:text-blue-800" }, title), /* @__PURE__ */ React.createElement("div", { class: "mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500" }, meta.map((part, index) => /* @__PURE__ */ React.createElement("span", { key: "latest_meta_" + index }, part))));
 }
 function PaginationButton(props) {
   const disabled = !!props.disabled;
@@ -1432,7 +1443,7 @@ function Div_new_article_list(props) {
     category_title_color = " bg-orange-100 text-orange-700 border-orange-300";
   }
   const linkProps = { href };
-  return /* @__PURE__ */ React.createElement("div", { class: "bg-white w-full" }, /* @__PURE__ */ React.createElement("a", { ...linkProps, class: "flex w-full flex-col px-6 py-4 space-y-1 cursor-pointer hover:bg-gray-50 rounded-lg mx-3 my-2" }, /* @__PURE__ */ React.createElement("div", { class: "flex flex-wrap items-center gap-2" }, /* @__PURE__ */ React.createElement("span", { class: "flex-shrink-0 whitespace-nowrap px-2 py-0.5 border rounded-full text-xs font-semibold" + category_title_color }, category_title), /* @__PURE__ */ React.createElement(RCommunitySourceChip, { article: props.data }), /* @__PURE__ */ React.createElement("span", { class: "font-bold text-sm whitespace-normal break-keep" }, cleanBoardTitle(props.data.title) || "\uC81C\uBAA9 \uC5C6\uC74C"), /* @__PURE__ */ React.createElement("div", { class: "flex-shrink-0 flex items-center gap-1" }, /* @__PURE__ */ React.createElement(Span_btn_article_new, { toggle: props.data.is_new }), /* @__PURE__ */ React.createElement(Span_btn_article_secret, { toggle: props.data.is_secret }), /* @__PURE__ */ React.createElement(Span_btn_my_article, { toggle: props.data.check_reader }))), /* @__PURE__ */ React.createElement("div", { class: "flex flex-wrap items-center space-x-2" }, /* @__PURE__ */ React.createElement(Span_btn_user, { user_nickname: props.data.user_nickname, role: props.data.user_role }), /* @__PURE__ */ React.createElement(Span_btn_date, { date: props.data.created_at }), /* @__PURE__ */ React.createElement(Span_btn_article_read, { cnt_read: props.data.cnt_read }), /* @__PURE__ */ React.createElement(Span_btn_article_comment, { cnt_comment: props.data.cnt_comment }))));
+  return /* @__PURE__ */ React.createElement("div", { class: "bg-white w-full" }, /* @__PURE__ */ React.createElement("a", { ...linkProps, class: "flex w-full flex-col px-6 py-4 space-y-1 cursor-pointer hover:bg-gray-50 rounded-lg mx-3 my-2" }, /* @__PURE__ */ React.createElement("div", { class: "flex flex-wrap items-center gap-2" }, /* @__PURE__ */ React.createElement("span", { class: "flex-shrink-0 whitespace-nowrap px-2 py-0.5 border rounded-full text-xs font-semibold" + category_title_color }, category_title), /* @__PURE__ */ React.createElement(RCommunitySourceChip, { article: props.data }), /* @__PURE__ */ React.createElement("span", { lang: props.data.display_title_language || "ko", class: "font-bold text-sm whitespace-normal break-keep" }, cleanBoardTitle(props.data.title) || "\uC81C\uBAA9 \uC5C6\uC74C"), /* @__PURE__ */ React.createElement("div", { class: "flex-shrink-0 flex items-center gap-1" }, /* @__PURE__ */ React.createElement(Span_btn_article_new, { toggle: props.data.is_new }), /* @__PURE__ */ React.createElement(Span_btn_article_secret, { toggle: props.data.is_secret }), /* @__PURE__ */ React.createElement(Span_btn_my_article, { toggle: props.data.check_reader }))), /* @__PURE__ */ React.createElement("div", { class: "flex flex-wrap items-center space-x-2" }, /* @__PURE__ */ React.createElement(Span_btn_user, { user_nickname: props.data.user_nickname, role: props.data.user_role }), /* @__PURE__ */ React.createElement(Span_btn_date, { date: props.data.created_at }), /* @__PURE__ */ React.createElement(Span_btn_article_read, { cnt_read: props.data.cnt_read }), /* @__PURE__ */ React.createElement(Span_btn_article_comment, { cnt_comment: props.data.cnt_comment }))));
 }
 function Div_new_comment(props) {
   return /* @__PURE__ */ React.createElement(SidebarCommentItem, { data: props.data });
@@ -1633,6 +1644,7 @@ function renderListPageShell() {
 }
 function buildCommunityCardForm(tag, page) {
   const requestData = new FormData();
+  requestData.append("lang", communityDisplayLocale());
   requestData.append("tag", tag);
   requestData.append("page", page);
   requestData.append("page_size", COMMUNITY_CARD_PAGE_SIZE);
@@ -1650,7 +1662,7 @@ function buildCommunityCardForm(tag, page) {
   return requestData;
 }
 function communityCardRequestKey(tag, page) {
-  return [tag, String(page || 1), communitySearchText(), communitySearchScope(), tag === "rcommunity" ? communitySourceGroup() : ""].join("|");
+  return [communityDisplayLocale(), tag, String(page || 1), communitySearchText(), communitySearchScope(), tag === "rcommunity" ? communitySourceGroup() : ""].join("|");
 }
 function sleepCommunityCardRetry(attempt) {
   const jitter = Math.floor(Math.random() * COMMUNITY_CARD_RETRY_BASE_MS);
@@ -1687,15 +1699,17 @@ async function fetchCommunityCardData(tag, page, attempts = COMMUNITY_CARD_FETCH
   };
 }
 async function loadCommunityBoardCard(def, page) {
+  const localeEpoch = communityLocaleEpoch;
   const cardPage = Math.max(1, Number(page || 1));
   communityState.cardPages[def.tag] = cardPage;
   const requestKey = communityCardRequestKey(def.tag, cardPage);
-  const previousData = communityCardLastGood[requestKey] || null;
+  const previousData = communityDisplayLocale() === "ko" ? communityCardLastGood[requestKey] || null : null;
   const target = document.getElementById("div_community_card_" + def.tag);
   if (target && !previousData) {
     ReactDOM.render(/* @__PURE__ */ React.createElement(CommunityCardSkeletonBody, { tag: def.tag, title: def.title }), target);
   }
   const data = await fetchCommunityCardData(def.tag, cardPage);
+  if (localeEpoch !== communityLocaleEpoch) return;
   if (isCommunityArticleListPending(data)) {
     const host = document.getElementById("div_community_card_" + def.tag);
     if (host) {
@@ -1710,7 +1724,7 @@ async function loadCommunityBoardCard(def, page) {
     }
     return;
   }
-  communityCardLastGood[requestKey] = data;
+  if (communityDisplayLocale() === "ko") communityCardLastGood[requestKey] = data;
   const totalPages = Math.max(1, Math.ceil(Number(data && data.count ? data.count.cnt || 0 : 0) / COMMUNITY_CARD_PAGE_SIZE));
   if (Object.keys(data.list || {}).length === 0 && cardPage > totalPages) {
     return loadCommunityBoardCard(def, totalPages);
@@ -1745,6 +1759,7 @@ async function goToCommunityCardPage(tag, page) {
   }
 }
 async function get_article_list(loadMode, requestedPage = 1) {
+  const localeEpoch = communityLocaleEpoch;
   function ArticleList(props) {
     const article_list = Object.keys(props.data || {}).map((key) => /* @__PURE__ */ React.createElement(LatestArticleItem, { key, data: props.data[key] }));
     const listContent = article_list.length === 0 ? props.partialData ? null : /* @__PURE__ */ React.createElement("div", { class: "flex min-h-[160px] items-center justify-center rounded-lg bg-slate-50 text-sm text-slate-500" }, "\uD45C\uC2DC\uD560 \uCD5C\uC2E0 \uAE00\uC774 \uC5C6\uC2B5\uB2C8\uB2E4.") : /* @__PURE__ */ React.createElement("div", { class: "flex flex-col justify-center items-start w-full divide-y divide-slate-100" }, article_list);
@@ -1755,6 +1770,7 @@ async function get_article_list(loadMode, requestedPage = 1) {
   }
   communityState.toggle_page = true;
   const request_data = new FormData();
+  request_data.append("lang", communityDisplayLocale());
   const activeTag = normalizedCommunityTag();
   const privateFilter = activeTag === "mine" || activeTag === "commented";
   request_data.append("tag", privateFilter ? "all" : activeTag);
@@ -1794,6 +1810,7 @@ async function get_article_list(loadMode, requestedPage = 1) {
       headers: { "X-CSRFToken": getCookie("csrftoken") },
       body: request_data
     }).then((res) => res.json());
+    if (localeEpoch !== communityLocaleEpoch) return;
     const listData = activeTag === "mine" ? filterIndexedRows(privateData, searchText, communitySearchScope()) : commentsToCommentedArticleRows(privateData, searchText, communitySearchScope());
     communityState.article_counter = Object.keys(listData).length;
     ReactDOM.render(
@@ -1831,6 +1848,7 @@ async function get_article_list(loadMode, requestedPage = 1) {
       body: request_data
     });
     data = await response.json().catch(() => ({ ok: false, pending: true }));
+    if (localeEpoch !== communityLocaleEpoch) return;
   } catch (error) {
     console.error("[get_article_list] failed", error);
     data = { ok: false, pending: true };
@@ -1957,7 +1975,7 @@ function Div_article_read_buttons(props) {
 }
 function Div_article_read_header(props) {
   const title = cleanBoardTitle(props.data.title) || "\uC81C\uBAA9 \uC5C6\uC74C";
-  return /* @__PURE__ */ React.createElement("div", { class: "flex flex-col justify-center items-start py-4 border-t border-b border-gray-200 w-full" }, /* @__PURE__ */ React.createElement("div", { class: "flex flex-row justify-start items-end w-full" }, /* @__PURE__ */ React.createElement("span", { class: "flex flex-row justify-start items-center text-lg font-extrabold w-full space-x-2" }, title, /* @__PURE__ */ React.createElement("div", null), /* @__PURE__ */ React.createElement(Span_btn_article_new, { toggle: props.data.is_new }), /* @__PURE__ */ React.createElement(Span_btn_article_secret, { toggle: props.data.is_secret }), /* @__PURE__ */ React.createElement(Span_btn_my_article, { toggle: props.data.check_reader }))), /* @__PURE__ */ React.createElement("div", { class: "flex flex-row justify-end items-center w-full" }, /* @__PURE__ */ React.createElement("span", { class: "flex flex-row justify-end items-center text-md font-normal w-full space-x-2" }, /* @__PURE__ */ React.createElement(Span_btn_user, { user_nickname: props.data.user_nickname, role: props.data.user_role }), /* @__PURE__ */ React.createElement(Span_btn_date, { date: props.data.created_at }), /* @__PURE__ */ React.createElement(Span_btn_article_read, { cnt_read: props.data.cnt_read }), /* @__PURE__ */ React.createElement(Span_btn_article_comment, { cnt_comment: props.data.cnt_comment }))));
+  return /* @__PURE__ */ React.createElement("div", { class: "flex flex-col justify-center items-start py-4 border-t border-b border-gray-200 w-full" }, /* @__PURE__ */ React.createElement("div", { class: "flex flex-row justify-start items-end w-full" }, /* @__PURE__ */ React.createElement("span", { lang: props.data.display_title_language || "ko", class: "flex flex-row justify-start items-center text-lg font-extrabold w-full space-x-2" }, title, /* @__PURE__ */ React.createElement("div", null), /* @__PURE__ */ React.createElement(Span_btn_article_new, { toggle: props.data.is_new }), /* @__PURE__ */ React.createElement(Span_btn_article_secret, { toggle: props.data.is_secret }), /* @__PURE__ */ React.createElement(Span_btn_my_article, { toggle: props.data.check_reader }))), /* @__PURE__ */ React.createElement("div", { class: "flex flex-row justify-end items-center w-full" }, /* @__PURE__ */ React.createElement("span", { class: "flex flex-row justify-end items-center text-md font-normal w-full space-x-2" }, /* @__PURE__ */ React.createElement(Span_btn_user, { user_nickname: props.data.user_nickname, role: props.data.user_role }), /* @__PURE__ */ React.createElement(Span_btn_date, { date: props.data.created_at }), /* @__PURE__ */ React.createElement(Span_btn_article_read, { cnt_read: props.data.cnt_read }), /* @__PURE__ */ React.createElement(Span_btn_article_comment, { cnt_comment: props.data.cnt_comment }))));
 }
 function Div_article_read_file() {
   const data = communityState.articleData;
@@ -2012,13 +2030,16 @@ function set_article() {
   const contentEl = document.querySelector("#div_community_read_content");
   WebRSolidEdit.renderContent(contentEl, communityState.articleData.content);
   if (contentEl) {
+    contentEl.lang = communityState.articleData.display_content_language || "ko";
     const categoryURL = String(communityState.articleData && communityState.articleData.category_url || "").trim().toLowerCase();
     contentEl.classList.toggle("webr-rcommunity-digest-viewer", categoryURL === "rcommunity");
   }
 }
 async function get_read_article(loadMode) {
+  const localeEpoch = communityLocaleEpoch;
   const request_data = new FormData();
   request_data.append("orderID", orderID);
+  request_data.append("lang", communityDisplayLocale());
   try {
     const res = await fetch("/blank/ajax_board/get_read_article/", {
       method: "POST",
@@ -2028,9 +2049,11 @@ async function get_read_article(loadMode) {
     if (!res.ok) {
       throw new Error(`get_read_article HTTP error: ${res.status}`);
     }
-    communityState.articleData = await res.json();
+    const articleData = await res.json();
+    if (localeEpoch !== communityLocaleEpoch) return;
+    communityState.articleData = articleData;
     syncCommunityReadContext(communityState.articleData);
-    if (loadMode === "init") {
+    if (loadMode === "init" || loadMode === "locale") {
       set_article();
     }
     get_read_article_comment(orderID);
@@ -2038,7 +2061,7 @@ async function get_read_article(loadMode) {
     if (communityState.articleData && typeof communityState.articleData.category_url === "string") {
       normalizedCategory = communityState.articleData.category_url.trim().toLowerCase();
     }
-    if (normalizedCategory === "rblogger") {
+    if (normalizedCategory === "rblogger" && loadMode === "init") {
       refresh_article_rblogger(orderID);
     }
   } catch (err) {
@@ -2487,13 +2510,16 @@ async function comment_file_action(action, uuid_comment) {
   }
 }
 async function get_read_article_comment(orderID_param) {
+  const localeEpoch = communityLocaleEpoch;
   const request_data = new FormData();
   request_data.append("orderID", orderID_param);
+  request_data.append("lang", communityDisplayLocale());
   const responseData = await fetch("/blank/ajax_board/get_read_article_comment/", {
     method: "POST",
     headers: { "X-CSRFToken": getCookie("csrftoken") },
     body: request_data
   }).then((res) => res.json());
+  if (localeEpoch !== communityLocaleEpoch) return;
   if (!responseData || responseData.error || responseData.checker === "ERROR") {
     console.error("[get_read_article_comment] failed", responseData);
     return;
@@ -2542,6 +2568,7 @@ async function set_comment() {
     const el = document.querySelector("#div_comment_" + comment.uuid);
     if (!el)
       return;
+    el.lang = comment.display_content_language || "ko";
     WebRSolidEdit.renderContent(el, comment.content || "");
   });
   communityState.commentEditors = {};
@@ -2792,6 +2819,7 @@ async function set_main_edit() {
   ReactDOM.render(/* @__PURE__ */ React.createElement(Div_check_writer, null), document.getElementById("div_main"));
   const fd = new FormData();
   fd.append("orderID", orderID);
+  fd.append("source_only", "true");
   communityState.articleData = await fetch("/blank/ajax_board/get_read_article/", {
     method: "POST",
     headers: { "X-CSRFToken": getCookie("csrftoken") },
@@ -2821,6 +2849,21 @@ async function set_main() {
   }
 }
 window.set_main = set_main;
+window.addEventListener("webr:language-change", (event) => {
+  const next = String(event.detail && event.detail.language || "ko");
+  if (next === communityDisplayLocale() && next === communityState.displayLocale) return;
+  communityState.displayLocale = next;
+  communityLocaleEpoch += 1;
+  Object.keys(communityArticlePageCache).forEach((key) => delete communityArticlePageCache[key]);
+  Object.keys(communityCardLastGood).forEach((key) => delete communityCardLastGood[key]);
+  const pageMode = getCommunityMode();
+  if (pageMode === "read") {
+    void get_read_article("locale");
+  } else if (pageMode !== "write" && pageMode !== "edit") {
+    if (isCommunityCardMode()) void getCommunityBoardCards();
+    else void get_article_list("page", communityState.page_num || 1);
+  }
+});
 window.check_file_upload = check_file_upload;
 window.click_btn_search = click_btn_search;
 window.handleChangeTab = handleChangeTab;
