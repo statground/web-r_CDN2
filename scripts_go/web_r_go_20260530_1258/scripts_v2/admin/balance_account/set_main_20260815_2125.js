@@ -434,7 +434,7 @@ async function set_main() {
       if (adminBalanceGuardState.lastGood) {
         adminBalanceGuardRender(adminBalanceGuardState.lastGood);
       } else if (typeof React !== "undefined" && typeof ReactDOM !== "undefined" && typeof Div_main_skeleton === "function") {
-        ReactDOM.render(React.createElement(Div_main_skeleton), mount);
+        ReactDOM.render(React.createElement(Div_main_skeleton), mount, addCanceledHistoryLink);
       }
       await adminBalanceGuardGetMain();
     })();
