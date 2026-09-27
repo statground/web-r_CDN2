@@ -2646,8 +2646,8 @@ async function submit_write() {
       headers: { "X-CSRFToken": getCookie("csrftoken") },
       body: request_data
     }).then((res) => res.json());
-    if (data && data.error) {
-      alert(data.error);
+    if (!data || data.error || data.pending || data.publication_pending || !data.uuid) {
+      alert(data && data.error || "게시글 공개 상태를 확인 중입니다. 잠시 후 같은 화면에서 다시 시도해 주세요.");
       communityState.toggle_click_submit = false;
       ReactDOM.render(/* @__PURE__ */ React.createElement(Div_button, null), document.getElementById("div_button_list"));
       return;

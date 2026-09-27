@@ -1622,8 +1622,8 @@ const IntroNoticeWrite = /* @__PURE__ */ (() => {
         }).then((res) => {
           return res;
         });
-        if (data2 && data2.error) {
-          alert(data2.error);
+        if (!data2 || data2.error || data2.pending || data2.publication_pending || !data2.uuid) {
+          alert(data2 && data2.error || "공지 공개 상태를 확인 중입니다. 잠시 후 같은 화면에서 다시 시도해 주세요.");
           toggle_click_submit = false;
           ReactDOM.render(/* @__PURE__ */ React.createElement(Div_button, null), document.getElementById("div_button_list"));
           return;
