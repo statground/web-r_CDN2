@@ -761,6 +761,7 @@ const IntroNoticeRead = /* @__PURE__ */ (() => {
   async function get_read_article(mode2) {
     const request_data = new FormData();
     request_data.append("orderID", orderID);
+    request_data.append("tag", "notice");
     let lastPayload = null;
     let lastError = null;
     try {
@@ -1771,6 +1772,7 @@ const IntroNoticeEdit = /* @__PURE__ */ (() => {
     ReactDOM.render(/* @__PURE__ */ React.createElement(Div_check_writer, null), document.getElementById("div_main"));
     const fd = new FormData();
     fd.append("orderID", orderID);
+    fd.append("tag", "notice");
     data = await fetch("/blank/ajax_board/get_read_article/", {
       method: "post",
       headers: { "X-CSRFToken": getCookie("csrftoken") },
