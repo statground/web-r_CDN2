@@ -38,10 +38,10 @@ const MENU_SECTIONS = {
     icon: "r-logo",
     image: WEBR_CDN2 + "images/svg/R_logo.svg",
     items: [
-      { href: "/webr/2.0/", title: "Web-R 2.0 분석 도구", description: "ROC, 메타분석, 표본수 계산 등 분석 제품을 시작합니다.", icon: "webr2", image: WEBR_CDN2 + "images/svg/R_Logo_20.svg" },
-      { href: "/webr/notebook/", title: "Web-R Notebook", description: "분석 노트북을 만들고 실행하고 공유합니다.", icon: "notebook", image: WEBR_CDN2 + "images/svg/menu_webr_notebook2.svg" },
       { href: "/webr/", title: "Web-R 무료 서버", description: "기존 무료 Web-R 분석 환경으로 이동합니다.", icon: "r-logo-dark", image: WEBR_CDN2 + "images/svg/R_logo_black.svg" },
-      { href: "/webr/member/", title: "정회원 분석 환경", description: "현재 제공 중인 정회원 전용 분석 환경으로 이동합니다.", icon: "r-logo", image: WEBR_CDN2 + "images/svg/R_logo.svg" }
+      { href: "/webr/member/", title: "Web-R 정회원 서버", description: "현재 제공 중인 정회원 전용 분석 환경으로 이동합니다.", icon: "r-logo", image: WEBR_CDN2 + "images/svg/R_logo.svg" },
+      { href: "/webr/notebook/", title: "Web-R Notebook", description: "분석 노트북을 만들고 실행하고 공유합니다.", icon: "notebook", image: WEBR_CDN2 + "images/svg/menu_webr_notebook2.svg" },
+      { href: "/webr/2.0/", title: "Web-R 2.0 (beta)", description: "바로 쓰는 도구와 학습을 시작합니다.", icon: "webr2", image: WEBR_CDN2 + "images/svg/R_Logo_20.svg" }
     ]
   },
   r_ecosystem: {
@@ -53,7 +53,8 @@ const MENU_SECTIONS = {
       { href: "/r-ecosystem/packages/", title: "R 패키지", description: "CRAN, Bioconductor, R-universe 패키지를 탐색합니다.", icon: "package", image: WEBR_CDN2 + "images/svg/R-packages.svg" },
       { href: "/book/", title: "도서", description: "R 관련 도서, 번역서와 학습 자료를 탐색합니다.", icon: "book", image: WEBR_CDN2 + "images/svg/menu_book.svg" },
       { href: "/workshop/", title: "워크샵", description: "워크샵 안내와 강의 자료로 이동합니다.", icon: "workshop", image: WEBR_CDN2 + "images/svg/menu_workshop.svg" },
-      { href: "/workshop/lecture/", title: "강의·영상", description: "R 관련 강의와 Web-R 영상을 탐색합니다.", icon: "lecture", image: WEBR_CDN2 + "images/svg/lecturer.svg" }
+      { href: "/workshop/lecture/", title: "강의", description: "R 관련 강의를 탐색합니다.", icon: "lecture", image: WEBR_CDN2 + "images/svg/lecturer.svg" },
+      { href: "/workshop/youtube/", title: "유튜브 영상", description: "Web-R 공식 영상과 관련 자료를 봅니다.", icon: "youtube", image: WEBR_CDN2 + "images/svg/menu_youtube.svg" }
     ]
   },
   community: {
