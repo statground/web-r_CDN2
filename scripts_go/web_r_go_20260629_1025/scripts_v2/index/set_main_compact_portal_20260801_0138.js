@@ -7,6 +7,7 @@
   window.__webrCompactPortal202608010138Installed = true;
 
   var summaryEndpoint = "/homepage/content-summary/";
+  var noticeEndpoint = "/ajax_index_notice/";
   var categories = [
     { key: "rcommunity", label: "R Community", href: "/community/r-community/" },
     { key: "community", label: "커뮤니티", href: "/community/" },
@@ -54,6 +55,7 @@
   var bookRecoverySuspended = false;
   var bookRecoveryLastStarted = 0;
   var noticeRetryInFlight = false;
+  var noticeRequest = null;
 
   function element(tagName, className, text) {
     var node = document.createElement(tagName);
@@ -499,13 +501,76 @@
       button.disabled = true;
       button.textContent = "확인 중...";
     }
-    requestSummary().then(function renderRetriedNotices(payload) {
+    requestNotices().then(function renderRetriedNotices(rows) {
       noticeRetryInFlight = false;
-      renderNotices(normalizedItems(payload, "notices"), payload);
+      renderNotices(rows, { sections: { notices: rows }, unavailable_sections: [] });
     }).catch(function keepNoticesUnavailable() {
       noticeRetryInFlight = false;
       renderNotices([], null);
     });
+  }
+
+  function requestNotices() {
+    var controller = typeof AbortController === "function" ? new AbortController() : null;
+    var timeoutID = window.setTimeout(function abortSlowNotices() {
+      if (controller) {
+        controller.abort();
+      }
+    }, 20000);
+    return fetch(noticeEndpoint, {
+      method: "GET",
+      credentials: "same-origin",
+      headers: { Accept: "application/json" },
+      cache: "no-store",
+      signal: controller ? controller.signal : undefined
+    }).then(function parseNotices(response) {
+      if (!response.ok) {
+        throw new Error("notice authority unavailable");
+      }
+      return response.json();
+    }).then(function normalizeNotices(payload) {
+      if (!payload || typeof payload !== "object" || payload.ok === false) {
+        throw new Error("notice authority unavailable");
+      }
+      return Object.keys(payload).filter(function isIndexedRow(key) {
+        return /^[0-9]+$/.test(key);
+      }).sort(function numericOrder(left, right) {
+        return Number(left) - Number(right);
+      }).map(function publicNotice(key) {
+        var row = payload[key] || {};
+        var id = cleanText(row.uuid, 64);
+        if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) {
+          return null;
+        }
+        return {
+          title: cleanText(row.title, 96),
+          href: "/intro/notice/read/" + id + "/",
+          published_at: row.created_at,
+          is_new: row.is_new === true || row.is_new === 1
+        };
+      }).filter(function hasPublicTitle(row) {
+        return row && row.title;
+      });
+    }).finally(function noticeFinished() {
+      window.clearTimeout(timeoutID);
+    });
+  }
+
+  function loadNotices() {
+    if (noticeRequest) {
+      return noticeRequest;
+    }
+    refs.noticesBody.replaceChildren(element("p", "webr-home-compact__notice-loading", "공지사항 확인 중..."));
+    noticeRequest = requestNotices().then(function showCurrentNotices(rows) {
+      renderNotices(rows, { sections: { notices: rows }, unavailable_sections: [] });
+      return rows;
+    }).catch(function showUnavailableNotices() {
+      renderNotices([], null);
+      return null;
+    }).finally(function allowNextNoticeRead() {
+      noticeRequest = null;
+    });
+    return noticeRequest;
   }
 
   function renderNotices(items, payload) {
@@ -630,7 +695,8 @@
       renderCategory(definition, item);
     });
     renderStatistics(payload.statistics);
-    renderNotices(normalizedItems(payload, "notices"), payload);
+    // Notices have a separate current-state request. A homepage summary may
+    // outlive a withdrawn notice and cannot authorize this card.
     renderMedia(payload);
     renderActivity(normalizedItems(payload, "activity"));
     if (payload.complete === true) {
@@ -810,6 +876,7 @@
     main.appendChild(heroSection());
     main.appendChild(portalSection());
     root.appendChild(main);
+    loadNotices();
     loadSummary();
   }
 
