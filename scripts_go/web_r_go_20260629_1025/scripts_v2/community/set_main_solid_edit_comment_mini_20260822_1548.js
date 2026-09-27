@@ -2586,6 +2586,33 @@ function Div_main_stop() {
     "\uBAA9\uB85D\uC73C\uB85C"
   )));
 }
+let communityCreateRequestID = "";
+const communityCreateRequestStorageKey = "web-r:community:create:" + location.pathname;
+function stableCommunityCreateRequestID() {
+  if (!communityCreateRequestID) {
+    try {
+      communityCreateRequestID = sessionStorage.getItem(communityCreateRequestStorageKey) || "";
+    } catch (_) {
+    }
+  }
+  if (!/^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(communityCreateRequestID)) {
+    communityCreateRequestID = globalThis.crypto && crypto.randomUUID ? crypto.randomUUID() : "";
+    if (communityCreateRequestID) {
+      try {
+        sessionStorage.setItem(communityCreateRequestStorageKey, communityCreateRequestID);
+      } catch (_) {
+      }
+    }
+  }
+  return communityCreateRequestID;
+}
+function clearCommunityCreateRequestID() {
+  communityCreateRequestID = "";
+  try {
+    sessionStorage.removeItem(communityCreateRequestStorageKey);
+  } catch (_) {
+  }
+}
 async function submit_write() {
   const txt_title = document.getElementById("txt_title").value.trim();
   const txt_content = getArticleEditorHTML();
@@ -2606,6 +2633,14 @@ async function submit_write() {
     request_data.append("txt_title", txt_title);
     request_data.append("txt_content", txt_content);
     request_data.append("chk_secret", chk_secret);
+    const requestID = stableCommunityCreateRequestID();
+    if (!requestID) {
+      alert("요청 ID를 생성할 수 없습니다. 보안 연결에서 다시 시도해 주세요.");
+      communityState.toggle_click_submit = false;
+      ReactDOM.render(/* @__PURE__ */ React.createElement(Div_button, null), document.getElementById("div_button_list"));
+      return;
+    }
+    request_data.append("request_id", requestID);
     const data = await fetch("/blank/ajax_board/insert_article/", {
       method: "POST",
       headers: { "X-CSRFToken": getCookie("csrftoken") },
@@ -2626,6 +2661,7 @@ async function submit_write() {
     } catch (error) {
       alert("\uAC8C\uC2DC\uAE00\uC740 \uC800\uC7A5\uB418\uC5C8\uC9C0\uB9CC \uD30C\uC77C \uC5C5\uB85C\uB4DC\uC5D0 \uC2E4\uD328\uD588\uC2B5\uB2C8\uB2E4: " + error.message);
     }
+    clearCommunityCreateRequestID();
     location.href = init_url + "read/" + data.uuid + "/";
   }
   communityState.toggle_click_submit = false;
