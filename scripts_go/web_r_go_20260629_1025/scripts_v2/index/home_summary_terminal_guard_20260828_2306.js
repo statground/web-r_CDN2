@@ -191,6 +191,15 @@
       }
       normalized.sections[sectionKey] = payload.sections[sectionKey]
         .slice(0, 6)
+        .filter(function validVideoMetadata(item) {
+          if (sectionKey !== "youtube") { return true; }
+          var title = cleanBoundedText(item && item.title, 200);
+          var availability = cleanBoundedText(item && (item.availability || item.status), 32).toLowerCase();
+          return !!item && !/^youtube video\s+#?[a-z0-9_-]{11}$/i.test(title) &&
+            !/^(private|deleted|unavailable) video$/i.test(title) &&
+            item.active !== false && item.active !== 0 && item.active !== "0" &&
+            ["inactive", "private", "deleted", "unavailable"].indexOf(availability) < 0;
+        })
         .map(normalizeSummaryItem)
         .filter(Boolean);
     }
@@ -228,6 +237,9 @@
         window.localStorage.removeItem(summaryCacheKey);
         return null;
       }
+      // Video visibility can change after a saved summary. Only a current
+      // server read may authorize the YouTube lane; retain other sections.
+      normalized.sections.youtube = [];
       return normalized;
     } catch (error) {
       return null;
@@ -239,6 +251,7 @@
     if (!normalized) {
       return;
     }
+    normalized.sections.youtube = [];
     try {
       var raw = JSON.stringify({
         schema: summaryCacheSchema,
@@ -264,7 +277,7 @@
     // The server owns per-lane provenance in the current contract.
     if (Array.isArray(livePayload.unavailable_sections)) { return live; }
     summarySectionKeys.forEach(function retainLastGoodSection(key) {
-      if (key === "books" || live.unavailable_sections.indexOf(key) >= 0) { return; }
+      if (key === "books" || key === "youtube" || live.unavailable_sections.indexOf(key) >= 0) { return; }
       if ((key === "lectures" || key === "youtube") &&
           (live.sections.lectures.length || live.sections.youtube.length)) { return; }
       if (!live.sections[key].length && cachedSummary.sections[key].length) {
@@ -305,6 +318,7 @@
     var preview = normalizeSummary(cachedSummary, true);
     preview.complete = false;
     preview.sections.books = [];
+    preview.sections.youtube = [];
     preview.book_visibility_revision = "";
     preview.unavailable_sections.push("books");
     servedCachedSummary = true;
