@@ -659,7 +659,15 @@
 
   function featuredMedia(payload) {
     var lectures = normalizedItems(payload, "lectures");
-    var youtube = normalizedItems(payload, "youtube");
+    var youtube = normalizedItems(payload, "youtube").filter(function publicVideo(item) {
+      var title = cleanText(item.title, 200);
+      var availability = cleanText(item.availability || item.status, 32).toLowerCase();
+      // These are collector fallback labels, not verified video metadata.
+      return !/^youtube video\s+#?[a-z0-9_-]{11}$/i.test(title) &&
+        !/^(private|deleted|unavailable) video$/i.test(title) &&
+        item.active !== false && item.active !== 0 && item.active !== "0" &&
+        ["inactive", "private", "deleted", "unavailable"].indexOf(availability) < 0;
+    });
     var candidates = [];
     lectures.forEach(function addLecture(item) {
       candidates.push({ type: "강의", root: "/workshop/lecture/", item: item });
