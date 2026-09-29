@@ -137,7 +137,7 @@ class BookAffiliateDisclosureTests(unittest.TestCase):
             with self.subTest(value=value):
                 page, errors = self.page_for("/book/001/", book={"isbn_registration_group_label": value})
                 page.evaluate("window.WebRBookPages.detail()")
-                row = page.locator("#book-detail tr").filter(has=page.locator('th[data-webr-i18n="ISBN 등록 지역"]'))
+                row = page.locator("#book-detail tr").filter(has=page.locator("th").get_by_text("ISBN 등록 지역", exact=True))
                 self.assertEqual(row.count(), expected)
                 if expected:
                     self.assertEqual(row.locator("td").inner_text(), value)
