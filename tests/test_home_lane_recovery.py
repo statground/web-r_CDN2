@@ -1,0 +1,153 @@
+import json
+import unittest
+from pathlib import Path
+
+from playwright.sync_api import sync_playwright
+
+
+ROOT = Path(__file__).resolve().parents[1]
+SCRIPTS = ROOT / "scripts_go/web_r_go_20260629_1025/scripts_v2/index"
+KEYS = ["rcommunity", "community", "books", "packages", "ecosystem", "workshops", "notices", "lectures", "youtube", "activity"]
+BOOK = {"kind": "book", "title": "Current R book", "href": "/book/d/9781484258286/", "published_at": "2026-09-28"}
+VIDEO = {"title": "Current R video", "href": "/workshop/youtube/read/11111111-1111-4111-8111-111111111111/", "published_at": "2026-09-29"}
+LECTURE = {"title": "Healthy R lecture", "href": "/workshop/lecture/42/", "published_at": "2026-09-27"}
+
+
+def summary(*, books=None, youtube=None, lectures=None, unavailable=None):
+    sections = {key: [] for key in KEYS}
+    sections.update({"books": books or [], "youtube": youtube or [], "lectures": lectures or [],
+                     "packages": [{"title": "Healthy R package", "href": "/r-ecosystem/packages/stats/"}]})
+    return {"ok": True, "complete": not unavailable, "sections": sections,
+            "statistics": {"cnt_member": 8160, "cnt_visitor": 1, "cnt_pageview": 2},
+            "unavailable_sections": unavailable or [], "stale_sections": [],
+            "book_visibility_revision": "current-server-revision"}
+
+
+class HomeLaneRecoveryTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.playwright = sync_playwright().start()
+        cls.browser = cls.playwright.chromium.launch(headless=True)
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.browser.close()
+        cls.playwright.stop()
+
+    def render(self, live, *, cached=None, hold=False, deadline=None):
+        page = self.browser.new_page()
+        self.addCleanup(page.close)
+        errors = []
+        page.on("pageerror", lambda error: errors.append(str(error)))
+        page.add_init_script("window.__liveSummary=" + json.dumps(live) + ";window.__holdSummary=" + json.dumps(hold) + ";")
+        page.add_init_script("""
+          window.__hidden = false; window.__calls = []; window.__aborts = 0;
+          window.__active = 0; window.__maxActive = 0; window.__held = [];
+          Object.defineProperty(document, 'hidden', {get: () => window.__hidden});
+          Object.defineProperty(document, 'visibilityState', {get: () => window.__hidden ? 'hidden' : 'visible'});
+          const timer = window.setTimeout.bind(window);
+          window.setTimeout = (fn, ms, ...args) => timer(fn,
+            ms === 12000 ? (window.__deadline || ms) :
+              window.__manualOnly && ms >= 800 ? 60000 :
+              ms >= 800 && ms <= 3000 ? 1 : ms > 10000 && ms < 20000 ? 70 : ms, ...args);
+          window.fetch = function(url, init = {}) {
+            const path = new URL(url, location.href).pathname;
+            if (path === '/ajax_index_notice/') return Promise.resolve(new Response('{}', {status: 200}));
+            if (path !== '/homepage/content-summary/') throw new Error('unexpected request ' + path);
+            window.__calls.push({cache: init.cache, method: init.method, url: String(url)});
+            window.__maxActive = Math.max(window.__maxActive, ++window.__active);
+            if (init.signal) init.signal.addEventListener('abort', () => ++window.__aborts, {once: true});
+            if (window.__holdSummary) return new Promise(resolve => {
+              window.__held.push(body => {--window.__active; resolve(new Response(JSON.stringify(body), {status: 200}));});
+            });
+            --window.__active;
+            return Promise.resolve(new Response(JSON.stringify(window.__liveSummary), {status: window.__status || 200}));
+          };
+        """)
+        if deadline:
+            page.add_init_script("window.__manualOnly=true;window.__deadline=" + str(deadline) + ";")
+        if cached:
+            page.add_init_script("localStorage.setItem('webr.home.public-summary.v1', JSON.stringify({schema:1,stored_at:Date.now(),payload:" + json.dumps(cached) + "}));")
+        page.route("**/*", lambda route: route.fulfill(status=200, content_type="text/html", body='<div id="div_main"></div>') if route.request.url == "https://home.test/" else route.abort())
+        page.goto("https://home.test/")
+        page.add_style_tag(path=str(ROOT / "scripts_go/web_r_go_20260629_1025/styles_v2/index/home_compact_portal_20260729_1530.css"))
+        page.add_script_tag(path=str(SCRIPTS / "set_main_compact_portal_20260930_lane_recovery.js"))
+        page.add_script_tag(path=str(SCRIPTS / "home_summary_terminal_guard_20260828_2306.js"))
+        page.evaluate("window.set_main()")
+        return page, errors
+
+    def test_book_arrival_does_not_stop_later_youtube_and_other_lane_recovery(self):
+        page, errors = self.render(summary(unavailable=["books", "youtube", "lectures"]))
+        page.wait_for_function("window.__calls.length >= 4")
+        page.evaluate("window.__liveSummary = " + json.dumps(summary(books=[BOOK], unavailable=["youtube", "lectures"])))
+        page.get_by_role("link", name="Current R book", exact=False).wait_for()
+        page.evaluate("window.__liveSummary = " + json.dumps(summary(books=[BOOK], youtube=[VIDEO], lectures=[LECTURE])))
+        page.get_by_role("link", name="Current R video", exact=False).wait_for()
+        page.wait_for_function("document.querySelector('#webr-home-portal').dataset.homeSummaryState === 'ready'")
+        completed = page.evaluate("window.__calls.length")
+        page.wait_for_timeout(180)
+        self.assertEqual(page.evaluate("window.__calls.length"), completed)
+        self.assertGreaterEqual(completed, 6)
+        self.assertEqual(page.evaluate("window.__maxActive"), 1)
+        self.assertTrue(page.evaluate("window.__calls.every(call => call.cache === 'no-store' && call.method === 'GET')"))
+        self.assertEqual(errors, [])
+
+    def test_fresh_withdrawal_clears_previous_book_video_and_preserves_independent_lane(self):
+        page, errors = self.render(summary(books=[BOOK], youtube=[VIDEO], unavailable=["lectures"]))
+        page.get_by_role("link", name="Current R video", exact=False).wait_for()
+        withdrawn = summary(youtube=[{**VIDEO, "active": False}], lectures=[LECTURE], unavailable=["books"])
+        withdrawn["book_visibility_revision"] = ""
+        page.evaluate("window.__liveSummary = " + json.dumps(withdrawn))
+        page.get_by_role("link", name="Healthy R lecture", exact=False).wait_for()
+        self.assertNotIn("Current R book", page.locator("body").inner_text())
+        self.assertNotIn("Current R video", page.locator("body").inner_text())
+        self.assertIn("Healthy R package", page.locator("body").inner_text())
+        self.assertEqual(errors, [])
+
+    def test_saved_visibility_is_never_replayed_during_recovery(self):
+        cached = summary(books=[BOOK], youtube=[VIDEO], lectures=[LECTURE])
+        page, errors = self.render(summary(unavailable=["books", "youtube"]), cached=cached)
+        page.wait_for_function("window.__calls.length >= 4")
+        self.assertNotIn("Current R book", page.locator("body").inner_text())
+        self.assertNotIn("Current R video", page.locator("body").inner_text())
+        self.assertEqual(errors, [])
+
+    def test_hidden_page_cancels_and_late_response_cannot_resurrect_visibility(self):
+        live = summary(lectures=[LECTURE])
+        page, errors = self.render(live, hold=True)
+        page.wait_for_function("window.__held.length === 1")
+        page.evaluate("window.__hidden=true;document.dispatchEvent(new Event('visibilitychange'))")
+        self.assertEqual(page.evaluate("window.__aborts"), 1)
+        page.wait_for_timeout(100)
+        self.assertEqual(page.evaluate("window.__calls.length"), 1)
+        page.evaluate("window.dispatchEvent(new Event('pagehide'));window.__hidden=false;window.dispatchEvent(new Event('pageshow'));window.__holdSummary=false")
+        page.evaluate("window.__held.shift()(" + json.dumps(summary(books=[BOOK], youtube=[VIDEO])) + ")")
+        page.get_by_role("link", name="Healthy R lecture", exact=False).wait_for()
+        self.assertNotIn("Current R book", page.locator("body").inner_text())
+        self.assertNotIn("Current R video", page.locator("body").inner_text())
+        self.assertEqual(page.evaluate("window.__maxActive"), 1)
+        self.assertEqual(errors, [])
+
+    def test_uncertified_book_and_placeholder_video_never_gain_visibility(self):
+        live = summary(books=[BOOK], youtube=[{**VIDEO, "title": "youtube video #qLZmigdY7wg"}], lectures=[LECTURE])
+        live["book_visibility_revision"] = ""
+        page, errors = self.render(live)
+        page.get_by_role("link", name="Healthy R lecture", exact=False).wait_for()
+        self.assertNotIn("Current R book", page.locator("body").inner_text())
+        self.assertNotIn("youtube video #qLZmigdY7wg", page.locator("body").inner_text())
+        page.get_by_role("button", name="최신 자료 다시 확인").wait_for(state="visible")
+        self.assertEqual(errors, [])
+
+    def test_hanging_summary_has_deadline_and_manual_recovery(self):
+        page, errors = self.render(summary(), hold=True, deadline=20)
+        retry = page.get_by_role("button", name="최신 자료 다시 확인")
+        retry.wait_for(state="visible")
+        page.wait_for_function("window.__aborts >= 1")
+        page.evaluate("window.__holdSummary=false;window.__liveSummary=" + json.dumps(summary(youtube=[VIDEO])))
+        retry.click()
+        page.get_by_role("link", name="Current R video", exact=False).wait_for()
+        self.assertEqual(errors, [])
+
+
+if __name__ == "__main__":
+    unittest.main()
