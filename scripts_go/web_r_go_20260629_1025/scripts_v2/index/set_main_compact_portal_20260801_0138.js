@@ -15,6 +15,9 @@
     { key: "ecosystem", label: "R 에코시스템", href: "/r-ecosystem/" },
     { key: "workshops", label: "워크샵", href: "/workshop/" }
   ];
+  var bookCategory = categories.find(function isBookCategory(definition) {
+    return definition.key === "books";
+  });
   var productLinks = [
     {
       label: "무료 서버 접속",
@@ -44,6 +47,12 @@
   var refs = null;
   var summaryRequest = null;
   var summaryRetryDelays = [0, 900, 1800, 3000];
+  var bookRecoveryTimer = 0;
+  var bookRecoveryController = null;
+  var bookRecoveryInFlight = false;
+  var bookRecoveryWanted = false;
+  var bookRecoverySuspended = false;
+  var bookRecoveryLastStarted = 0;
 
   function element(tagName, className, text) {
     var node = document.createElement(tagName);
@@ -352,6 +361,31 @@
     });
   }
 
+  function currentBookItem(payload) {
+    var revision = payload && payload.book_visibility_revision;
+    var unavailable = payload && payload.unavailable_sections;
+    if (
+      typeof revision !== "string" || !revision.trim() || revision.length > 256 ||
+      (Array.isArray(unavailable) && unavailable.indexOf("books") >= 0) ||
+      (!Array.isArray(unavailable) && (!payload || payload.complete !== true))
+    ) {
+      return null;
+    }
+    var items = normalizedItems(payload, "books");
+    if (items.length !== 1 || items[0].kind !== "book") {
+      return null;
+    }
+    try {
+      var href = new URL(items[0].href, window.location.origin);
+      if (href.origin !== window.location.origin || !/^\/book\/d\/[^/]+\/$/.test(href.pathname)) {
+        return null;
+      }
+    } catch (error) {
+      return null;
+    }
+    return items[0];
+  }
+
   function categoryPlaceholder(definition) {
     var placeholder = element(
       "span",
@@ -542,7 +576,10 @@
 
   function renderSummary(payload) {
     categories.forEach(function renderOneCategory(definition) {
-      renderCategory(definition, normalizedItems(payload, definition.key)[0] || null);
+      var item = definition.key === "books"
+        ? currentBookItem(payload)
+        : normalizedItems(payload, definition.key)[0] || null;
+      renderCategory(definition, item);
     });
     renderStatistics(payload.statistics);
     renderNotices(normalizedItems(payload, "notices"));
@@ -584,8 +621,8 @@
     });
   }
 
-  function requestSummary() {
-    var controller = typeof AbortController === "function" ? new AbortController() : null;
+  function requestSummary(externalController) {
+    var controller = externalController || (typeof AbortController === "function" ? new AbortController() : null);
     var timeoutID = window.setTimeout(function abortSlowSummary() {
       if (controller) {
         controller.abort();
@@ -610,6 +647,64 @@
     }).finally(function summaryFinished() {
       window.clearTimeout(timeoutID);
     });
+  }
+
+  function bookRecoveryVisible() {
+    return !bookRecoverySuspended && document.hidden !== true && document.visibilityState !== "hidden";
+  }
+
+  function cancelBookRecoveryWork() {
+    if (bookRecoveryTimer) {
+      window.clearTimeout(bookRecoveryTimer);
+      bookRecoveryTimer = 0;
+    }
+    if (bookRecoveryController) {
+      bookRecoveryController.abort();
+    }
+  }
+
+  function scheduleBookRecovery(interval) {
+    if (!bookRecoveryWanted || !bookRecoveryVisible() || bookRecoveryTimer || bookRecoveryInFlight) {
+      return;
+    }
+    var elapsed = bookRecoveryLastStarted ? Math.max(0, Date.now() - bookRecoveryLastStarted) : 0;
+    var delay = bookRecoveryLastStarted ? Math.max(0, interval - elapsed) : interval;
+    bookRecoveryTimer = window.setTimeout(retryUnavailableBook, delay);
+  }
+
+  function retryUnavailableBook() {
+    bookRecoveryTimer = 0;
+    if (!bookRecoveryWanted || !bookRecoveryVisible() || bookRecoveryInFlight) {
+      return;
+    }
+    bookRecoveryInFlight = true;
+    bookRecoveryLastStarted = Date.now();
+    bookRecoveryController = typeof AbortController === "function" ? new AbortController() : null;
+    requestSummary(bookRecoveryController).then(function acceptRecoveredBook(payload) {
+      if (!bookRecoveryWanted || !bookRecoveryVisible()) {
+        return;
+      }
+      var item = currentBookItem(payload);
+      if (!item) {
+        return;
+      }
+      renderCategory(bookCategory, item);
+      bookRecoveryWanted = false;
+    }).catch(function keepCurrentSections() {
+      // A failed recovery read leaves the already rendered sections intact.
+    }).finally(function finishBookRecovery() {
+      bookRecoveryController = null;
+      bookRecoveryInFlight = false;
+      scheduleBookRecovery(25000 + Math.floor(Math.random() * 5000));
+    });
+  }
+
+  function recoverBookAfterInitialSummary(payload) {
+    if (currentBookItem(payload)) {
+      return;
+    }
+    bookRecoveryWanted = true;
+    scheduleBookRecovery(15000);
   }
 
   function loadSummary() {
@@ -641,6 +736,7 @@
         document.dispatchEvent(new CustomEvent("webr:home-summary-ready", {
           detail: { ok: false, complete: false }
         }));
+        recoverBookAfterInitialSummary(null);
         return null;
       }
       if (payload.complete !== true) {
@@ -649,6 +745,7 @@
       document.dispatchEvent(new CustomEvent("webr:home-summary-ready", {
         detail: { ok: true, complete: payload.complete === true }
       }));
+      recoverBookAfterInitialSummary(payload);
       return payload;
     });
     return summaryRequest;
@@ -667,6 +764,22 @@
     root.appendChild(main);
     loadSummary();
   }
+
+  document.addEventListener("visibilitychange", function updateBookRecoveryVisibility() {
+    if (bookRecoveryVisible()) {
+      scheduleBookRecovery(15000);
+    } else {
+      cancelBookRecoveryWork();
+    }
+  });
+  window.addEventListener("pagehide", function suspendBookRecovery() {
+    bookRecoverySuspended = true;
+    cancelBookRecoveryWork();
+  });
+  window.addEventListener("pageshow", function resumeBookRecovery() {
+    bookRecoverySuspended = false;
+    scheduleBookRecovery(15000);
+  });
 
   window.set_main = setMain;
 })(window, document);

@@ -567,9 +567,9 @@ const IntroNoticeList = /* @__PURE__ */ (() => {
       props.children
     );
   }
-  function NoticePagination() {
+  function NoticePagination({ incomplete = false }) {
     const totalPages = noticeTotalPages();
-    if (totalPages <= 1) {
+    if (incomplete || totalPages <= 1) {
       return null;
     }
     const pages = [];
@@ -603,12 +603,14 @@ const IntroNoticeList = /* @__PURE__ */ (() => {
     }
   }
 	  async function get_article_list(mode2, requestedPage = 1) {
-	    const ArticleList = ({ data: data2, isMain = false }) => {
+	    const ArticleList = ({ data: data2, incomplete = false }) => {
 	      const rows = Array.isArray(data2) ? data2 : Object.values(data2 || {});
 	      const article_list = rows.map(
 	        (article, idx) => /* @__PURE__ */ React.createElement(Div_new_article_list, { key: article.uuid || article.uuid_article || idx, data: article })
 	      );
-	      return /* @__PURE__ */ React.createElement("div", { class: "w-full space-y-4" }, /* @__PURE__ */ React.createElement("div", { class: "flex w-full flex-col items-stretch gap-3" }, article_list.length > 0 ? article_list : /* @__PURE__ */ React.createElement("div", { class: "rounded-lg border border-amber-200 bg-amber-50 px-4 py-4 text-sm text-amber-800" }, "\uD45C\uC2DC\uD560 \uACF5\uC9C0\uC0AC\uD56D\uC774 \uC5C6\uC2B5\uB2C8\uB2E4.")), /* @__PURE__ */ React.createElement(NoticePagination, null));
+	      const warning = incomplete ? /* @__PURE__ */ React.createElement("div", { role: "status", class: "rounded-lg border border-amber-200 bg-amber-50 px-4 py-4 text-sm text-amber-800" }, "\uACF5\uC9C0 \uBAA9\uB85D\uC744 \uC77C\uC2DC\uC801\uC73C\uB85C \uBD88\uB7EC\uC624\uC9C0 \uBABB\uD588\uC2B5\uB2C8\uB2E4. \uC7A0\uC2DC \uD6C4 \uB2E4\uC2DC \uC2DC\uB3C4\uD574 \uC8FC\uC138\uC694.") : null;
+	      const empty = !incomplete && article_list.length === 0 ? /* @__PURE__ */ React.createElement("div", { class: "rounded-lg border border-amber-200 bg-amber-50 px-4 py-4 text-sm text-amber-800" }, "\uD45C\uC2DC\uD560 \uACF5\uC9C0\uC0AC\uD56D\uC774 \uC5C6\uC2B5\uB2C8\uB2E4.") : null;
+	      return /* @__PURE__ */ React.createElement("div", { class: "w-full space-y-4" }, warning, /* @__PURE__ */ React.createElement("div", { class: "flex w-full flex-col items-stretch gap-3" }, article_list, empty), /* @__PURE__ */ React.createElement(NoticePagination, { incomplete }));
 	    };
     if (toggle_page) {
       return;
@@ -639,17 +641,23 @@ const IntroNoticeList = /* @__PURE__ */ (() => {
           headers: { "X-CSRFToken": getCookie("csrftoken") },
           body: request_data
         }).then((res) => res.json());
-        noticeBackendCache[backendPage] = data;
+        // A partial response is not a complete page and must be retried.
+        if (data && data.complete !== false && data.partial !== true && data.ok !== false) {
+          noticeBackendCache[backendPage] = data;
+        }
       }
-      article_counter = Number(data["count"] && data["count"].cnt || 0);
-      page_num = noticeClampPage(page_num);
-      const rows = noticeRowsForPage(Object.values(data.list || {}), page_num);
+      const incomplete = !data || data.complete === false || data.partial === true || data.ok === false;
+      article_counter = incomplete ? 0 : Number(data["count"] && data["count"].cnt || 0);
+      if (!incomplete) {
+        page_num = noticeClampPage(page_num);
+      }
+      const rows = noticeRowsForPage(Object.values(data && data.list || {}), page_num);
       ReactDOM.render(
         /* @__PURE__ */ React.createElement(
           ArticleList,
           {
             data: rows,
-            isMain: true
+            incomplete
           }
         ),
         document.getElementById("div_article_list")
