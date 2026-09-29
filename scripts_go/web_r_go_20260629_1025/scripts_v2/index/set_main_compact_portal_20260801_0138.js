@@ -7,6 +7,7 @@
   window.__webrCompactPortal202608010138Installed = true;
 
   var summaryEndpoint = "/homepage/content-summary/";
+  var noticeEndpoint = "/ajax_index_notice/";
   var categories = [
     { key: "rcommunity", label: "R Community", href: "/community/r-community/" },
     { key: "community", label: "커뮤니티", href: "/community/" },
@@ -20,28 +21,28 @@
   });
   var productLinks = [
     {
-      label: "무료 서버 접속",
+      label: "Web-R 무료 서버",
       description: "기존 Web-R 무료 분석 서버",
       href: "/webr/",
       tone: "blue"
     },
     {
-      label: "정회원 서버",
+      label: "Web-R 정회원 서버",
       description: "정회원 전용 분석 환경",
       href: "/webr/member/",
       tone: "cyan"
-    },
-    {
-      label: "Web-R 2.0",
-      description: "새 분석 도구 모음",
-      href: "/webr/2.0/",
-      tone: "violet"
     },
     {
       label: "Web-R Notebook",
       description: "R 코드와 문서 작업 공간",
       href: "/webr/notebook/",
       tone: "emerald"
+    },
+    {
+      label: "Web-R 2.0 (beta)",
+      description: "바로 쓰는 도구와 학습",
+      href: "/webr/2.0/",
+      tone: "violet"
     }
   ];
   var refs = null;
@@ -53,6 +54,10 @@
   var bookRecoveryWanted = false;
   var bookRecoverySuspended = false;
   var bookRecoveryLastStarted = 0;
+  var noticeRetryInFlight = false;
+  var noticeRequest = null;
+  var latestStatistics = null;
+  var latestActivity = null;
 
   function element(tagName, className, text) {
     var node = document.createElement(tagName);
@@ -63,6 +68,45 @@
       node.textContent = String(text);
     }
     return node;
+  }
+
+  // Scope the shared locale runtime to interface copy. Collected titles,
+  // summaries, notice text and activity messages remain source content.
+  function uiElement(tagName, className, text) {
+    var node = element(tagName, className, text);
+    node.setAttribute("data-webr-ui", "");
+    return node;
+  }
+
+  var supportedSourceLanguages = new Set(["ko", "en", "ja", "zh-Hans", "zh-Hant", "es", "fr", "de", "pt-BR", "ru", "id", "vi", "th", "ms", "fil", "hi", "ar", "it", "nl", "pl", "sv", "tr", "uk"]);
+
+  // The board and notice read models supply verified display languages. Other
+  // collected sources have no trustworthy per-field language code; mark only
+  // unambiguous Korean script and leave ambiguous text unspecified.
+  function sourceText(tagName, className, text, displayLanguage) {
+    var node = element(tagName, className, text);
+    var value = String(text || "");
+    if (supportedSourceLanguages.has(displayLanguage)) {
+      node.lang = displayLanguage;
+    } else if (/[\u1100-\u11ff\u3130-\u318f\uac00-\ud7a3]/.test(value) &&
+        !/[\u0400-\u052f\u0600-\u08ff\u3040-\u30ff\u3400-\u9fff]/.test(value)) {
+      node.lang = "ko";
+    }
+    return node;
+  }
+
+  function uiLink(href, className, text) {
+    var node = link(href, className, text);
+    node.setAttribute("data-webr-ui", "");
+    return node;
+  }
+
+  function activeLanguage() {
+    return window.WebRI18n && window.WebRI18n.language || document.documentElement.lang || "ko";
+  }
+
+  function uiText(value) {
+    return window.WebRI18n && window.WebRI18n.t ? window.WebRI18n.t(value) : value;
   }
 
   function cleanText(value, limit) {
@@ -155,17 +199,14 @@
       return formatDate(raw);
     }
     var seconds = Math.max(0, Math.floor((Date.now() - parsed.getTime()) / 1000));
-    if (seconds < 60) {
-      return "방금 전";
-    }
-    if (seconds < 3600) {
-      return Math.floor(seconds / 60) + "분 전";
-    }
-    if (seconds < 86400) {
-      return Math.floor(seconds / 3600) + "시간 전";
-    }
-    if (seconds < 604800) {
-      return Math.floor(seconds / 86400) + "일 전";
+    try {
+      var formatter = new Intl.RelativeTimeFormat(activeLanguage(), { numeric: "auto", style: "short" });
+      if (seconds < 60) return formatter.format(0, "second");
+      if (seconds < 3600) return formatter.format(-Math.floor(seconds / 60), "minute");
+      if (seconds < 86400) return formatter.format(-Math.floor(seconds / 3600), "hour");
+      if (seconds < 604800) return formatter.format(-Math.floor(seconds / 86400), "day");
+    } catch (error) {
+      // Unsupported browser locale retains the language-neutral date below.
     }
     return formatDate(raw);
   }
@@ -175,7 +216,10 @@
     if (!Number.isFinite(parsed) || parsed < 0) {
       return "집계 중";
     }
-    return new Intl.NumberFormat("ko-KR").format(Math.floor(parsed)) + unit;
+    var language = activeLanguage();
+    var suffix = uiText(unit);
+    var space = language === "ko" || language === "ja" || language.indexOf("zh-") === 0 ? "" : " ";
+    return new Intl.NumberFormat(language).format(Math.floor(parsed)) + (suffix ? space + suffix : "");
   }
 
   function newBadge() {
@@ -194,8 +238,8 @@
 
   function productCard(item) {
     var card = link(item.href, "webr-home-compact__product-card webr-home-compact__product-card--" + item.tone);
-    var title = element("strong", "webr-home-compact__product-title", item.label);
-    var description = element("span", "webr-home-compact__product-description", item.description);
+    var title = uiElement("strong", "webr-home-compact__product-title", item.label);
+    var description = uiElement("span", "webr-home-compact__product-description", item.description);
     var arrow = element("span", "webr-home-compact__product-arrow", "→");
     arrow.setAttribute("aria-hidden", "true");
     card.appendChild(title);
@@ -210,23 +254,23 @@
 
     var identity = element("div", "webr-home-compact__identity");
     identity.appendChild(element("p", "webr-home-compact__eyebrow", "Web-R"));
-    var title = element("h1", "webr-home-compact__title", "웹에서 하는 R 통계");
+    var title = uiElement("h1", "webr-home-compact__title", "웹에서 하는 R 통계");
     title.id = "webr-home-title";
     identity.appendChild(title);
-    identity.appendChild(element(
+    identity.appendChild(uiElement(
       "p",
       "webr-home-compact__lead",
       "\"웹에서 하는 R통계\"는, 통계에는 관심이 있으나 R을 어려워하는 여러 연구자들을 위한 프로젝트입니다."
     ));
-    identity.appendChild(element(
+    identity.appendChild(uiElement(
       "p",
       "webr-home-compact__lead",
       "R설치없이 클릭만으로 웹에 있는 서버를 이용하여 통계분석을 하고 보다 R을 쉽게 사용하기 위한 패키지 및 앱 공동개발을 목표로 하고 있습니다."
     ));
 
     var primaryActions = element("div", "webr-home-compact__actions");
-    primaryActions.appendChild(link("/webr/", "webr-home-compact__button webr-home-compact__button--primary", "무료 서버 접속"));
-    primaryActions.appendChild(link("/webr/2.0/", "webr-home-compact__button webr-home-compact__button--secondary", "Web-R 2.0"));
+    primaryActions.appendChild(uiLink("/webr/", "webr-home-compact__button webr-home-compact__button--primary", "무료 서버 접속"));
+    primaryActions.appendChild(uiLink("/webr/2.0/", "webr-home-compact__button webr-home-compact__button--secondary", "Web-R 2.0"));
     identity.appendChild(primaryActions);
     section.appendChild(identity);
 
@@ -243,8 +287,8 @@
     var card = element("article", "webr-home-compact__category");
     card.dataset.homeCategory = definition.key;
     var header = element("div", "webr-home-compact__category-header");
-    header.appendChild(link(definition.href, "webr-home-compact__category-title", definition.label));
-    header.appendChild(link(definition.href, "webr-home-compact__more", "더 보기"));
+    header.appendChild(uiLink(definition.href, "webr-home-compact__category-title", definition.label));
+    header.appendChild(uiLink(definition.href, "webr-home-compact__more", "더 보기"));
     card.appendChild(header);
     var body = element("div", "webr-home-compact__category-body");
     body.appendChild(skeleton(2));
@@ -255,9 +299,9 @@
   function railCard(title, href, className) {
     var card = element("section", "webr-home-compact__rail-card" + (className ? " " + className : ""));
     var header = element("div", "webr-home-compact__rail-header");
-    header.appendChild(element("h3", "webr-home-compact__rail-title", title));
+    header.appendChild(uiElement("h3", "webr-home-compact__rail-title", title));
     if (href) {
-      header.appendChild(link(href, "webr-home-compact__more", "더 보기"));
+      header.appendChild(uiLink(href, "webr-home-compact__more", "더 보기"));
     }
     card.appendChild(header);
     var body = element("div", "webr-home-compact__rail-body");
@@ -275,12 +319,12 @@
     var list = element("div", "webr-home-compact__stats");
     rows.forEach(function appendRow(row) {
       var item = element("div", "webr-home-compact__stat");
-      var icon = element("span", "webr-home-compact__stat-icon", row.icon);
+      var icon = uiElement("span", "webr-home-compact__stat-icon", row.icon);
       icon.setAttribute("aria-hidden", "true");
       item.appendChild(icon);
       var copy = element("span", "webr-home-compact__stat-copy");
-      copy.appendChild(element("span", "webr-home-compact__stat-label", row.label));
-      var value = element("strong", "webr-home-compact__stat-value", "집계 중");
+      copy.appendChild(uiElement("span", "webr-home-compact__stat-label", row.label));
+      var value = uiElement("strong", "webr-home-compact__stat-value", "집계 중");
       value.dataset.statKey = row.key;
       value.dataset.statUnit = row.unit;
       copy.appendChild(value);
@@ -299,13 +343,13 @@
 
     var heading = element("div", "webr-home-compact__portal-heading");
     var copy = element("div");
-    copy.appendChild(element("p", "webr-home-compact__eyebrow", "R 자료와 Web-R 소식"));
-    var title = element("h2", "webr-home-compact__section-title", "새로 올라온 R 자료 모아보기");
+    copy.appendChild(uiElement("p", "webr-home-compact__eyebrow", "R 자료와 Web-R 소식"));
+    var title = uiElement("h2", "webr-home-compact__section-title", "새로 올라온 R 자료 모아보기");
     title.id = "webr-home-portal-title";
     copy.appendChild(title);
-    copy.appendChild(element("p", "webr-home-compact__section-description", "각 영역에서 가장 최근 자료 한 건만 빠르게 확인하세요."));
+    copy.appendChild(uiElement("p", "webr-home-compact__section-description", "각 영역에서 가장 최근 자료 한 건만 빠르게 확인하세요."));
     heading.appendChild(copy);
-    var status = element("p", "webr-home-compact__status", "최신 자료를 불러오고 있습니다.");
+    var status = uiElement("p", "webr-home-compact__status", "최신 자료를 불러오고 있습니다.");
     status.setAttribute("role", "status");
     status.setAttribute("aria-live", "polite");
     heading.appendChild(status);
@@ -429,7 +473,7 @@
     var body = refs.categoryBodies[definition.key];
     body.replaceChildren();
     if (!item) {
-      body.appendChild(link(definition.href, "webr-home-compact__empty", definition.label + " 전체 보기"));
+      body.appendChild(uiLink(definition.href, "webr-home-compact__empty", "더 보기"));
       return;
     }
     var media = categoryMedia(definition, item);
@@ -442,7 +486,7 @@
       anchor.appendChild(media);
     }
     var titleRow = element("span", "webr-home-compact__article-title-row");
-    titleRow.appendChild(element("strong", "webr-home-compact__article-title", cleanText(item.title, 72)));
+    titleRow.appendChild(sourceText("strong", "webr-home-compact__article-title", cleanText(item.title, 72), item.title_language));
     if (item.is_new === true) {
       titleRow.appendChild(newBadge());
     }
@@ -451,15 +495,17 @@
     if (meta) {
       content.appendChild(element("span", "webr-home-compact__article-meta", meta));
     }
-    var summary = cleanText(item.summary, 180) ||
-      definition.label + "의 최신 자료를 확인해 보세요.";
-    content.appendChild(element("span", "webr-home-compact__article-summary", summary));
+    var summary = cleanText(item.summary, 180);
+    content.appendChild(summary
+      ? sourceText("span", "webr-home-compact__article-summary", summary, item.summary_language)
+      : uiElement("span", "webr-home-compact__article-summary", "최신 자료를 확인해 보세요."));
     anchor.appendChild(content);
     body.appendChild(anchor);
   }
 
   function renderStatistics(statistics) {
     var values = statistics && typeof statistics === "object" ? statistics : {};
+    latestStatistics = values;
     var trafficStatus = cleanText(values.traffic_status, 32).toLowerCase();
     var trafficUnavailable = trafficStatus === "unavailable" || trafficStatus === "stale";
     refs.statisticsBody.querySelectorAll("[data-stat-key]").forEach(function updateValue(node) {
@@ -475,18 +521,129 @@
     });
   }
 
-  function renderNotices(items) {
+  function noticeSummaryUnavailable(payload) {
+    if (!payload || !payload.sections || !Array.isArray(payload.sections.notices)) {
+      return true;
+    }
+    var unavailable = payload.unavailable_sections;
+    var stale = payload.stale_sections;
+    if (Array.isArray(unavailable)) {
+      return unavailable.indexOf("notices") >= 0 ||
+        (Array.isArray(stale) && stale.indexOf("notices") >= 0);
+    }
+    return payload.complete !== true;
+  }
+
+  function retryUnavailableNotices() {
+    if (noticeRetryInFlight) {
+      return;
+    }
+    noticeRetryInFlight = true;
+    var button = refs.noticesBody.querySelector(".webr-home-compact__notice-retry");
+    if (button) {
+      button.disabled = true;
+      button.textContent = "확인 중...";
+    }
+    requestNotices().then(function renderRetriedNotices(rows) {
+      noticeRetryInFlight = false;
+      renderNotices(rows, { sections: { notices: rows }, unavailable_sections: [] });
+    }).catch(function keepNoticesUnavailable() {
+      noticeRetryInFlight = false;
+      renderNotices([], null);
+    });
+  }
+
+  function requestNotices() {
+    var controller = typeof AbortController === "function" ? new AbortController() : null;
+    var timeoutID = window.setTimeout(function abortSlowNotices() {
+      if (controller) {
+        controller.abort();
+      }
+    }, 20000);
+    return fetch(noticeEndpoint + "?lang=" + encodeURIComponent(activeLanguage()), {
+      method: "GET",
+      credentials: "same-origin",
+      headers: { Accept: "application/json" },
+      cache: "no-store",
+      signal: controller ? controller.signal : undefined
+    }).then(function parseNotices(response) {
+      if (!response.ok) {
+        throw new Error("notice authority unavailable");
+      }
+      return response.json();
+    }).then(function normalizeNotices(payload) {
+      if (!payload || typeof payload !== "object" || payload.ok === false) {
+        throw new Error("notice authority unavailable");
+      }
+      return Object.keys(payload).filter(function isIndexedRow(key) {
+        return /^[0-9]+$/.test(key);
+      }).sort(function numericOrder(left, right) {
+        return Number(left) - Number(right);
+      }).map(function publicNotice(key) {
+        var row = payload[key] || {};
+        var id = cleanText(row.uuid, 64);
+        if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) {
+          return null;
+        }
+        return {
+          title: cleanText(row.title, 96),
+          display_title_language: row.display_title_language,
+          href: "/intro/notice/read/" + id + "/",
+          published_at: row.created_at,
+          is_new: row.is_new === true || row.is_new === 1
+        };
+      }).filter(function hasPublicTitle(row) {
+        return row && row.title;
+      });
+    }).finally(function noticeFinished() {
+      window.clearTimeout(timeoutID);
+    });
+  }
+
+  function loadNotices() {
+    if (noticeRequest) {
+      return noticeRequest;
+    }
+    refs.noticesBody.replaceChildren(uiElement("p", "webr-home-compact__notice-loading", "공지사항 확인 중..."));
+    noticeRequest = requestNotices().then(function showCurrentNotices(rows) {
+      renderNotices(rows, { sections: { notices: rows }, unavailable_sections: [] });
+      return rows;
+    }).catch(function showUnavailableNotices() {
+      renderNotices([], null);
+      return null;
+    }).finally(function allowNextNoticeRead() {
+      noticeRequest = null;
+    });
+    return noticeRequest;
+  }
+
+  function renderNotices(items, payload) {
     refs.noticesBody.replaceChildren();
     var rows = items.slice(0, 3);
     if (!rows.length) {
-      refs.noticesBody.appendChild(link("/intro/notice/", "webr-home-compact__empty", "공지사항 전체 보기"));
+      if (noticeSummaryUnavailable(payload)) {
+        var unavailable = element("div", "webr-home-compact__notice-unavailable");
+        unavailable.setAttribute("role", "status");
+        unavailable.appendChild(uiElement("p", "", "공지사항을 확인하지 못했습니다. 잠시 후 다시 시도해 주세요."));
+        var actions = element("div", "webr-home-compact__notice-actions");
+        var retry = uiElement("button", "webr-home-compact__notice-retry", noticeRetryInFlight ? "확인 중..." : "다시 시도");
+        retry.type = "button";
+        retry.disabled = noticeRetryInFlight;
+        retry.addEventListener("click", retryUnavailableNotices);
+        actions.appendChild(retry);
+        actions.appendChild(uiLink("/intro/notice/", "webr-home-compact__notice-visit", "공지사항으로 이동"));
+        unavailable.appendChild(actions);
+        refs.noticesBody.appendChild(unavailable);
+        return;
+      }
+      refs.noticesBody.appendChild(uiLink("/intro/notice/", "webr-home-compact__empty", "공지사항 전체 보기"));
       return;
     }
     var list = element("div", "webr-home-compact__notice-list");
     rows.forEach(function appendNotice(item) {
       var anchor = link(item.href || "/intro/notice/", "webr-home-compact__notice");
       var titleRow = element("span", "webr-home-compact__notice-title-row");
-      titleRow.appendChild(element("strong", "webr-home-compact__notice-title", cleanText(item.title, 76)));
+      titleRow.appendChild(sourceText("strong", "webr-home-compact__notice-title", cleanText(item.title, 76), item.display_title_language));
       if (item.is_new === true) {
         titleRow.appendChild(newBadge());
       }
@@ -502,7 +659,15 @@
 
   function featuredMedia(payload) {
     var lectures = normalizedItems(payload, "lectures");
-    var youtube = normalizedItems(payload, "youtube");
+    var youtube = normalizedItems(payload, "youtube").filter(function publicVideo(item) {
+      var title = cleanText(item.title, 200);
+      var availability = cleanText(item.availability || item.status, 32).toLowerCase();
+      // These are collector fallback labels, not verified video metadata.
+      return !/^youtube video\s+#?[a-z0-9_-]{11}$/i.test(title) &&
+        !/^(private|deleted|unavailable) video$/i.test(title) &&
+        item.active !== false && item.active !== 0 && item.active !== "0" &&
+        ["inactive", "private", "deleted", "unavailable"].indexOf(availability) < 0;
+    });
     var candidates = [];
     lectures.forEach(function addLecture(item) {
       candidates.push({ type: "강의", root: "/workshop/lecture/", item: item });
@@ -521,7 +686,7 @@
     var media = featuredMedia(payload);
     var existingMore = refs.mediaHeader.querySelector(".webr-home-compact__more");
     if (!media) {
-      refs.mediaBody.appendChild(link("/workshop/", "webr-home-compact__empty", "강의와 YouTube 전체 보기"));
+      refs.mediaBody.appendChild(uiLink("/workshop/", "webr-home-compact__empty", "강의와 YouTube 전체 보기"));
       return;
     }
     if (existingMore) {
@@ -537,12 +702,12 @@
       image.decoding = "async";
       anchor.appendChild(image);
     } else {
-      anchor.appendChild(element("span", "webr-home-compact__media-placeholder", media.type));
+      anchor.appendChild(uiElement("span", "webr-home-compact__media-placeholder", media.type));
     }
-    var type = element("span", "webr-home-compact__media-type", media.type);
+    var type = uiElement("span", "webr-home-compact__media-type", media.type);
     anchor.appendChild(type);
     var titleRow = element("span", "webr-home-compact__media-title-row");
-    titleRow.appendChild(element("strong", "webr-home-compact__media-title", cleanText(media.item.title, 88)));
+    titleRow.appendChild(sourceText("strong", "webr-home-compact__media-title", cleanText(media.item.title, 88)));
     if (media.item.is_new === true) {
       titleRow.appendChild(newBadge());
     }
@@ -557,14 +722,24 @@
   function renderActivity(items) {
     refs.activityBody.replaceChildren();
     var rows = items.slice(0, 3);
+    latestActivity = rows;
     if (!rows.length) {
-      refs.activityBody.appendChild(element("p", "webr-home-compact__activity-empty", "표시할 최근 활동이 없습니다."));
+      refs.activityBody.appendChild(uiElement("p", "webr-home-compact__activity-empty", "표시할 최근 활동이 없습니다."));
       return;
     }
     var list = element("div", "webr-home-compact__activity-list");
     rows.forEach(function appendActivity(item) {
       var row = element("div", "webr-home-compact__activity-item");
-      row.appendChild(element("strong", "webr-home-compact__activity-title", cleanText(item.title, 100)));
+      var title = cleanText(item.title, 100);
+      var titleNode = element("strong", "webr-home-compact__activity-title", title);
+      var namedVisit = title.match(/^(.{1,70})님이 Web-R에 방문했습니다\.$/);
+      if (namedVisit) {
+        titleNode.setAttribute("data-webr-i18n", "{name}님이 Web-R에 방문했습니다.");
+        titleNode.setAttribute("data-webr-i18n-vars", JSON.stringify({ name: namedVisit[1] }));
+      } else if (title === "한 이용자가 Web-R에 방문했습니다.") {
+        titleNode.setAttribute("data-webr-i18n", title);
+      }
+      row.appendChild(titleNode);
       var time = relativeTime(item.published_at);
       if (time) {
         row.appendChild(element("span", "webr-home-compact__activity-time", time));
@@ -582,7 +757,8 @@
       renderCategory(definition, item);
     });
     renderStatistics(payload.statistics);
-    renderNotices(normalizedItems(payload, "notices"));
+    // Notices have a separate current-state request. A homepage summary may
+    // outlive a withdrawn notice and cannot authorize this card.
     renderMedia(payload);
     renderActivity(normalizedItems(payload, "activity"));
     if (payload.complete === true) {
@@ -607,7 +783,7 @@
       renderCategory(definition, null);
     });
     renderStatistics({});
-    renderNotices([]);
+    renderNotices([], null);
     renderMedia({ sections: {} });
     renderActivity([]);
     refs.section.setAttribute("aria-busy", "false");
@@ -628,7 +804,7 @@
         controller.abort();
       }
     }, 12000);
-    return fetch(summaryEndpoint, {
+    return fetch(summaryEndpoint + "?lang=" + encodeURIComponent(activeLanguage()), {
       method: "GET",
       credentials: "same-origin",
       headers: { Accept: "application/json" },
@@ -762,6 +938,7 @@
     main.appendChild(heroSection());
     main.appendChild(portalSection());
     root.appendChild(main);
+    loadNotices();
     loadSummary();
   }
 
@@ -779,6 +956,12 @@
   window.addEventListener("pageshow", function resumeBookRecovery() {
     bookRecoverySuspended = false;
     scheduleBookRecovery(15000);
+  });
+
+  window.addEventListener("webr:language-change", function relocalizeNumbersAndTimes() {
+    if (!refs) return;
+    if (latestStatistics) renderStatistics(latestStatistics);
+    if (latestActivity) renderActivity(latestActivity);
   });
 
   window.set_main = setMain;

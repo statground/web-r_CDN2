@@ -50,6 +50,34 @@
     search: window.location.search
   };
   window.WebRBookPages = window.WebRBookPages || {};
+  window.WebRBookIsCuratedAffiliateLink = function isCuratedAffiliateLink(rawURL) {
+    try {
+      const url = new URL(rawURL);
+      return url.protocol === "https:" && url.origin === window.location.origin && !url.username && !url.password && !url.search && !url.hash && /^\/book\/affiliate\/curated\/00[1-8]\/(?:yes24|kyobo)\/$/.test(url.pathname);
+    } catch (_) {
+      return false;
+    }
+  };
+  window.WebRBookSafeStores = function safeStores(rows, requireHTTPS = false) {
+    if (!Array.isArray(rows))
+      return [];
+    const seen = new Set();
+    return rows.map((row) => {
+      const name = String((row && row.marketplace) || "").trim();
+      const rawURL = String((row && row.url) || "").trim();
+      if (!name || !rawURL || /\s/.test(rawURL))
+        return null;
+      try {
+        const url = new URL(rawURL);
+        if ((requireHTTPS ? url.protocol !== "https:" : !["http:", "https:"].includes(url.protocol)) || !url.hostname || url.username || url.password || seen.has(name))
+          return null;
+        seen.add(name);
+        return { name, link: url.href };
+      } catch (_) {
+        return null;
+      }
+    }).filter(Boolean);
+  };
 })();
 (function() {
   window.WebRBookPages = window.WebRBookPages || {};
@@ -57,7 +85,43 @@
     const ctx = window.WebRBookRouteContext || {};
     const sub = ctx.sub || "";
     const root = document.getElementById("div_main");
-    const header_title = "\uB3C4\uC11C";
+    // Book data is localized by the server; these are interface labels only.
+    // Keep every locale complete so a language switch never mixes Korean UI
+    // labels into a translated book. The book route reloads on language change.
+    const detailKeys = ["books", "recommended", "marketplace", "buy", "view", "description", "contents", "publisherReview", "bookInfo", "published", "pages", "size", "publisher", "registration", "regionHint", "tocAll", "tocPartial", "showAll", "collapse", "affiliateNotice", "badRequest", "notFound", "loadError"];
+    const detailTranslations = {
+      ko: ["도서", "함께 보면 좋은 책", "마켓플레이스", "구매하러 가기", "보러가기", "책 소개", "목차", "출판사 리뷰", "책 정보", "출간", "페이지 수", "크기", "출판사", "ISBN 등록 지역", "ISBN 번호의 등록 그룹입니다. 책의 언어나 인쇄 국가를 뜻하지 않습니다.", "목차 {count}개 항목 전체 표시", "목차 {count}개 항목 중 {shown}개 표시", "목차 전체 보기", "목차 접기", "이 링크를 통해 구매하면 수수료를 제공받을 수 있습니다.", "잘못된 요청입니다. URL에 책 식별자(sub)가 필요합니다.", "해당 ID의 책을 찾을 수 없습니다. (sub: {sub})", "책 정보를 불러오는 데 실패했습니다. 오류: {error}"],
+      en: ["Books", "You may also like", "Marketplace", "Buy now", "View", "About this book", "Table of contents", "Publisher's review", "Book details", "Published", "Pages", "Dimensions", "Publisher", "ISBN registration area", "The ISBN registration group does not indicate the book's language or country of printing.", "Showing all {count} contents entries", "Showing {shown} of {count} contents entries", "View full contents", "Collapse contents", "We may receive a commission if you purchase through this link.", "Invalid request: a book identifier (sub) is required in the URL.", "Book not found for this ID (sub: {sub})", "Could not load book details. Error: {error}"],
+      ja: ["書籍", "こちらの本もおすすめ", "購入先", "購入する", "見る", "本の紹介", "目次", "出版社レビュー", "書籍情報", "出版日", "ページ数", "サイズ", "出版社", "ISBN登録地域", "ISBNの登録グループです。本の言語や印刷国を示すものではありません。", "目次の全{count}項目を表示中", "目次{count}項目中{shown}項目を表示中", "目次をすべて見る", "目次を閉じる", "このリンクから購入すると手数料を受け取る場合があります。", "無効なリクエストです。URLに書籍識別子（sub）が必要です。", "このIDの本は見つかりません（sub: {sub}）", "書籍情報を読み込めませんでした。エラー: {error}"],
+      "zh-Hans": ["图书", "你可能还喜欢", "购买平台", "前往购买", "查看", "图书简介", "目录", "出版社评论", "图书信息", "出版日期", "页数", "尺寸", "出版社", "ISBN注册地区", "ISBN注册组不代表图书语言或印刷国家。", "显示全部{count}项目录", "显示{count}项目录中的{shown}项", "查看完整目录", "收起目录", "通过此链接购买，我们可能会获得佣金。", "请求无效：网址中缺少图书标识（sub）。", "未找到此ID的图书（sub: {sub}）", "无法加载图书信息。错误：{error}"],
+      "zh-Hant": ["圖書", "你可能也喜歡", "購買平台", "前往購買", "查看", "圖書簡介", "目錄", "出版社評論", "圖書資訊", "出版日期", "頁數", "尺寸", "出版社", "ISBN註冊地區", "ISBN註冊組不代表書籍語言或印刷國家。", "顯示全部{count}項目錄", "顯示{count}項目錄中的{shown}項", "查看完整目錄", "收合目錄", "透過此連結購買，我們可能會收到佣金。", "請求無效：網址中缺少圖書識別碼（sub）。", "找不到此ID的書籍（sub: {sub}）", "無法載入圖書資訊。錯誤：{error}"],
+      es: ["Libros", "También te puede interesar", "Tiendas", "Comprar", "Ver", "Sobre este libro", "Índice", "Reseña de la editorial", "Datos del libro", "Publicado", "Páginas", "Dimensiones", "Editorial", "Zona de registro del ISBN", "El grupo de registro del ISBN no indica el idioma del libro ni el país de impresión.", "Se muestran las {count} entradas del índice", "Se muestran {shown} de {count} entradas del índice", "Ver índice completo", "Contraer índice", "Podemos recibir una comisión si compras mediante este enlace.", "Solicitud no válida: falta el identificador del libro (sub) en la URL.", "No se encontró el libro para este ID (sub: {sub})", "No se pudieron cargar los datos del libro. Error: {error}"],
+      fr: ["Livres", "Vous aimerez aussi", "Points de vente", "Acheter", "Voir", "À propos du livre", "Table des matières", "Avis de l'éditeur", "Informations sur le livre", "Parution", "Pages", "Dimensions", "Éditeur", "Zone d'enregistrement ISBN", "Le groupe d'enregistrement ISBN n'indique ni la langue du livre ni le pays d'impression.", "Les {count} entrées du sommaire sont affichées", "{shown} entrées sur {count} du sommaire sont affichées", "Voir tout le sommaire", "Réduire le sommaire", "Nous pouvons percevoir une commission si vous achetez via ce lien.", "Requête invalide : un identifiant de livre (sub) est requis dans l'URL.", "Aucun livre trouvé pour cet ID (sub : {sub})", "Impossible de charger le livre. Erreur : {error}"],
+      de: ["Bücher", "Das könnte Sie auch interessieren", "Bezugsquellen", "Kaufen", "Ansehen", "Über dieses Buch", "Inhaltsverzeichnis", "Rezension des Verlags", "Buchdetails", "Erschienen", "Seiten", "Abmessungen", "Verlag", "ISBN-Registrierungsgebiet", "Die ISBN-Registrierungsgruppe gibt weder die Sprache des Buches noch das Druckland an.", "Alle {count} Einträge des Inhaltsverzeichnisses angezeigt", "{shown} von {count} Einträgen des Inhaltsverzeichnisses angezeigt", "Ganzes Inhaltsverzeichnis", "Inhaltsverzeichnis einklappen", "Bei einem Kauf über diesen Link erhalten wir möglicherweise eine Provision.", "Ungültige Anfrage: Die Buchkennung (sub) fehlt in der URL.", "Buch für diese ID nicht gefunden (sub: {sub})", "Buchdetails konnten nicht geladen werden. Fehler: {error}"],
+      "pt-BR": ["Livros", "Você também pode gostar", "Lojas", "Comprar", "Ver", "Sobre este livro", "Sumário", "Resenha da editora", "Dados do livro", "Publicado", "Páginas", "Dimensões", "Editora", "Região de registro do ISBN", "O grupo de registro do ISBN não indica o idioma do livro nem o país de impressão.", "Exibindo todas as {count} entradas do sumário", "Exibindo {shown} de {count} entradas do sumário", "Ver sumário completo", "Recolher sumário", "Podemos receber comissão se você comprar por este link.", "Solicitação inválida: falta o identificador do livro (sub) na URL.", "Livro não encontrado para este ID (sub: {sub})", "Não foi possível carregar os dados do livro. Erro: {error}"],
+      ru: ["Книги", "Вам также может понравиться", "Магазины", "Купить", "Посмотреть", "О книге", "Содержание", "Отзыв издателя", "Сведения о книге", "Дата издания", "Страниц", "Размеры", "Издательство", "Регион регистрации ISBN", "Группа регистрации ISBN не указывает на язык книги или страну печати.", "Показаны все {count} пункта содержания", "Показано {shown} из {count} пунктов содержания", "Показать всё содержание", "Свернуть содержание", "Мы можем получить комиссию при покупке по этой ссылке.", "Неверный запрос: в URL нет идентификатора книги (sub).", "Книга с этим ID не найдена (sub: {sub})", "Не удалось загрузить сведения о книге. Ошибка: {error}"],
+      id: ["Buku", "Buku lain yang mungkin Anda sukai", "Toko buku", "Beli", "Lihat", "Tentang buku ini", "Daftar isi", "Ulasan penerbit", "Informasi buku", "Terbit", "Jumlah halaman", "Ukuran", "Penerbit", "Wilayah pendaftaran ISBN", "Kelompok pendaftaran ISBN tidak menunjukkan bahasa buku atau negara pencetakan.", "Menampilkan seluruh {count} entri daftar isi", "Menampilkan {shown} dari {count} entri daftar isi", "Lihat seluruh daftar isi", "Tutup daftar isi", "Kami mungkin menerima komisi jika Anda membeli melalui tautan ini.", "Permintaan tidak valid: URL memerlukan pengenal buku (sub).", "Buku untuk ID ini tidak ditemukan (sub: {sub})", "Gagal memuat informasi buku. Kesalahan: {error}"],
+      vi: ["Sách", "Sách bạn có thể thích", "Nơi mua", "Mua ngay", "Xem", "Giới thiệu sách", "Mục lục", "Nhận xét của nhà xuất bản", "Thông tin sách", "Ngày xuất bản", "Số trang", "Kích thước", "Nhà xuất bản", "Khu vực đăng ký ISBN", "Nhóm đăng ký ISBN không cho biết ngôn ngữ của sách hoặc quốc gia in.", "Hiển thị toàn bộ {count} mục lục", "Hiển thị {shown} trong {count} mục lục", "Xem toàn bộ mục lục", "Thu gọn mục lục", "Chúng tôi có thể nhận hoa hồng nếu bạn mua qua liên kết này.", "Yêu cầu không hợp lệ: URL cần có mã sách (sub).", "Không tìm thấy sách với ID này (sub: {sub})", "Không thể tải thông tin sách. Lỗi: {error}"],
+      th: ["หนังสือ", "หนังสือที่คุณอาจชอบ", "ร้านค้า", "ซื้อเลย", "ดู", "เกี่ยวกับหนังสือ", "สารบัญ", "บทวิจารณ์จากสำนักพิมพ์", "ข้อมูลหนังสือ", "วันที่เผยแพร่", "จำนวนหน้า", "ขนาด", "สำนักพิมพ์", "พื้นที่จดทะเบียน ISBN", "กลุ่มจดทะเบียน ISBN ไม่ได้บอกภาษาของหนังสือหรือประเทศที่พิมพ์", "แสดงสารบัญทั้งหมด {count} รายการ", "แสดง {shown} จาก {count} รายการในสารบัญ", "ดูสารบัญทั้งหมด", "ย่อสารบัญ", "เราอาจได้รับค่าคอมมิชชันหากคุณซื้อผ่านลิงก์นี้", "คำขอไม่ถูกต้อง: URL ต้องมีรหัสหนังสือ (sub)", "ไม่พบหนังสือสำหรับ ID นี้ (sub: {sub})", "ไม่สามารถโหลดข้อมูลหนังสือได้ ข้อผิดพลาด: {error}"],
+      ms: ["Buku", "Anda mungkin juga suka", "Tempat membeli", "Beli sekarang", "Lihat", "Mengenai buku ini", "Isi kandungan", "Ulasan penerbit", "Maklumat buku", "Diterbitkan", "Halaman", "Saiz", "Penerbit", "Kawasan pendaftaran ISBN", "Kumpulan pendaftaran ISBN tidak menunjukkan bahasa buku atau negara cetakan.", "Memaparkan semua {count} entri isi kandungan", "Memaparkan {shown} daripada {count} entri isi kandungan", "Lihat isi kandungan penuh", "Tutup isi kandungan", "Kami mungkin menerima komisen jika anda membeli melalui pautan ini.", "Permintaan tidak sah: URL memerlukan pengecam buku (sub).", "Buku bagi ID ini tidak ditemui (sub: {sub})", "Tidak dapat memuatkan maklumat buku. Ralat: {error}"],
+      fil: ["Mga aklat", "Maaaring magustuhan mo rin", "Mga tindahan", "Bumili", "Tingnan", "Tungkol sa aklat", "Talaan ng nilalaman", "Pagsusuri ng tagapaglathala", "Detalye ng aklat", "Inilathala", "Mga pahina", "Sukat", "Tagapaglathala", "Lugar ng pagpaparehistro ng ISBN", "Hindi ipinapahiwatig ng pangkat ng pagpaparehistro ng ISBN ang wika ng aklat o bansa ng paglilimbag.", "Ipinapakita ang lahat ng {count} aytem sa talaan", "Ipinapakita ang {shown} sa {count} aytem sa talaan", "Tingnan ang buong talaan", "Itiklop ang talaan", "Maaari kaming makatanggap ng komisyon kung bibili ka sa link na ito.", "Di-wastong kahilingan: kailangan ang ID ng aklat (sub) sa URL.", "Hindi makita ang aklat para sa ID na ito (sub: {sub})", "Hindi ma-load ang detalye ng aklat. Error: {error}"],
+      hi: ["पुस्तकें", "आपको ये पुस्तकें भी पसंद आ सकती हैं", "खरीदने के विकल्प", "खरीदें", "देखें", "इस पुस्तक के बारे में", "विषय-सूची", "प्रकाशक की समीक्षा", "पुस्तक विवरण", "प्रकाशित", "पृष्ठ", "आकार", "प्रकाशक", "ISBN पंजीकरण क्षेत्र", "ISBN पंजीकरण समूह पुस्तक की भाषा या मुद्रण देश नहीं बताता।", "विषय-सूची की सभी {count} प्रविष्टियाँ दिख रही हैं", "विषय-सूची की {count} में से {shown} प्रविष्टियाँ दिख रही हैं", "पूरी विषय-सूची देखें", "विषय-सूची समेटें", "इस लिंक से खरीदने पर हमें कमीशन मिल सकता है।", "अमान्य अनुरोध: URL में पुस्तक पहचानकर्ता (sub) चाहिए।", "इस ID की पुस्तक नहीं मिली (sub: {sub})", "पुस्तक विवरण लोड नहीं हो सका। त्रुटि: {error}"],
+      ar: ["الكتب", "قد تعجبك أيضًا", "أماكن الشراء", "اشترِ الآن", "عرض", "عن هذا الكتاب", "جدول المحتويات", "مراجعة الناشر", "تفاصيل الكتاب", "تاريخ النشر", "الصفحات", "الأبعاد", "الناشر", "منطقة تسجيل ISBN", "لا تشير مجموعة تسجيل ISBN إلى لغة الكتاب أو بلد الطباعة.", "عرض جميع عناصر المحتويات وعددها {count}", "عرض {shown} من أصل {count} عنصرًا في المحتويات", "عرض المحتويات كاملة", "طي المحتويات", "قد نتلقى عمولة إذا اشتريت عبر هذا الرابط.", "طلب غير صالح: يلزم معرّف الكتاب (sub) في الرابط.", "لم يُعثر على كتاب بهذا المعرّف (sub: {sub})", "تعذّر تحميل تفاصيل الكتاب. الخطأ: {error}"],
+      it: ["Libri", "Potrebbe piacerti anche", "Dove acquistare", "Acquista", "Visualizza", "Informazioni sul libro", "Indice", "Recensione dell'editore", "Dettagli del libro", "Pubblicato", "Pagine", "Dimensioni", "Editore", "Area di registrazione ISBN", "Il gruppo di registrazione ISBN non indica la lingua del libro né il Paese di stampa.", "Visualizzate tutte le {count} voci dell'indice", "Visualizzate {shown} voci su {count} dell'indice", "Mostra tutto l'indice", "Riduci l'indice", "Potremmo ricevere una commissione se acquisti tramite questo link.", "Richiesta non valida: nell'URL manca l'identificativo del libro (sub).", "Libro non trovato per questo ID (sub: {sub})", "Impossibile caricare i dettagli del libro. Errore: {error}"],
+      nl: ["Boeken", "Misschien ook interessant", "Verkooppunten", "Kopen", "Bekijken", "Over dit boek", "Inhoudsopgave", "Recensie van de uitgever", "Boekgegevens", "Uitgegeven", "Pagina's", "Afmetingen", "Uitgever", "ISBN-registratiegebied", "De ISBN-registratiegroep zegt niets over de taal van het boek of het land waar het is gedrukt.", "Alle {count} inhoudsitems worden getoond", "{shown} van {count} inhoudsitems worden getoond", "Volledige inhoudsopgave", "Inhoudsopgave inklappen", "We kunnen een commissie ontvangen als u via deze link koopt.", "Ongeldig verzoek: een boek-ID (sub) ontbreekt in de URL.", "Boek met dit ID niet gevonden (sub: {sub})", "Boekgegevens konden niet worden geladen. Fout: {error}"],
+      pl: ["Książki", "Może Ci się też spodobać", "Miejsca zakupu", "Kup", "Zobacz", "O książce", "Spis treści", "Recenzja wydawcy", "Informacje o książce", "Wydano", "Strony", "Wymiary", "Wydawca", "Obszar rejestracji ISBN", "Grupa rejestracji ISBN nie oznacza języka książki ani kraju druku.", "Wyświetlono wszystkie {count} pozycji spisu treści", "Wyświetlono {shown} z {count} pozycji spisu treści", "Pokaż cały spis treści", "Zwiń spis treści", "Możemy otrzymać prowizję, jeśli kupisz przez ten link.", "Nieprawidłowe żądanie: w adresie URL brakuje identyfikatora książki (sub).", "Nie znaleziono książki o tym ID (sub: {sub})", "Nie udało się wczytać informacji o książce. Błąd: {error}"],
+      sv: ["Böcker", "Du kanske också gillar", "Köpställen", "Köp", "Visa", "Om boken", "Innehållsförteckning", "Förlagets recension", "Bokinformation", "Utgiven", "Sidor", "Mått", "Förlag", "ISBN-registreringsområde", "ISBN-registreringsgruppen anger inte bokens språk eller tryckland.", "Visar alla {count} poster i innehållsförteckningen", "Visar {shown} av {count} poster i innehållsförteckningen", "Visa hela innehållsförteckningen", "Dölj innehållsförteckningen", "Vi kan få provision om du köper via den här länken.", "Ogiltig begäran: bokidentifieraren (sub) saknas i webbadressen.", "Ingen bok hittades med detta ID (sub: {sub})", "Det gick inte att läsa in bokinformationen. Fel: {error}"],
+      tr: ["Kitaplar", "Bunları da beğenebilirsiniz", "Satış noktaları", "Satın al", "Görüntüle", "Bu kitap hakkında", "İçindekiler", "Yayıncı değerlendirmesi", "Kitap bilgileri", "Yayımlanma", "Sayfalar", "Boyutlar", "Yayıncı", "ISBN kayıt bölgesi", "ISBN kayıt grubu kitabın dilini veya basıldığı ülkeyi göstermez.", "İçindekilerdeki {count} öğenin tamamı gösteriliyor", "İçindekilerdeki {count} öğeden {shown} tanesi gösteriliyor", "İçindekilerin tamamını göster", "İçindekileri daralt", "Bu bağlantıdan satın alırsanız komisyon alabiliriz.", "Geçersiz istek: URL'de kitap kimliği (sub) gerekli.", "Bu kimliğe ait kitap bulunamadı (sub: {sub})", "Kitap bilgileri yüklenemedi. Hata: {error}"],
+      uk: ["Книги", "Вам також може сподобатися", "Місця придбання", "Купити", "Переглянути", "Про книгу", "Зміст", "Відгук видавця", "Відомості про книгу", "Опубліковано", "Сторінки", "Розміри", "Видавець", "Регіон реєстрації ISBN", "Група реєстрації ISBN не визначає мову книги чи країну друку.", "Показано всі {count} пункти змісту", "Показано {shown} з {count} пунктів змісту", "Показати весь зміст", "Згорнути зміст", "Ми можемо отримати комісію, якщо ви купите за цим посиланням.", "Недійсний запит: у URL потрібен ідентифікатор книги (sub).", "Книгу з таким ID не знайдено (sub: {sub})", "Не вдалося завантажити відомості про книгу. Помилка: {error}"]
+    };
+    const detailLocale = window.WebRI18n?.language || new URLSearchParams(window.location.search).get("lang") || document.documentElement.lang || "ko";
+    const detailWords = detailTranslations[detailLocale] || detailTranslations.en;
+    const detailText = (key, vars = {}) => {
+      const index = detailKeys.indexOf(key);
+      const phrase = detailWords[index] || detailTranslations.en[index] || key;
+      return phrase.replace(/\{(count|shown|sub|error)\}/g, (match, name) => Object.hasOwn(vars, name) ? String(vars[name]) : match);
+    };
+    const header_title = detailText("books");
     const header_subtitle = "";
     const SkelLine = ({ w = "100%", h = 12, r = 8, style = {} }) => /* @__PURE__ */ React.createElement("div", { className: "bg-gray-200 animate-pulse", style: { width: w, height: h, borderRadius: r, ...style } });
     const SkelBox = ({ w = "100%", h = 120, r = 12, style = {} }) => /* @__PURE__ */ React.createElement("div", { className: "bg-gray-200 animate-pulse", style: { width: w, height: h, borderRadius: r, ...style } });
@@ -101,9 +165,49 @@
       const shuffled = [...array].sort(() => 0.5 - Math.random());
       return shuffled.slice(0, n);
     }
-    const HtmlSection = ({ title, html }) => /* @__PURE__ */ React.createElement("section", { className: "prose max-w-none prose-neutral" }, title ? /* @__PURE__ */ React.createElement("h3", { className: "m-0 mb-2 font-semibold text-xl" }, title) : null, /* @__PURE__ */ React.createElement("div", { dangerouslySetInnerHTML: { __html: sanitizeHtml(html) } }));
+    function plainParagraphs(content) {
+      return String(content || "").replace(/\r\n?/g, "\n").split(/\n\s*\n/).flatMap((block) => {
+        const sentences = block.replace(/[ \t]+/g, " ").trim().split(/(?<=[.!?。])\s+(?=\S)/u).filter(Boolean);
+        const paragraphs = [];
+        let current = "";
+        sentences.forEach((sentence) => {
+          if (current && current.length + sentence.length > 260) {
+            paragraphs.push(current);
+            current = "";
+          }
+          current += (current ? " " : "") + sentence;
+        });
+        if (current)
+          paragraphs.push(current);
+        return paragraphs;
+      });
+    }
+    function plainContentsItems(content) {
+      const original = String(content || "").replace(/\r\n?/g, "\n").trim();
+      if (!original)
+        return [];
+      if (original.includes("\n"))
+        return original.split(/\n+/).map((line) => line.trim()).filter(Boolean);
+      const text = original.replace(/\s+/g, " ");
+      const marker = /(^|\s)(Part\s+\d+\.?|제\s*\d+\s*장|제\s*\d+\s*절|\d+\s*장|[IVX]+\.(?=\s)|[IVX]+(?=\s+[가-힣])|\d+(?:\.\d+)+(?=\s)|\d+(?=\s+[가-힣A-Za-z])|부록(?:\s+\d+)?|참고문헌|찾아보기)(?=\s|$)/giu;
+      const starts = [...text.matchAll(marker)].map((match) => match.index + match[1].length);
+      if (starts.length < 2)
+        return [text];
+      const items = [];
+      if (starts[0] > 0)
+        items.push(text.slice(0, starts[0]).trim());
+      starts.forEach((start, index) => items.push(text.slice(start, starts[index + 1] || text.length).trim()));
+      return items.filter(Boolean);
+    }
+    function PlainTextSection({ title, content, contents = false }) {
+      const items = contents ? plainContentsItems(content) : plainParagraphs(content);
+      const [expanded, setExpanded] = React.useState(false);
+      const longContents = contents && items.length > 24;
+      return /* @__PURE__ */ React.createElement("section", { className: "bd-text-section", "aria-label": title }, /* @__PURE__ */ React.createElement("h3", null, title), longContents ? /* @__PURE__ */ React.createElement("div", { className: "bd-toc-toolbar" }, /* @__PURE__ */ React.createElement("span", null, expanded ? detailText("tocAll", { count: items.length }) : detailText("tocPartial", { count: items.length, shown: 12 })), /* @__PURE__ */ React.createElement("button", { type: "button", "aria-controls": "book-plain-contents-list", "aria-expanded": expanded, onClick: () => setExpanded((value) => !value) }, expanded ? detailText("collapse") : detailText("showAll"))) : null, contents && items.length > 1 ? /* @__PURE__ */ React.createElement("ol", { className: "bd-plain-toc", id: "book-plain-contents-list" }, items.map((item, index) => /* @__PURE__ */ React.createElement("li", { key: index, hidden: longContents && !expanded && index >= 12 }, item))) : /* @__PURE__ */ React.createElement("div", { className: "bd-plain-prose" }, items.map((item, index) => /* @__PURE__ */ React.createElement("p", { key: index }, item))));
+    }
+    const HtmlSection = ({ title, html, plainText, contents = false }) => plainText ? /* @__PURE__ */ React.createElement(PlainTextSection, { title, content: html, contents }) : /* @__PURE__ */ React.createElement("section", { className: "prose max-w-none prose-neutral" }, title ? /* @__PURE__ */ React.createElement("h3", { className: "m-0 mb-2 font-semibold text-xl" }, title) : null, /* @__PURE__ */ React.createElement("div", { dangerouslySetInnerHTML: { __html: sanitizeHtml(html) } }));
     function Div_RecommendedBooks({ books, gridCols = "grid-cols-4" }) {
-      return /* @__PURE__ */ React.createElement("div", { className: "bd-card my-4" }, /* @__PURE__ */ React.createElement("div", { className: "bd-row" }, /* @__PURE__ */ React.createElement("h2", { className: "font-semibold text-xl" }, "\uD568\uAED8 \uBCF4\uBA74 \uC88B\uC740 \uCC45")), /* @__PURE__ */ React.createElement("div", { className: `grid ${gridCols} gap-3 mt-3` }, books.map((book) => /* @__PURE__ */ React.createElement(
+      return /* @__PURE__ */ React.createElement("div", { className: "bd-card my-4" }, /* @__PURE__ */ React.createElement("div", { className: "bd-row" }, /* @__PURE__ */ React.createElement("h2", { className: "font-semibold text-xl" }, detailText("recommended"))), /* @__PURE__ */ React.createElement("div", { className: `grid ${gridCols} gap-3 mt-3` }, books.map((book) => /* @__PURE__ */ React.createElement(
         "a",
         {
           className: "bd-book",
@@ -117,6 +221,10 @@
       ))));
     }
     function Div_PriceCompare({ stores, gridCols = "grid-cols-3" }) {
+      if (!stores || stores.length === 0)
+        return null;
+      const isAffiliateLink = window.WebRBookIsCuratedAffiliateLink;
+      const hasAffiliateLink = stores.some((store) => isAffiliateLink(store.link));
       const logoMap = {
         "\uAD50\uBCF4\uBB38\uACE0": "https://cdn.jsdelivr.net/gh/statground/web-R_CDN@f3e464e95616fa13712baa6adbbb0b6cda7ee821/images/book/kyobobook2.png",
         "Yes24": "https://cdn.jsdelivr.net/gh/statground/web-R_CDN@f3e464e95616fa13712baa6adbbb0b6cda7ee821/images/book/yes24.png",
@@ -127,29 +235,46 @@
         default: "https://cdn.jsdelivr.net/gh/statground/web-R_CDN@f3e464e95616fa13712baa6adbbb0b6cda7ee821/images/book/icon_default.png"
       };
       const purchaseMarkets = ["\uAD50\uBCF4\uBB38\uACE0", "\uCFE0\uD321", "\uC601\uD48D\uBB38\uACE0", "Yes24"];
-      return /* @__PURE__ */ React.createElement("div", { className: "bd-card my-4" }, /* @__PURE__ */ React.createElement("h2", { className: "mb-3 font-semibold text-xl" }, "\uB9C8\uCF13\uD50C\uB808\uC774\uC2A4"), /* @__PURE__ */ React.createElement("div", { className: `grid ${gridCols} gap-3` }, stores.map((store, idx) => /* @__PURE__ */ React.createElement("div", { className: "bd-soft border border-gray-200 rounded-lg p-3", key: `${store.name}-${idx}` }, /* @__PURE__ */ React.createElement("div", { className: "bd-row flex justify-center items-center" }, /* @__PURE__ */ React.createElement("img", { src: logoMap[store.name] || logoMap.default, alt: store.name, className: "w-10 h-10 mr-2" }), /* @__PURE__ */ React.createElement("div", { className: "font-semibold" }, store.name)), /* @__PURE__ */ React.createElement("div", { className: "flex justify-center mt-3" }, /* @__PURE__ */ React.createElement(
+      return /* @__PURE__ */ React.createElement("div", { className: "bd-card my-4" }, /* @__PURE__ */ React.createElement("h2", { className: "mb-3 font-semibold text-xl" }, detailText("marketplace")), /* @__PURE__ */ React.createElement("div", { className: `grid ${gridCols} gap-3` }, stores.map((store, idx) => /* @__PURE__ */ React.createElement("div", { className: "bd-soft border border-gray-200 rounded-lg p-3", key: `${store.name}-${idx}` }, /* @__PURE__ */ React.createElement("div", { className: "bd-row flex justify-center items-center" }, /* @__PURE__ */ React.createElement("img", { src: logoMap[store.name] || logoMap.default, alt: store.name, className: "w-10 h-10 mr-2" }), /* @__PURE__ */ React.createElement("div", { className: "font-semibold" }, store.name)), /* @__PURE__ */ React.createElement("div", { className: "flex justify-center mt-3" }, /* @__PURE__ */ React.createElement(
         "a",
         {
           href: store.link,
           target: "_blank",
-          rel: "noreferrer noopener",
+          rel: isAffiliateLink(store.link) ? "nofollow sponsored noreferrer noopener" : "noreferrer noopener",
           className: "bd-btn inline-block bg-gray-100 text-gray-700 px-3 py-2 rounded hover:bg-gray-200"
         },
-        purchaseMarkets.includes(store.name) ? "\uAD6C\uB9E4\uD558\uB7EC \uAC00\uAE30" : "\uBCF4\uB7EC\uAC00\uAE30"
-      ))))));
+        purchaseMarkets.includes(store.name) ? detailText("buy") : detailText("view")
+      ))))), hasAffiliateLink ? /* @__PURE__ */ React.createElement("p", { className: "mt-3 text-xs text-gray-500" }, detailText("affiliateNotice")) : null);
     }
     function Div_BookMeta({ title, subtitle }) {
       return /* @__PURE__ */ React.createElement("div", { className: "bd-card" }, /* @__PURE__ */ React.createElement("div", { className: "bd-row flex items-start" }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("h1", { className: "bd-title text-2xl font-bold mb-1.5" }, title), /* @__PURE__ */ React.createElement("p", { className: "bd-sub text-gray-500" }, subtitle))));
     }
-    const Div_BookDescription = ({ content }) => content ? /* @__PURE__ */ React.createElement(HtmlSection, { title: "\uCC45 \uC18C\uAC1C", html: content }) : null;
-    const Div_BookContents = ({ content }) => content ? /* @__PURE__ */ React.createElement(HtmlSection, { title: "\uBAA9\uCC28", html: content }) : null;
-    const Div_PublisherReview = ({ content }) => content ? /* @__PURE__ */ React.createElement(HtmlSection, { title: "\uCD9C\uD310\uC0AC \uB9AC\uBDF0", html: content }) : null;
-    function Div_ProductInfo({ published_at, page_cnt, size, publisher }) {
-      if (!published_at && !page_cnt && !size && !publisher)
+    const Div_BookDescription = ({ content, plainText }) => content ? /* @__PURE__ */ React.createElement(HtmlSection, { title: detailText("description"), html: content, plainText }) : null;
+    const Div_BookContents = ({ content, plainText }) => content ? /* @__PURE__ */ React.createElement(HtmlSection, { title: detailText("contents"), html: content, plainText, contents: true }) : null;
+    const Div_PublisherReview = ({ content, plainText }) => content ? /* @__PURE__ */ React.createElement(HtmlSection, { title: detailText("publisherReview"), html: content, plainText }) : null;
+    function Div_ProductInfo({ published_at, page_cnt, size, publisher, isbn_registration_group_label }) {
+      const isbnRegistrationGroup = typeof isbn_registration_group_label === "string" ? isbn_registration_group_label.trim() : "";
+      if (!published_at && !page_cnt && !size && !publisher && !isbnRegistrationGroup)
         return null;
-      return /* @__PURE__ */ React.createElement("div", { className: "bd-card" }, /* @__PURE__ */ React.createElement("h3", { className: "m-0 mb-2 font-semibold text-xl" }, "\uCC45 \uC815\uBCF4"), /* @__PURE__ */ React.createElement("table", { className: "w-full", style: { fontSize: "14px" } }, /* @__PURE__ */ React.createElement("tbody", null, published_at ? /* @__PURE__ */ React.createElement("tr", null, /* @__PURE__ */ React.createElement("th", { className: "text-left px-4 py-2 font-medium" }, "\uCD9C\uAC04"), /* @__PURE__ */ React.createElement("td", { className: "py-2" }, published_at)) : null, page_cnt ? /* @__PURE__ */ React.createElement("tr", null, /* @__PURE__ */ React.createElement("th", { className: "text-left px-4 py-2 font-medium" }, "\uD398\uC774\uC9C0 \uC218"), /* @__PURE__ */ React.createElement("td", { className: "py-2" }, page_cnt)) : null, size ? /* @__PURE__ */ React.createElement("tr", null, /* @__PURE__ */ React.createElement("th", { className: "text-left px-4 py-2 font-medium" }, "\uD06C\uAE30"), /* @__PURE__ */ React.createElement("td", { className: "py-2" }, size)) : null, publisher ? /* @__PURE__ */ React.createElement("tr", null, /* @__PURE__ */ React.createElement("th", { className: "text-left px-4 py-2 font-medium" }, "\uCD9C\uD310\uC0AC"), /* @__PURE__ */ React.createElement("td", { className: "py-2" }, publisher)) : null)));
+      const row = (label, value, attributes = {}) => {
+        if (!value) return null;
+        const valueAttributes = attributes["data-webr-value-content"] !== void 0 ? { "data-webr-user-content": "" } : {};
+        return /* @__PURE__ */ React.createElement("tr", null, /* @__PURE__ */ React.createElement("th", { className: "text-left px-4 py-2 font-medium", ...attributes }, label), /* @__PURE__ */ React.createElement("td", { className: "py-2", ...valueAttributes }, value));
+      };
+      return /* @__PURE__ */ React.createElement("div", { className: "bd-card" }, /* @__PURE__ */ React.createElement("h3", { className: "m-0 mb-2 font-semibold text-xl" }, detailText("bookInfo")), /* @__PURE__ */ React.createElement("table", { className: "w-full", style: { fontSize: "14px" } }, /* @__PURE__ */ React.createElement("tbody", null,
+        row(detailText("published"), published_at),
+        row(detailText("pages"), page_cnt),
+        row(detailText("size"), size),
+        row(detailText("publisher"), publisher),
+        row(detailText("registration"), isbnRegistrationGroup, {
+          "data-webr-value-content": "",
+          title: detailText("regionHint"),
+          "aria-description": detailText("regionHint")
+        })
+      )));
     }
     function Div_BookDetail({ bookData, stores, recommendedBooks }) {
+      const plainText = bookData.content_format === "plain_text";
       const [isDesktop, setIsDesktop] = React.useState(typeof window !== "undefined" ? window.innerWidth >= 1024 : true);
       React.useEffect(() => {
         let rafId = null;
@@ -169,8 +294,9 @@
       const coverMaxHeightDesktop = 520;
       const priceGridCols = isDesktop ? "grid-cols-3" : "grid-cols-2";
       const recoGridCols = isDesktop ? "grid-cols-4" : "grid-cols-2";
-      const randomStoreLink = stores && stores.length > 0 ? stores[Math.floor(Math.random() * stores.length)].link : "#";
-      return /* @__PURE__ */ React.createElement("main", { className: "max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-8 pb-28" }, /* @__PURE__ */ React.createElement(Div_page_header, { title: header_title, subtitle: bookData.title }), /* @__PURE__ */ React.createElement("section", { id: "book-detail", className: "w-full" }, /* @__PURE__ */ React.createElement("div", { className: isDesktop ? "flex gap-6 items-start" : "flex flex-col gap-4 items-stretch" }, /* @__PURE__ */ React.createElement("aside", { className: isDesktop ? "shrink-0" : "w-full flex justify-center", style: { width: isDesktop ? coverWidthDesktop : "100%" } }, /* @__PURE__ */ React.createElement("div", { className: "rounded-lg overflow-hidden relative", style: { width: isDesktop ? coverWidthDesktop : "50%", maxWidth: isDesktop ? coverWidthDesktop : "360px" } }, /* @__PURE__ */ React.createElement("a", { href: randomStoreLink, target: "_blank", rel: "noreferrer noopener" }, /* @__PURE__ */ React.createElement(
+      const randomStore = stores && stores.length > 0 ? stores[Math.floor(Math.random() * stores.length)] : null;
+      const randomStoreLink = randomStore ? randomStore.link : "";
+      const coverImage = /* @__PURE__ */ React.createElement(
         "img",
         {
           className: "w-full rounded-lg block object-contain",
@@ -178,13 +304,17 @@
           alt: bookData.title,
           style: { height: "auto", maxHeight: isDesktop ? coverMaxHeightDesktop : "none" }
         }
-      )))), /* @__PURE__ */ React.createElement("section", { className: isDesktop ? "flex-1 flex flex-col gap-4" : "w-full flex flex-col gap-4" }, /* @__PURE__ */ React.createElement("div", { className: "my-4" }, /* @__PURE__ */ React.createElement(Div_BookMeta, { title: bookData.title, subtitle: bookData.subtitle })), /* @__PURE__ */ React.createElement("div", { className: "my-4" }, /* @__PURE__ */ React.createElement(Div_PriceCompare, { stores, gridCols: priceGridCols })), /* @__PURE__ */ React.createElement(Div_BookDescription, { content: bookData.introduction }), /* @__PURE__ */ React.createElement(Div_BookContents, { content: bookData.contents }), /* @__PURE__ */ React.createElement(Div_PublisherReview, { content: bookData.publisher_review }), /* @__PURE__ */ React.createElement(
+      );
+      const coverContent = randomStoreLink ? /* @__PURE__ */ React.createElement("a", { href: randomStoreLink, target: "_blank", rel: window.WebRBookIsCuratedAffiliateLink(randomStoreLink) ? "nofollow sponsored noreferrer noopener" : "noreferrer noopener" }, coverImage) : coverImage;
+      const coverBox = /* @__PURE__ */ React.createElement("div", { className: "rounded-lg overflow-hidden relative", style: { width: isDesktop ? coverWidthDesktop : "50%", maxWidth: isDesktop ? coverWidthDesktop : "360px" } }, coverContent);
+      return /* @__PURE__ */ React.createElement("main", { className: "max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-8 pb-28" }, /* @__PURE__ */ React.createElement(Div_page_header, { title: header_title, subtitle: bookData.title }), /* @__PURE__ */ React.createElement("section", { id: "book-detail", className: "w-full" }, /* @__PURE__ */ React.createElement("div", { className: isDesktop ? "flex gap-6 items-start" : "flex flex-col gap-4 items-stretch" }, /* @__PURE__ */ React.createElement("aside", { className: isDesktop ? "shrink-0" : "w-full flex justify-center", style: { width: isDesktop ? coverWidthDesktop : "100%" } }, coverBox), /* @__PURE__ */ React.createElement("section", { className: isDesktop ? "flex-1 flex flex-col gap-4" : "w-full flex flex-col gap-4" }, /* @__PURE__ */ React.createElement("div", { className: "my-4" }, /* @__PURE__ */ React.createElement(Div_BookMeta, { title: bookData.title, subtitle: bookData.subtitle })), /* @__PURE__ */ React.createElement("div", { className: "my-4" }, /* @__PURE__ */ React.createElement(Div_PriceCompare, { stores, gridCols: priceGridCols })), /* @__PURE__ */ React.createElement(Div_BookDescription, { content: bookData.introduction, plainText }), /* @__PURE__ */ React.createElement(Div_BookContents, { content: bookData.contents, plainText }), /* @__PURE__ */ React.createElement(Div_PublisherReview, { content: bookData.publisher_review, plainText }), /* @__PURE__ */ React.createElement(
         Div_ProductInfo,
         {
           published_at: bookData.published_at,
           page_cnt: bookData.page_cnt,
           size: bookData.size,
-          publisher: bookData.publisher
+          publisher: bookData.publisher,
+          isbn_registration_group_label: bookData.isbn_registration_group_label
         }
       ), /* @__PURE__ */ React.createElement("div", { className: "my-4" }, /* @__PURE__ */ React.createElement(Div_RecommendedBooks, { books: recommendedBooks, gridCols: recoGridCols }))))));
     }
@@ -193,7 +323,7 @@
     ReactDOM.render(/* @__PURE__ */ React.createElement(Div_BookDetailSkeleton, null), root);
     if (!sub) {
       ReactDOM.render(
-        /* @__PURE__ */ React.createElement("div", { className: "max-w-screen-xl mx-auto px-6 py-8 text-red-600" }, "\uC798\uBABB\uB41C \uC694\uCCAD\uC785\uB2C8\uB2E4. URL\uC5D0 \uCC45 \uC2DD\uBCC4\uC790(sub)\uAC00 \uD544\uC694\uD569\uB2C8\uB2E4."),
+        /* @__PURE__ */ React.createElement("div", { className: "max-w-screen-xl mx-auto px-6 py-8 text-red-600" }, detailText("badRequest")),
         root
       );
       return;
@@ -207,7 +337,7 @@
       const bookData = values.find((item) => item.uuid_board_category === sub);
       if (!bookData) {
         ReactDOM.render(
-          /* @__PURE__ */ React.createElement("div", { className: "max-w-screen-xl mx-auto px-6 py-8 text-red-600" }, "\uD574\uB2F9 ID\uC758 \uCC45\uC744 \uCC3E\uC744 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4. (sub: ", sub, ")"),
+          /* @__PURE__ */ React.createElement("div", { className: "max-w-screen-xl mx-auto px-6 py-8 text-red-600" }, detailText("notFound", { sub })),
           root
         );
         return;
@@ -220,7 +350,21 @@
       if (bookData.isbn)
         subtitleParts.push(`ISBN ${bookData.isbn}`);
       bookData.subtitle = subtitleParts.join(" \xB7 ");
-      const stores = values.filter((item) => item.uuid_board_category === sub).map((item) => ({ name: item.marketplace, link: item.url || "#" })).filter((store, index, self) => index === self.findIndex((s) => s.name === store.name));
+      let stores = window.WebRBookSafeStores(values.filter((item) => item.uuid_board_category === sub));
+      if (bookData.content_format === "plain_text") {
+        stores = [];
+        try {
+          const requestData = new FormData();
+          requestData.append("tag_sub", bookData.board_url_sub || sub);
+          const infoResponse = await fetch("/book/ajax_get_book_info/", { method: "POST", body: requestData });
+          if (infoResponse.ok) {
+            const info = await infoResponse.json();
+            stores = window.WebRBookSafeStores(info && info.links, true);
+          }
+        } catch (_) {
+          // Metadata remains visible when optional marketplace lookup fails.
+        }
+      }
       const uniqueRecommended = [...new Map(
         values.filter((item) => item.uuid_board_category !== sub).map((item) => [item.uuid_board_category, item])
       ).values()];
@@ -234,7 +378,7 @@
       ReactDOM.render(/* @__PURE__ */ React.createElement(Div_BookDetail, { bookData, stores, recommendedBooks }), root);
     } catch (error) {
       ReactDOM.render(
-        /* @__PURE__ */ React.createElement("div", { className: "max-w-screen-xl mx-auto px-6 py-8 text-red-600" }, "\uCC45 \uC815\uBCF4\uB97C \uBD88\uB7EC\uC624\uB294 \uB370 \uC2E4\uD328\uD588\uC2B5\uB2C8\uB2E4. \uC5D0\uB7EC: ", error.message),
+        /* @__PURE__ */ React.createElement("div", { className: "max-w-screen-xl mx-auto px-6 py-8 text-red-600" }, detailText("loadError", { error: error.message })),
         root
       );
     }
@@ -321,23 +465,24 @@
     function MarketButtons({ stores }) {
       if (!stores || stores.length === 0)
         return null;
-      return /* @__PURE__ */ React.createElement("div", { class: "flex flex-wrap gap-2 w-full" }, stores.map((store) => /* @__PURE__ */ React.createElement(
+      const isAffiliateLink = window.WebRBookIsCuratedAffiliateLink;
+      return /* @__PURE__ */ React.createElement("div", { class: "w-full" }, /* @__PURE__ */ React.createElement("div", { class: "flex flex-wrap gap-2 w-full" }, stores.map((store) => /* @__PURE__ */ React.createElement(
         "a",
         {
           key: store.name,
           href: store.link,
           target: "_blank",
-          rel: "noreferrer noopener",
+          rel: isAffiliateLink(store.link) ? "nofollow sponsored noreferrer noopener" : "noreferrer noopener",
           class: "text-gray-700 bg-gray-100 border border-gray-300 rounded-lg text-sm px-4 py-2 hover:bg-gray-200"
         },
         store.name
-      )));
+      ))), stores.some((store) => isAffiliateLink(store.link)) ? /* @__PURE__ */ React.createElement("p", { class: "mt-2 text-xs text-gray-500" }, "이 링크를 통해 구매하면 수수료를 제공받을 수 있습니다.") : null);
     }
-    function BookInfoPanel({ bookData, stores }) {
+    function BookInfoPanel({ bookData, stores, curatedCatalog = false }) {
       if (!bookData) {
-        return /* @__PURE__ */ React.createElement("div", { class: "flex flex-col justify-center items-center w-full space-y-4 text-center" }, /* @__PURE__ */ React.createElement("p", { class: "text-gray-600" }, "\uB3C4\uC11C\uB97C \uC120\uD0DD\uD558\uBA74 \uCC45 \uC815\uBCF4\uC640 \uAD00\uB828 \uAE00\uC744 \uD568\uAED8 \uBCFC \uC218 \uC788\uC2B5\uB2C8\uB2E4."), /* @__PURE__ */ React.createElement("a", { href: "/book/write/", class: "text-white bg-gradient-to-r from-blue-500 via-blue-600 to-blue-700 font-medium rounded-lg text-sm px-5 py-2.5 text-center w-full hover:bg-gradient-to-br focus:ring-4 focus:outline-none focus:ring-blue-300" }, "\uAE00\uC4F0\uAE30"));
+        return /* @__PURE__ */ React.createElement("div", { class: "flex flex-col justify-center items-center w-full space-y-4 text-center" }, /* @__PURE__ */ React.createElement("p", { class: "text-gray-600" }, "\uB3C4\uC11C\uB97C \uC120\uD0DD\uD558\uBA74 \uCC45 \uC815\uBCF4\uC640 \uAD00\uB828 \uAE00\uC744 \uD568\uAED8 \uBCFC \uC218 \uC788\uC2B5\uB2C8\uB2E4."), curatedCatalog ? null : /* @__PURE__ */ React.createElement("a", { href: "/book/write/", class: "text-white bg-gradient-to-r from-blue-500 via-blue-600 to-blue-700 font-medium rounded-lg text-sm px-5 py-2.5 text-center w-full hover:bg-gradient-to-br focus:ring-4 focus:outline-none focus:ring-blue-300" }, "\uAE00\uC4F0\uAE30"));
       }
-      return /* @__PURE__ */ React.createElement("div", { class: "flex flex-col justify-center items-center w-full space-y-4" }, /* @__PURE__ */ React.createElement("a", { href: `/book/${bookData.uuid_board_category}/`, class: "w-full flex justify-center" }, /* @__PURE__ */ React.createElement("img", { src: bookData.url_image, class: "w-[140px] min-w-[140px] max-w-[140px] border border-gray-300 rounded-lg" })), /* @__PURE__ */ React.createElement("div", { class: "text-center space-y-1" }, /* @__PURE__ */ React.createElement("p", { class: "text-md font-extrabold" }, bookData.title), /* @__PURE__ */ React.createElement("p", { class: "text-sm font-normal text-gray-600" }, [bookData.publisher, bookData.published_at].filter(Boolean).join(" | ")), bookData.page_cnt ? /* @__PURE__ */ React.createElement("p", { class: "text-xs text-gray-500" }, bookData.page_cnt, " pages") : null), /* @__PURE__ */ React.createElement("a", { href: `/book/write/${bookData.uuid_board_category}/`, class: "text-white bg-gradient-to-r from-blue-500 via-blue-600 to-blue-700 font-medium rounded-lg text-sm px-5 py-2.5 text-center w-full hover:bg-gradient-to-br focus:ring-4 focus:outline-none focus:ring-blue-300" }, "\uC774 \uCC45\uC73C\uB85C \uAE00\uC4F0\uAE30"), /* @__PURE__ */ React.createElement(MarketButtons, { stores }));
+      return /* @__PURE__ */ React.createElement("div", { class: "flex flex-col justify-center items-center w-full space-y-4" }, /* @__PURE__ */ React.createElement("a", { href: `/book/${bookData.uuid_board_category}/`, class: "w-full flex justify-center" }, /* @__PURE__ */ React.createElement("img", { src: bookData.url_image, class: "w-[140px] min-w-[140px] max-w-[140px] border border-gray-300 rounded-lg" })), /* @__PURE__ */ React.createElement("div", { class: "text-center space-y-1" }, /* @__PURE__ */ React.createElement("p", { class: "text-md font-extrabold" }, bookData.title), /* @__PURE__ */ React.createElement("p", { class: "text-sm font-normal text-gray-600" }, [bookData.publisher, bookData.published_at].filter(Boolean).join(" | ")), bookData.page_cnt ? /* @__PURE__ */ React.createElement("p", { class: "text-xs text-gray-500" }, bookData.page_cnt, " pages") : null), curatedCatalog || bookData.content_format === "plain_text" ? null : /* @__PURE__ */ React.createElement("a", { href: `/book/write/${bookData.uuid_board_category}/`, class: "text-white bg-gradient-to-r from-blue-500 via-blue-600 to-blue-700 font-medium rounded-lg text-sm px-5 py-2.5 text-center w-full hover:bg-gradient-to-br focus:ring-4 focus:outline-none focus:ring-blue-300" }, "\uC774 \uCC45\uC73C\uB85C \uAE00\uC4F0\uAE30"), /* @__PURE__ */ React.createElement(MarketButtons, { stores }));
     }
     function Shell() {
       return /* @__PURE__ */ React.createElement("div", { class: "flex flex-col justify-center items-center py-8 px-4 w-full max-w-screen-xl mx-auto md:px-8" }, /* @__PURE__ */ React.createElement(Div_page_header, { title: header_title, subtitle: header_subtitle }), /* @__PURE__ */ React.createElement("div", { class: "w-full", id: "div_book_list" }, /* @__PURE__ */ React.createElement("div", { class: "flex flex-row justify-center items-center w-full h-[150px] mb-4 bg-gray-300 rounded-xl animate-pulse" })), /* @__PURE__ */ React.createElement("div", { class: "grid grid-cols-1 lg:grid-cols-4 w-full gap-4" }, /* @__PURE__ */ React.createElement("div", { class: "col-span-1 w-full", id: "div_book_info" }, /* @__PURE__ */ React.createElement(Div_book_content_skeleton, null)), /* @__PURE__ */ React.createElement("div", { class: "col-span-1 lg:col-span-3 w-full", id: "div_article_list" }, /* @__PURE__ */ React.createElement(Div_article_list_skeleton, null))));
@@ -362,8 +507,10 @@
       }
     }
     async function renderBookInfo() {
+      const listData = await ensureBookList();
+      const curatedCatalog = listData.books.length > 0 && listData.books.every((book) => book.content_format === "plain_text");
       if (!currentSub) {
-        ReactDOM.render(/* @__PURE__ */ React.createElement(BookInfoPanel, { bookData: null, stores: [] }), document.getElementById("div_book_info"));
+        ReactDOM.render(/* @__PURE__ */ React.createElement(BookInfoPanel, { bookData: null, stores: [], curatedCatalog }), document.getElementById("div_book_info"));
         return;
       }
       const requestData = new FormData();
@@ -373,9 +520,9 @@
         headers: { "X-CSRFToken": getCookie("csrftoken") },
         body: requestData
       }).then((res) => res.json());
-      const listData = await ensureBookList();
-      const stores = listData.raw.filter((item) => item.uuid_board_category === currentSub).map((item) => ({ name: item.marketplace, link: item.url || "#" })).filter((store, index, self) => index === self.findIndex((s) => s.name === store.name));
-      ReactDOM.render(/* @__PURE__ */ React.createElement(BookInfoPanel, { bookData, stores }), document.getElementById("div_book_info"));
+      const curatedBook = bookData && bookData.content_format === "plain_text";
+      const stores = window.WebRBookSafeStores(curatedBook ? bookData.links : listData.raw.filter((item) => item.uuid_board_category === currentSub), curatedBook);
+      ReactDOM.render(/* @__PURE__ */ React.createElement(BookInfoPanel, { bookData, stores, curatedCatalog }), document.getElementById("div_book_info"));
     }
     function renderArticleList(data, mode) {
       const items = Object.values(data || {}).map((item) => /* @__PURE__ */ React.createElement(ArticleRow, { key: item.uuid, data: item }));

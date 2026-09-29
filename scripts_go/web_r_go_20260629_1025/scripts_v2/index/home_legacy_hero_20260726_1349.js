@@ -10,6 +10,34 @@
     "\"웹에서 하는 R통계\"는, 통계에는 관심이 있으나 R을 어려워하는 여러 연구자들을 위한 프로젝트입니다.";
   var canonicalDescriptionLine2 =
     "R설치없이 클릭만으로 웹에 있는 서버를 이용하여 통계분석을 하고 보다 R을 쉽게 사용하기 위한 패키지 및 앱 공동개발을 목표로 하고 있습니다.";
+  var canonicalTitle = "웹에서 하는 R 통계";
+
+  function titleMark() {
+    var mark = document.createElement("mark");
+    mark.className = "webr-home-compact__title-mark px-2 text-white bg-blue-600 rounded";
+    mark.textContent = "R";
+    return mark;
+  }
+
+  function localizeTitle() {
+    var title = document.getElementById("webr-home-title");
+    if (!title || !window.WebRI18n) return;
+    var language = window.WebRI18n.language;
+    var translated = window.WebRI18n.t(canonicalTitle);
+    if (language !== "ko" && translated === canonicalTitle) return;
+    if (title.dataset.webrHeroLanguage === language && title.textContent === translated) return;
+    var marker = translated.indexOf("R");
+    if (marker < 0) {
+      title.textContent = translated;
+    } else {
+      title.replaceChildren(
+        document.createTextNode(translated.slice(0, marker)),
+        titleMark(),
+        document.createTextNode(translated.slice(marker + 1))
+      );
+    }
+    title.dataset.webrHeroLanguage = language;
+  }
 
   function applyLegacyHero() {
     var hero = document.querySelector(".webr-home-compact__hero");
@@ -22,15 +50,11 @@
       return true;
     }
 
-    var mark = document.createElement("mark");
-    mark.className =
-      "webr-home-compact__title-mark px-2 text-white bg-blue-600 rounded";
-    mark.textContent = "R";
     title.className =
       "webr-home-compact__title mb-4 text-2xl font-extrabold leading-none tracking-tight text-gray-900 md:text-5xl";
     title.replaceChildren(
       document.createTextNode("웹에서 하는 "),
-      mark,
+      titleMark(),
       document.createTextNode(" 통계")
     );
 
@@ -60,6 +84,7 @@
     }
 
     hero.dataset.webrLegacyHero = "20260726_1349";
+    localizeTitle();
     return true;
   }
 
@@ -73,6 +98,7 @@
   }
 
   window.__webrApplyLegacyHero = applyLegacyHero;
+  window.addEventListener("webr:language-change", localizeTitle);
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", applyLegacyHero, { once: true });
   } else {

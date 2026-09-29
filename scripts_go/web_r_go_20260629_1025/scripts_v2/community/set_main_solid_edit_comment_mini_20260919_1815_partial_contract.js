@@ -136,9 +136,19 @@ function isCommunitySidebarPending(data) {
 function isCommunityArticleListPending(data) {
   return !data || typeof data !== "object" || data.ok === false || data.pending === true;
 }
+function isCommunityArticleListPartial(data) {
+  return !!(data && typeof data === "object" && !isCommunityArticleListPending(data) && (data.partial === true || data.complete === false));
+}
+function isCommunityArticleListIncomplete(data) {
+  return isCommunityArticleListPending(data) || isCommunityArticleListPartial(data);
+}
 function communityArticleListPendingMessage(data) {
   const message = data && typeof data.message === "string" ? data.message.trim() : "";
   return message || "\uAC8C\uC2DC\uAE00 \uBAA9\uB85D\uC744 \uC77C\uC2DC\uC801\uC73C\uB85C \uBD88\uB7EC\uC624\uC9C0 \uBABB\uD588\uC2B5\uB2C8\uB2E4. \uC7A0\uC2DC \uD6C4 \uB2E4\uC2DC \uC2DC\uB3C4\uD574 \uC8FC\uC138\uC694.";
+}
+function communityArticleListPartialMessage(data) {
+  const message = data && typeof data.message === "string" ? data.message.trim() : "";
+  return message || "\uD655\uC778\uB41C \uAC8C\uC2DC\uAE00\uB9CC \uBCF4\uC5EC\uB4DC\uB9BD\uB2C8\uB2E4. \uC804\uCCB4 \uBAA9\uB85D\uC740 \uC7A0\uC2DC \uD6C4 \uB2E4\uC2DC \uD655\uC778\uD574 \uC8FC\uC138\uC694.";
 }
 function communitySidebarRows(data, limit) {
   if (isCommunitySidebarPending(data)) {
@@ -1067,14 +1077,14 @@ function readCommunityArticlePageCache(page, searchText) {
     delete communityArticlePageCache[key];
     return null;
   }
-  if (isCommunityArticleListPending(cached.data)) {
+  if (isCommunityArticleListIncomplete(cached.data)) {
     delete communityArticlePageCache[key];
     return null;
   }
   return cached.data;
 }
 function writeCommunityArticlePageCache(page, searchText, data) {
-  if (isCommunityArticleListPending(data)) {
+  if (isCommunityArticleListIncomplete(data)) {
     return;
   }
   communityArticlePageCache[communityArticlePageCacheKey(page, searchText)] = { at: Date.now(), data };
@@ -1104,7 +1114,7 @@ async function fetchCommunityArticlePage(page, searchText) {
     body: buildCommunityArticleListForm(page, searchText)
   });
   const data = await response.json().catch(() => ({ ok: false, pending: true }));
-  if (!response.ok || isCommunityArticleListPending(data)) {
+  if (!response.ok || isCommunityArticleListIncomplete(data)) {
     throw new Error(communityArticleListPendingMessage(data));
   }
   writeCommunityArticlePageCache(page, searchText, data);
@@ -1591,17 +1601,29 @@ function CommunityArticlePendingNotice(props) {
     communityArticleListPendingMessage(props.data)
   );
 }
+function CommunityArticlePartialNotice(props) {
+  return /* @__PURE__ */ React.createElement(
+    "div",
+    {
+      class: "w-full rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-800",
+      role: "status"
+    },
+    communityArticleListPartialMessage(props.data)
+  );
+}
 function CommunityBoardCard(props) {
   const def = props.def;
   const data = props.data || {};
   const pending = isCommunityArticleListPending(data);
+  const partial = isCommunityArticleListPartial(data);
   const items = Object.values(data.list || {}).filter(Boolean);
-  const totalCount = !pending && data.count ? Number(data.count.cnt || 0) : 0;
+  const totalCount = !pending && !partial && data.count ? Number(data.count.cnt || 0) : 0;
   const currentPage = Math.max(1, Number(communityState.cardPages[def.tag] || 1));
-  if (def.tag && !pending) {
+  if (def.tag && !pending && !partial) {
     communityState.cardCounters[def.tag] = totalCount;
   }
-  return /* @__PURE__ */ React.createElement("section", { class: "flex min-h-[420px] flex-col rounded-lg border border-slate-200 bg-white p-5 shadow-sm" }, /* @__PURE__ */ React.createElement(Div_box_header, { title: def.title, count: totalCount > 0 ? totalCount.toLocaleString("ko-KR") : null }), pending ? /* @__PURE__ */ React.createElement(CommunityArticlePendingNotice, { data }) : items.length === 0 ? /* @__PURE__ */ React.createElement("div", { class: "flex min-h-[220px] flex-1 items-center justify-center rounded-lg bg-slate-50 px-4 text-center text-sm text-slate-500" }, def.empty) : /* @__PURE__ */ React.createElement("div", { class: "flex flex-1 flex-col justify-start divide-y divide-slate-100" }, items.map((article, index) => /* @__PURE__ */ React.createElement(LatestArticleItem, { key: article.uuid || article.id || def.tag + "_" + index, data: article }))), pending ? null : /* @__PURE__ */ React.createElement("div", { class: "mt-4" }, /* @__PURE__ */ React.createElement(ArticlePagination, { currentPage, totalCount, pageSize: COMMUNITY_CARD_PAGE_SIZE, onPageChange: (page) => goToCommunityCardPage(def.tag, page) })));
+  const body = pending ? /* @__PURE__ */ React.createElement(CommunityArticlePendingNotice, { data }) : /* @__PURE__ */ React.createElement("div", { class: "flex flex-1 flex-col gap-3" }, partial ? /* @__PURE__ */ React.createElement(CommunityArticlePartialNotice, { data }) : null, items.length === 0 ? partial ? null : /* @__PURE__ */ React.createElement("div", { class: "flex min-h-[220px] flex-1 items-center justify-center rounded-lg bg-slate-50 px-4 text-center text-sm text-slate-500" }, def.empty) : /* @__PURE__ */ React.createElement("div", { class: "flex flex-1 flex-col justify-start divide-y divide-slate-100" }, items.map((article, index) => /* @__PURE__ */ React.createElement(LatestArticleItem, { key: article.uuid || article.id || def.tag + "_" + index, data: article }))));
+  return /* @__PURE__ */ React.createElement("section", { class: "flex min-h-[420px] flex-col rounded-lg border border-slate-200 bg-white p-5 shadow-sm" }, /* @__PURE__ */ React.createElement(Div_box_header, { title: def.title, count: totalCount > 0 ? totalCount.toLocaleString("ko-KR") : null }), body, !pending && !partial ? /* @__PURE__ */ React.createElement("div", { class: "mt-4" }, /* @__PURE__ */ React.createElement(ArticlePagination, { currentPage, totalCount, pageSize: COMMUNITY_CARD_PAGE_SIZE, onPageChange: (page) => goToCommunityCardPage(def.tag, page) })) : null);
 }
 function ListMain() {
   return /* @__PURE__ */ React.createElement("div", { class: "flex flex-col justify-center items-center py-8 w-full max-w-screen-2xl mx-auto px-4 sm:px-6 lg:px-8" }, /* @__PURE__ */ React.createElement(Div_page_header, { title: header_title, subtitle: header_subtitle }), /* @__PURE__ */ React.createElement("div", { id: "div_community_list", class: "flex flex-col justify-center items-center w-full space-y-4" }, /* @__PURE__ */ React.createElement(DivCommunityTopTools, null), isCommunityCardMode() ? /* @__PURE__ */ React.createElement(CommunityCardShell, null) : /* @__PURE__ */ React.createElement("div", { id: "div_article_list", class: "w-full" }, /* @__PURE__ */ React.createElement("div", { class: "flex flex-col justify-center items-center border border-gray-300 rounded-xl space-y-4 w-full p-8" }, /* @__PURE__ */ React.createElement(Div_box_header, { title: "\uCD5C\uC2E0 \uAE00" }))), /* @__PURE__ */ React.createElement(DivCommunityWidgetHeader, null)));
@@ -1681,6 +1703,13 @@ async function loadCommunityBoardCard(def, page) {
     }
     return;
   }
+  if (isCommunityArticleListPartial(data)) {
+    const host = document.getElementById("div_community_card_" + def.tag);
+    if (host) {
+      ReactDOM.render(/* @__PURE__ */ React.createElement(CommunityBoardCard, { def, data }), host);
+    }
+    return;
+  }
   communityCardLastGood[requestKey] = data;
   const totalPages = Math.max(1, Math.ceil(Number(data && data.count ? data.count.cnt || 0 : 0) / COMMUNITY_CARD_PAGE_SIZE));
   if (Object.keys(data.list || {}).length === 0 && cardPage > totalPages) {
@@ -1718,11 +1747,11 @@ async function goToCommunityCardPage(tag, page) {
 async function get_article_list(loadMode, requestedPage = 1) {
   function ArticleList(props) {
     const article_list = Object.keys(props.data || {}).map((key) => /* @__PURE__ */ React.createElement(LatestArticleItem, { key, data: props.data[key] }));
-    const listContent = article_list.length === 0 ? /* @__PURE__ */ React.createElement("div", { class: "flex min-h-[160px] items-center justify-center rounded-lg bg-slate-50 text-sm text-slate-500" }, "\uD45C\uC2DC\uD560 \uCD5C\uC2E0 \uAE00\uC774 \uC5C6\uC2B5\uB2C8\uB2E4.") : /* @__PURE__ */ React.createElement("div", { class: "flex flex-col justify-center items-start w-full divide-y divide-slate-100" }, article_list);
+    const listContent = article_list.length === 0 ? props.partialData ? null : /* @__PURE__ */ React.createElement("div", { class: "flex min-h-[160px] items-center justify-center rounded-lg bg-slate-50 text-sm text-slate-500" }, "\uD45C\uC2DC\uD560 \uCD5C\uC2E0 \uAE00\uC774 \uC5C6\uC2B5\uB2C8\uB2E4.") : /* @__PURE__ */ React.createElement("div", { class: "flex flex-col justify-center items-start w-full divide-y divide-slate-100" }, article_list);
     if (!props.isMain) {
-      return listContent;
+      return props.partialData ? /* @__PURE__ */ React.createElement("div", { class: "flex w-full flex-col gap-3" }, /* @__PURE__ */ React.createElement(CommunityArticlePartialNotice, { data: props.partialData }), listContent) : listContent;
     }
-    return /* @__PURE__ */ React.createElement("div", { class: "flex flex-col justify-center items-center border border-gray-300 rounded-xl space-y-4 w-full p-8" }, /* @__PURE__ */ React.createElement(Div_box_header, { title: props.title || "\uCD5C\uC2E0 \uAE00", count: communityState.article_counter > 0 ? communityState.article_counter.toLocaleString("ko-KR") : null }), listContent, props.paginate !== false && /* @__PURE__ */ React.createElement(ArticlePagination, { currentPage: communityState.page_num, totalCount: communityState.article_counter }));
+    return /* @__PURE__ */ React.createElement("div", { class: "flex flex-col justify-center items-center border border-gray-300 rounded-xl space-y-4 w-full p-8" }, /* @__PURE__ */ React.createElement(Div_box_header, { title: props.title || "\uCD5C\uC2E0 \uAE00", count: communityState.article_counter > 0 ? communityState.article_counter.toLocaleString("ko-KR") : null }), props.partialData ? /* @__PURE__ */ React.createElement(CommunityArticlePartialNotice, { data: props.partialData }) : null, listContent, props.paginate !== false && /* @__PURE__ */ React.createElement(ArticlePagination, { currentPage: communityState.page_num, totalCount: communityState.article_counter }));
   }
   communityState.toggle_page = true;
   const request_data = new FormData();
@@ -1809,6 +1838,16 @@ async function get_article_list(loadMode, requestedPage = 1) {
   if (!response || !response.ok || isCommunityArticleListPending(data)) {
     ReactDOM.render(
       /* @__PURE__ */ React.createElement(CommunityArticlePendingNotice, { data }),
+      document.getElementById(targetId)
+    );
+    communityState.toggle_page = false;
+    return;
+  }
+  if (isCommunityArticleListPartial(data)) {
+    communityState.article_counter = 0;
+    const listData = data && data.list ? data.list : {};
+    ReactDOM.render(
+      /* @__PURE__ */ React.createElement(ArticleList, { data: listData, isMain: replaceMainList, partialData: data, paginate: false }),
       document.getElementById(targetId)
     );
     communityState.toggle_page = false;
@@ -2586,33 +2625,6 @@ function Div_main_stop() {
     "\uBAA9\uB85D\uC73C\uB85C"
   )));
 }
-let communityCreateRequestID = "";
-const communityCreateRequestStorageKey = "web-r:community:create:" + location.pathname;
-function stableCommunityCreateRequestID() {
-  if (!communityCreateRequestID) {
-    try {
-      communityCreateRequestID = sessionStorage.getItem(communityCreateRequestStorageKey) || "";
-    } catch (_) {
-    }
-  }
-  if (!/^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(communityCreateRequestID)) {
-    communityCreateRequestID = globalThis.crypto && crypto.randomUUID ? crypto.randomUUID() : "";
-    if (communityCreateRequestID) {
-      try {
-        sessionStorage.setItem(communityCreateRequestStorageKey, communityCreateRequestID);
-      } catch (_) {
-      }
-    }
-  }
-  return communityCreateRequestID;
-}
-function clearCommunityCreateRequestID() {
-  communityCreateRequestID = "";
-  try {
-    sessionStorage.removeItem(communityCreateRequestStorageKey);
-  } catch (_) {
-  }
-}
 async function submit_write() {
   const txt_title = document.getElementById("txt_title").value.trim();
   const txt_content = getArticleEditorHTML();
@@ -2633,21 +2645,13 @@ async function submit_write() {
     request_data.append("txt_title", txt_title);
     request_data.append("txt_content", txt_content);
     request_data.append("chk_secret", chk_secret);
-    const requestID = stableCommunityCreateRequestID();
-    if (!requestID) {
-      alert("요청 ID를 생성할 수 없습니다. 보안 연결에서 다시 시도해 주세요.");
-      communityState.toggle_click_submit = false;
-      ReactDOM.render(/* @__PURE__ */ React.createElement(Div_button, null), document.getElementById("div_button_list"));
-      return;
-    }
-    request_data.append("request_id", requestID);
     const data = await fetch("/blank/ajax_board/insert_article/", {
       method: "POST",
       headers: { "X-CSRFToken": getCookie("csrftoken") },
       body: request_data
     }).then((res) => res.json());
-    if (!data || data.error || data.pending || data.publication_pending || !data.uuid) {
-      alert(data && data.error || "게시글 공개 상태를 확인 중입니다. 잠시 후 같은 화면에서 다시 시도해 주세요.");
+    if (data && data.error) {
+      alert(data.error);
       communityState.toggle_click_submit = false;
       ReactDOM.render(/* @__PURE__ */ React.createElement(Div_button, null), document.getElementById("div_button_list"));
       return;
@@ -2661,7 +2665,6 @@ async function submit_write() {
     } catch (error) {
       alert("\uAC8C\uC2DC\uAE00\uC740 \uC800\uC7A5\uB418\uC5C8\uC9C0\uB9CC \uD30C\uC77C \uC5C5\uB85C\uB4DC\uC5D0 \uC2E4\uD328\uD588\uC2B5\uB2C8\uB2E4: " + error.message);
     }
-    clearCommunityCreateRequestID();
     location.href = init_url + "read/" + data.uuid + "/";
   }
   communityState.toggle_click_submit = false;

@@ -551,6 +551,18 @@ const IntroNoticeList = /* @__PURE__ */ (() => {
   function resetNoticeBackendCache() {
     Object.keys(noticeBackendCache).forEach((key) => delete noticeBackendCache[key]);
   }
+  function noticeListPayloadReady(data) {
+    if (!data || typeof data !== "object" || Array.isArray(data) || data.pending === true || data.ok === false ||
+      !data.count || typeof data.count !== "object" || data.count.cnt == null || data.count.cnt === "" ||
+      !data.list || typeof data.list !== "object" || Array.isArray(data.list)) {
+      return false;
+    }
+    const total = Number(data.count.cnt);
+    return Number.isSafeInteger(total) && total >= 0 && (total === 0 || Object.keys(data.list).length > 0);
+  }
+  function NoticeListUnavailable(props) {
+    return /* @__PURE__ */ React.createElement("div", { role: "alert", class: "rounded-lg border border-amber-200 bg-amber-50 px-4 py-4 text-sm text-amber-800" }, /* @__PURE__ */ React.createElement("p", null, "\uACF5\uC9C0 \uBAA9\uB85D\uC744 \uBD88\uB7EC\uC624\uC9C0 \uBABB\uD588\uC2B5\uB2C8\uB2E4. \uC7A0\uC2DC \uD6C4 \uB2E4\uC2DC \uC2DC\uB3C4\uD574 \uC8FC\uC138\uC694."), /* @__PURE__ */ React.createElement("button", { type: "button", onClick: props.retry, class: "mt-3 inline-flex rounded-lg border border-amber-300 bg-white px-3 py-2 font-semibold text-amber-900 hover:bg-amber-100" }, "\uB2E4\uC2DC \uC2DC\uB3C4"));
+  }
   function NoticePaginationButton(props) {
     const baseClass = "inline-flex h-9 min-w-9 items-center justify-center rounded-lg border px-3 text-sm font-semibold transition";
     const activeClass = "border-blue-700 bg-blue-700 text-white";
@@ -567,9 +579,9 @@ const IntroNoticeList = /* @__PURE__ */ (() => {
       props.children
     );
   }
-  function NoticePagination({ incomplete = false }) {
+  function NoticePagination() {
     const totalPages = noticeTotalPages();
-    if (incomplete || totalPages <= 1) {
+    if (totalPages <= 1) {
       return null;
     }
     const pages = [];
@@ -603,14 +615,12 @@ const IntroNoticeList = /* @__PURE__ */ (() => {
     }
   }
 	  async function get_article_list(mode2, requestedPage = 1) {
-	    const ArticleList = ({ data: data2, incomplete = false }) => {
+	    const ArticleList = ({ data: data2, isMain = false }) => {
 	      const rows = Array.isArray(data2) ? data2 : Object.values(data2 || {});
 	      const article_list = rows.map(
 	        (article, idx) => /* @__PURE__ */ React.createElement(Div_new_article_list, { key: article.uuid || article.uuid_article || idx, data: article })
 	      );
-	      const warning = incomplete ? /* @__PURE__ */ React.createElement("div", { role: "status", class: "rounded-lg border border-amber-200 bg-amber-50 px-4 py-4 text-sm text-amber-800" }, "\uACF5\uC9C0 \uBAA9\uB85D\uC744 \uC77C\uC2DC\uC801\uC73C\uB85C \uBD88\uB7EC\uC624\uC9C0 \uBABB\uD588\uC2B5\uB2C8\uB2E4. \uC7A0\uC2DC \uD6C4 \uB2E4\uC2DC \uC2DC\uB3C4\uD574 \uC8FC\uC138\uC694.") : null;
-	      const empty = !incomplete && article_list.length === 0 ? /* @__PURE__ */ React.createElement("div", { class: "rounded-lg border border-amber-200 bg-amber-50 px-4 py-4 text-sm text-amber-800" }, "\uD45C\uC2DC\uD560 \uACF5\uC9C0\uC0AC\uD56D\uC774 \uC5C6\uC2B5\uB2C8\uB2E4.") : null;
-	      return /* @__PURE__ */ React.createElement("div", { class: "w-full space-y-4" }, warning, /* @__PURE__ */ React.createElement("div", { class: "flex w-full flex-col items-stretch gap-3" }, article_list, empty), /* @__PURE__ */ React.createElement(NoticePagination, { incomplete }));
+	      return /* @__PURE__ */ React.createElement("div", { class: "w-full space-y-4" }, /* @__PURE__ */ React.createElement("div", { class: "flex w-full flex-col items-stretch gap-3" }, article_list.length > 0 ? article_list : /* @__PURE__ */ React.createElement("div", { class: "rounded-lg border border-amber-200 bg-amber-50 px-4 py-4 text-sm text-amber-800" }, "\uD45C\uC2DC\uD560 \uACF5\uC9C0\uC0AC\uD56D\uC774 \uC5C6\uC2B5\uB2C8\uB2E4.")), /* @__PURE__ */ React.createElement(NoticePagination, null));
 	    };
     if (toggle_page) {
       return;
@@ -636,35 +646,37 @@ const IntroNoticeList = /* @__PURE__ */ (() => {
       let data = noticeBackendCache[backendPage];
       if (!data) {
         request_data.append("page", backendPage);
-        data = await fetch("/blank/ajax_board/get_article_list/", {
+        const response = await fetch("/blank/ajax_board/get_article_list/", {
           method: "post",
           headers: { "X-CSRFToken": getCookie("csrftoken") },
           body: request_data
-        }).then((res) => res.json());
-        // A partial response is not a complete page and must be retried.
-        if (data && data.complete !== false && data.partial !== true && data.ok !== false) {
-          noticeBackendCache[backendPage] = data;
-        }
+        });
+        if (!response.ok)
+          throw new Error("notice list request failed");
+        data = await response.json();
       }
-      const incomplete = !data || data.complete === false || data.partial === true || data.ok === false;
-      article_counter = incomplete ? 0 : Number(data["count"] && data["count"].cnt || 0);
-      if (!incomplete) {
-        page_num = noticeClampPage(page_num);
+      if (!noticeListPayloadReady(data)) {
+        delete noticeBackendCache[backendPage];
+        throw new Error("notice list is unavailable");
       }
-      const rows = noticeRowsForPage(Object.values(data && data.list || {}), page_num);
+      noticeBackendCache[backendPage] = data;
+      article_counter = Number(data["count"] && data["count"].cnt || 0);
+      page_num = noticeClampPage(page_num);
+      const rows = noticeRowsForPage(Object.values(data.list || {}), page_num);
+      toggle_page = false;
       ReactDOM.render(
         /* @__PURE__ */ React.createElement(
           ArticleList,
           {
             data: rows,
-            incomplete
+            isMain: true
           }
         ),
         document.getElementById("div_article_list")
       );
     } catch (err) {
       console.error("[notice list] load failed:", err);
-      ReactDOM.render(/* @__PURE__ */ React.createElement("div", { class: "rounded-lg border border-amber-200 bg-amber-50 px-4 py-4 text-sm text-amber-800" }, "\uACF5\uC9C0 \uBAA9\uB85D\uC744 \uBD88\uB7EC\uC624\uC9C0 \uBABB\uD588\uC2B5\uB2C8\uB2E4."), document.getElementById("div_article_list"));
+      ReactDOM.render(/* @__PURE__ */ React.createElement(NoticeListUnavailable, { retry: () => get_article_list(mode2, requestedPage) }), document.getElementById("div_article_list"));
     } finally {
       toggle_page = false;
     }
@@ -749,6 +761,7 @@ const IntroNoticeRead = /* @__PURE__ */ (() => {
   async function get_read_article(mode2) {
     const request_data = new FormData();
     request_data.append("orderID", orderID);
+    request_data.append("tag", "notice");
     let lastPayload = null;
     let lastError = null;
     try {
@@ -807,16 +820,24 @@ const IntroNoticeRead = /* @__PURE__ */ (() => {
     if (confirm("\uC815\uB9D0\uB85C \uC0AD\uC81C\uD560\uAE4C\uC694?")) {
       const request_data = new FormData();
       request_data.append("uuid", orderID);
-      const data = await fetch("/blank/ajax_board/delete_article/", {
-        method: "post",
-        headers: { "X-CSRFToken": getCookie("csrftoken") },
-        body: request_data
-      }).then((res) => {
-        return res.json();
-      }).then((res) => {
-        return res;
-      });
-      location.href = init_url;
+      try {
+        const response = await fetch("/blank/ajax_board/delete_article/", {
+          method: "post",
+          headers: { "X-CSRFToken": getCookie("csrftoken") },
+          body: request_data
+        });
+        if (!response.ok) {
+          throw new Error(`delete_article HTTP ${response.status}`);
+        }
+        const result = await response.json();
+        if (!result || result.checker !== "SUCCESS") {
+          alert(result && result.error || "\uACF5\uC9C0\uB97C \uC0AD\uC81C\uD558\uC9C0 \uBABB\uD588\uC2B5\uB2C8\uB2E4. \uD604\uC7AC \uAE00\uC744 \uD655\uC778\uD574 \uC8FC\uC138\uC694.");
+          return;
+        }
+        location.href = init_url;
+      } catch (_) {
+        alert("\uC0AD\uC81C \uC0C1\uD0DC\uB97C \uD655\uC778\uD558\uC9C0 \uBABB\uD588\uC2B5\uB2C8\uB2E4. \uD604\uC7AC \uAE00\uC744 \uD655\uC778\uD574 \uC8FC\uC138\uC694.");
+      }
     }
   }
   function Div_article_read_header(props) {
@@ -1463,6 +1484,16 @@ const IntroNoticeRead = /* @__PURE__ */ (() => {
       return /* @__PURE__ */ React.createElement("div", { class: "flex w-full flex-col items-center px-4 py-8 md:px-8" }, /* @__PURE__ */ React.createElement("div", { class: "w-full max-w-5xl" }, /* @__PURE__ */ React.createElement(Div_page_header, { title: header_title, subtitle: header_subtitle }), /* @__PURE__ */ React.createElement("div", { id: "div_article_read_buttons", class: "mb-4 flex w-full justify-end" }), /* @__PURE__ */ React.createElement("div", { class: "w-full space-y-4" }, /* @__PURE__ */ React.createElement("div", { class: "w-full", id: "div_community_read_header" }, /* @__PURE__ */ React.createElement("div", { class: "w-full rounded-lg border border-slate-200 bg-white p-5 animate-pulse" }, /* @__PURE__ */ React.createElement("div", { class: "mb-3 h-4 w-16 rounded bg-blue-100" }), /* @__PURE__ */ React.createElement("div", { class: "mb-3 h-6 w-4/5 rounded bg-slate-200" }), /* @__PURE__ */ React.createElement("div", { class: "h-4 w-2/5 rounded bg-slate-100" }))), /* @__PURE__ */ React.createElement("div", { class: "w-full rounded-lg border border-slate-200 bg-white p-5", id: "div_community_read_content" }, /* @__PURE__ */ React.createElement("div", { class: "h-48 w-full rounded bg-slate-100 animate-pulse" })), /* @__PURE__ */ React.createElement("div", { class: "w-full", id: "div_community_read_file" }), /* @__PURE__ */ React.createElement("div", { class: "w-full", id: "div_community_read_comment" }, /* @__PURE__ */ React.createElement("div", { class: "w-full rounded-lg border border-slate-200 bg-white p-5 animate-pulse" }, /* @__PURE__ */ React.createElement("div", { class: "mb-3 h-5 w-24 rounded bg-slate-200" }), /* @__PURE__ */ React.createElement("div", { class: "h-16 w-full rounded bg-slate-100" }))))));
     }
     ReactDOM.render(/* @__PURE__ */ React.createElement(Div_main, null), document.getElementById("div_main"));
+    const contentLoading = document.getElementById("div_community_read_content");
+    if (contentLoading) {
+      const status = document.createElement("p");
+      status.className = "mt-4 text-sm font-medium text-slate-600";
+      status.setAttribute("role", "status");
+      status.setAttribute("aria-live", "polite");
+      status.setAttribute("data-webr-i18n", "공지사항 확인 중...");
+      status.textContent = "공지사항 확인 중...";
+      contentLoading.appendChild(status);
+    }
     try {
       await get_read_article("init");
     } catch (e) {
@@ -1547,6 +1578,33 @@ const IntroNoticeWrite = /* @__PURE__ */ (() => {
   function click_delete_file() {
     clearNoticeArticleFiles();
   }
+  let noticeCreateRequestID = "";
+  const noticeCreateRequestStorageKey = "web-r:notice:create:" + location.pathname;
+  function stableNoticeCreateRequestID() {
+    if (!noticeCreateRequestID) {
+      try {
+        noticeCreateRequestID = sessionStorage.getItem(noticeCreateRequestStorageKey) || "";
+      } catch (_) {
+      }
+    }
+    if (!/^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(noticeCreateRequestID)) {
+      noticeCreateRequestID = globalThis.crypto && crypto.randomUUID ? crypto.randomUUID() : "";
+      if (noticeCreateRequestID) {
+        try {
+          sessionStorage.setItem(noticeCreateRequestStorageKey, noticeCreateRequestID);
+        } catch (_) {
+        }
+      }
+    }
+    return noticeCreateRequestID;
+  }
+  function clearNoticeCreateRequestID() {
+    noticeCreateRequestID = "";
+    try {
+      sessionStorage.removeItem(noticeCreateRequestStorageKey);
+    } catch (_) {
+    }
+  }
   async function click_btn_submit() {
     let txt_title = document.getElementById("txt_title").value.trim();
     let txt_content = getNoticeEditorHTML(editor);
@@ -1565,6 +1623,14 @@ const IntroNoticeWrite = /* @__PURE__ */ (() => {
         request_data.append("txt_title", txt_title);
         request_data.append("txt_content", txt_content);
         request_data.append("chk_secret", chk_secret);
+        const requestID = stableNoticeCreateRequestID();
+        if (!requestID) {
+          alert("요청 ID를 생성할 수 없습니다. 보안 연결에서 다시 시도해 주세요.");
+          toggle_click_submit = false;
+          ReactDOM.render(/* @__PURE__ */ React.createElement(Div_button, null), document.getElementById("div_button_list"));
+          return;
+        }
+        request_data.append("request_id", requestID);
         const data2 = await fetch("/blank/ajax_board/insert_article/", {
           method: "post",
           headers: { "X-CSRFToken": getCookie("csrftoken") },
@@ -1574,8 +1640,8 @@ const IntroNoticeWrite = /* @__PURE__ */ (() => {
         }).then((res) => {
           return res;
         });
-        if (data2 && data2.error) {
-          alert(data2.error);
+        if (!data2 || data2.error || data2.pending || data2.publication_pending || !data2.uuid) {
+          alert(data2 && data2.error || "공지 공개 상태를 확인 중입니다. 잠시 후 같은 화면에서 다시 시도해 주세요.");
           toggle_click_submit = false;
           ReactDOM.render(/* @__PURE__ */ React.createElement(Div_button, null), document.getElementById("div_button_list"));
           return;
@@ -1589,6 +1655,7 @@ const IntroNoticeWrite = /* @__PURE__ */ (() => {
         } catch (error) {
           alert("\uAC8C\uC2DC\uAE00\uC740 \uC800\uC7A5\uB418\uC5C8\uC9C0\uB9CC \uD30C\uC77C \uC5C5\uB85C\uB4DC\uC5D0 \uC2E4\uD328\uD588\uC2B5\uB2C8\uB2E4: " + error.message);
         }
+        clearNoticeCreateRequestID();
         location.href = init_url + "read/" + data2.uuid + "/";
       }
       toggle_click_submit = false;
@@ -1701,13 +1768,25 @@ const IntroNoticeEdit = /* @__PURE__ */ (() => {
         if (data && data.file_url != null) {
           request_data.append("attached_file", data.file_url);
         }
-        const response_data = await fetch("/blank/ajax_board/update_article/", {
-          method: "post",
-          headers: { "X-CSRFToken": getCookie("csrftoken") },
-          body: request_data
-        }).then((res) => res.json()).then((res) => res);
-        if (response_data && response_data.error) {
-          alert(response_data.error);
+        let response_data;
+        try {
+          const response = await fetch("/blank/ajax_board/update_article/", {
+            method: "post",
+            headers: { "X-CSRFToken": getCookie("csrftoken") },
+            body: request_data
+          });
+          if (!response.ok) {
+            throw new Error(`update_article HTTP ${response.status}`);
+          }
+          response_data = await response.json();
+        } catch (_) {
+          alert("\uC218\uC815 \uC0C1\uD0DC\uB97C \uD655\uC778\uD558\uC9C0 \uBABB\uD588\uC2B5\uB2C8\uB2E4. \uD604\uC7AC \uAE00\uC744 \uD655\uC778\uD574 \uC8FC\uC138\uC694.");
+          toggle_click_submit = false;
+          ReactDOM.render(/* @__PURE__ */ React.createElement(Div_button, null), document.getElementById("div_button_list"));
+          return;
+        }
+        if (!response_data || response_data.error || !response_data.uuid) {
+          alert(response_data && response_data.error || "\uC218\uC815 \uC644\uB8CC\uB97C \uD655\uC778\uD558\uC9C0 \uBABB\uD588\uC2B5\uB2C8\uB2E4. \uD604\uC7AC \uAE00\uC744 \uD655\uC778\uD574 \uC8FC\uC138\uC694.");
           toggle_click_submit = false;
           ReactDOM.render(/* @__PURE__ */ React.createElement(Div_button, null), document.getElementById("div_button_list"));
           return;
@@ -1759,6 +1838,7 @@ const IntroNoticeEdit = /* @__PURE__ */ (() => {
     ReactDOM.render(/* @__PURE__ */ React.createElement(Div_check_writer, null), document.getElementById("div_main"));
     const fd = new FormData();
     fd.append("orderID", orderID);
+    fd.append("tag", "notice");
     data = await fetch("/blank/ajax_board/get_read_article/", {
       method: "post",
       headers: { "X-CSRFToken": getCookie("csrftoken") },

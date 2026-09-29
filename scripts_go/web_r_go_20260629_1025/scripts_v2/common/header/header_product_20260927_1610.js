@@ -1,15 +1,14 @@
-(function installWebRProductHeader202607291556(window, document) {
+(function installWebRProductHeader202609271610(window, document) {
 "use strict";
 
-if (window.__webrProductHeader202607291556Installed) {
+if (window.__webrProductHeader202609271610Installed) {
   return;
 }
-window.__webrProductHeader202607291556Installed = true;
+window.__webrProductHeader202609271610Installed = true;
 
 const h = React.createElement;
 
 const WEBR_CDN = "https://cdn.jsdelivr.net/gh/statground/web-R_CDN@f3e464e95616fa13712baa6adbbb0b6cda7ee821/";
-const COMMON_CDN = "https://cdn.jsdelivr.net/gh/statground/Common_CDN/";
 
 function currentWebRCDN2Base() {
   const fallback = "https://cdn.jsdelivr.net/gh/statground/web-r_CDN2@9391ee2fceef526234f9c21cb907dc01f3249339/";
@@ -22,15 +21,6 @@ function currentWebRCDN2Base() {
 }
 
 const WEBR_CDN2 = currentWebRCDN2Base();
-
-const socialLinks = [
-  ["Facebook Group", "https://www.facebook.com/groups/statground", COMMON_CDN + "images/svg/footer_facebook_group.svg"],
-  ["Facebook Page", "https://www.facebook.com/Statground", COMMON_CDN + "images/svg/footer_facebook_page.svg"],
-  ["Twitter", "https://twitter.com/Statground1", COMMON_CDN + "images/svg/footer_twitter_x.svg"],
-  ["Instagram", "https://www.instagram.com/statground/", COMMON_CDN + "images/svg/footer_instagram.svg"],
-  ["LinkedIn", "https://www.linkedin.com/company/82371650/", COMMON_CDN + "images/svg/footer_linkedin.svg"],
-  ["Threads", "https://www.threads.net/@statground", COMMON_CDN + "images/svg/footer_threads.svg"]
-];
 
 const MENU_SECTIONS = {
   webr: {
@@ -110,7 +100,7 @@ const MENU_SECTIONS = {
 
 const MENUS = ["webr", "r_ecosystem", "community", "intro"];
 const NAVIGATION_CONTRACT = Object.freeze({
-  version: "20260729_1556",
+  version: "20260927_1610",
   menuIDs: Object.freeze(MENUS.slice()),
   menuTitles: Object.freeze(MENUS.map(function(id) {
     return MENU_SECTIONS[id].title;
@@ -400,17 +390,6 @@ function UtilityLink(props) {
   }, props.children);
 }
 
-function SocialIcon(props) {
-  return h("a", {
-    href: props.url,
-    title: props.name,
-    "aria-label": props.name,
-    target: "_blank",
-    rel: "noopener noreferrer",
-    className: "inline-flex h-8 w-8 items-center justify-center rounded-lg text-gray-500 hover:bg-gray-50 hover:text-blue-700"
-  }, h("img", { src: props.icon, className: "h-4 w-4", alt: "" }));
-}
-
 function MembershipPromptBubble() {
   return h("span", { className: "relative ml-2 inline-flex items-center rounded-full border border-amber-200 bg-amber-100 px-2 py-0.5 text-[11px] font-extrabold leading-4 text-amber-800 shadow-sm" },
     h("span", { className: "absolute -left-1 top-1/2 h-2 w-2 -translate-y-1/2 rotate-45 border-b border-l border-amber-200 bg-amber-100", "aria-hidden": "true" }),
@@ -434,14 +413,14 @@ function AccountLinks(props) {
   const showTeamMenu = teamMenu && teamMenu.visible !== false && teamMenu.href;
   return h("div", { className: "flex flex-row flex-wrap items-center gap-1" },
     h(UtilityLink, {
-      href: "/account/myinfo/profile/",
-      title: "내 정보 수정",
-      "aria-label": name + " 내 정보 수정",
+      href: "/myinfo/",
+      title: "내 정보",
+      "aria-label": name + " 내 정보",
       className: "group relative inline-flex min-h-[36px] items-center gap-1.5 rounded-lg px-3 text-sm font-semibold text-gray-900 hover:bg-gray-50 hover:text-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
     },
       h(UserCircleIcon),
       h("span", null, name),
-      h("span", { className: "pointer-events-none absolute left-1/2 top-full z-50 mt-2 hidden -translate-x-1/2 whitespace-nowrap rounded-md bg-gray-950 px-2 py-1 text-xs font-semibold text-white shadow-lg group-hover:block group-focus-within:block" }, "내 정보 수정")),
+      h("span", { className: "pointer-events-none absolute left-1/2 top-full z-50 mt-2 hidden -translate-x-1/2 whitespace-nowrap rounded-md bg-gray-950 px-2 py-1 text-xs font-semibold text-white shadow-lg group-hover:block group-focus-within:block" }, "내 정보")),
     role ? h(UtilityLink, {
       href: "/intro/membership/",
       title: role === "준회원" ? "정회원 가입 안내" : undefined,
@@ -458,19 +437,6 @@ function AccountBar(props) {
   const data = props.data || {};
   return h("div", { className: "flex w-full flex-row flex-wrap items-center justify-start gap-2 text-sm md:justify-end" },
     h(AccountLinks, { data })
-  );
-}
-
-function ExternalBar() {
-  return h("div", { className: "flex w-full flex-row flex-wrap items-center justify-end gap-2 text-sm" },
-    h(UtilityLink, { href: "https://www.statground.net", target: "_blank" }, "통계마당"),
-    h(UtilityLink, { href: "https://cafe.daum.net/biometrika", target: "_blank" }, "Biometrika"),
-    h("span", { className: "mx-1 h-5 w-px bg-gray-200", "aria-hidden": "true" }),
-    h("div", { className: "flex flex-row flex-wrap items-center gap-1" },
-      socialLinks.map(function(item) {
-        return h(SocialIcon, { key: item[0], name: item[0], url: item[1], icon: item[2] });
-      })
-    )
   );
 }
 
@@ -804,7 +770,7 @@ function Div_menu() {
           h("img", { src: WEBR_CDN + "images/logo/logo.png", className: "mr-3 h-10 object-scale-down", alt: "Statground Logo" })
         ),
         h("div", { id: "div_menu_external_header", className: "hidden min-w-0 flex-1 justify-end md:flex" },
-          h(ExternalBar, null)
+          h("span", { id: "webr-language-anchor", "aria-hidden": "true" })
         ),
         h("button", {
           id: "btn_menu_hamburger",
@@ -831,10 +797,8 @@ function Div_menu() {
       h("div", { id: "div_menu_mobile", className: "hidden" },
         MENUS.map(function(id) {
           return h(MobileMenuItem, { key: "mobile-" + id, id });
-        }),
-        h("div", { className: "block border-t border-gray-200 px-3 pt-3 md:hidden" },
-          h(ExternalBar, null)
-        )
+        })
+
       )
     ),
     MENUS.map(function(id) {
