@@ -379,6 +379,9 @@
     rail.appendChild(notices.card);
 
     var media = railCard("강의 / YouTube", "/workshop/");
+    media.card.querySelector(".webr-home-compact__rail-title").replaceChildren(
+      uiElement("span", "", "강의"), document.createTextNode(" / YouTube")
+    );
     media.body.appendChild(skeleton(2));
     rail.appendChild(media.card);
 
@@ -674,54 +677,61 @@
         ["inactive", "private", "deleted", "unavailable"].indexOf(availability) < 0;
     });
     var candidates = [];
-    lectures.forEach(function addLecture(item) {
-      candidates.push({ type: "강의", root: "/workshop/lecture/", item: item });
-    });
-    youtube.forEach(function addYoutube(item) {
-      candidates.push({ type: "YouTube", root: "/workshop/youtube/", item: item });
-    });
+    if (lectures.length) {
+      candidates.push({ type: "강의", root: "/workshop/lecture/", item: lectures[0] });
+    }
+    if (youtube.length) {
+      candidates.push({ type: "YouTube", root: "/workshop/youtube/", item: youtube[0] });
+    }
     candidates.sort(function newestFirst(left, right) {
       return cleanText(right.item.published_at, 80).localeCompare(cleanText(left.item.published_at, 80));
     });
-    return candidates[0] || null;
+    return candidates;
   }
 
   function renderMedia(payload) {
     refs.mediaBody.replaceChildren();
-    var media = featuredMedia(payload);
+    var mediaItems = featuredMedia(payload);
     var existingMore = refs.mediaHeader.querySelector(".webr-home-compact__more");
-    if (!media) {
+    if (!mediaItems.length) {
+      if (existingMore) existingMore.href = "/workshop/";
       refs.mediaBody.appendChild(uiLink("/workshop/", "webr-home-compact__empty", "강의와 YouTube 전체 보기"));
       return;
     }
     if (existingMore) {
-      existingMore.href = media.root;
+      existingMore.href = mediaItems.length === 1 ? mediaItems[0].root : "/workshop/";
     }
-    var anchor = link(media.item.href || media.root, "webr-home-compact__media");
-    var imageURL = safeImageURL(media.item.image);
-    if (imageURL) {
-      var image = element("img", "webr-home-compact__media-image");
-      image.src = imageURL;
-      image.alt = "";
-      image.loading = "lazy";
-      image.decoding = "async";
-      anchor.appendChild(image);
-    } else {
-      anchor.appendChild(uiElement("span", "webr-home-compact__media-placeholder", media.type));
+    var destination = refs.mediaBody;
+    if (mediaItems.length > 1) {
+      destination = element("div", "webr-home-compact__media-list--paired");
+      refs.mediaBody.appendChild(destination);
     }
-    var type = uiElement("span", "webr-home-compact__media-type", media.type);
-    anchor.appendChild(type);
-    var titleRow = element("span", "webr-home-compact__media-title-row");
-    titleRow.appendChild(sourceText("strong", "webr-home-compact__media-title", cleanText(media.item.title, 88)));
-    if (media.item.is_new === true) {
-      titleRow.appendChild(newBadge());
-    }
-    anchor.appendChild(titleRow);
-    var date = formatDate(media.item.published_at);
-    if (date) {
-      anchor.appendChild(element("span", "webr-home-compact__media-date", date));
-    }
-    refs.mediaBody.appendChild(anchor);
+    mediaItems.forEach(function appendMedia(media) {
+      var anchor = link(media.item.href || media.root, "webr-home-compact__media");
+      var imageURL = safeImageURL(media.item.image);
+      if (imageURL) {
+        var image = element("img", "webr-home-compact__media-image");
+        image.src = imageURL;
+        image.alt = "";
+        image.loading = "lazy";
+        image.decoding = "async";
+        anchor.appendChild(image);
+      } else {
+        anchor.appendChild(uiElement("span", "webr-home-compact__media-placeholder", media.type));
+      }
+      anchor.appendChild(uiElement("span", "webr-home-compact__media-type", media.type));
+      var titleRow = element("span", "webr-home-compact__media-title-row");
+      titleRow.appendChild(sourceText("strong", "webr-home-compact__media-title", cleanText(media.item.title, 88)));
+      if (media.item.is_new === true) {
+        titleRow.appendChild(newBadge());
+      }
+      anchor.appendChild(titleRow);
+      var date = formatDate(media.item.published_at);
+      if (date) {
+        anchor.appendChild(element("span", "webr-home-compact__media-date", date));
+      }
+      destination.appendChild(anchor);
+    });
   }
 
   function renderActivity(items) {
