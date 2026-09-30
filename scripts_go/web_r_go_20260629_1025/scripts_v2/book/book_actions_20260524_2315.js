@@ -282,11 +282,25 @@
     var url = new URL(window.location.href);
     url.searchParams.set("fragment", "content");
     bookRecoveryInFlight = true;
-    window.fetch(url.toString(), {
+    var controller = typeof AbortController === "function" ? new AbortController() : null;
+    var options = {
       credentials: "same-origin",
       cache: "no-store",
       headers: { "Accept": "text/html", "X-Requested-With": "fetch" }
-    }).then(function (response) {
+    };
+    if (controller) {
+      options.signal = controller.signal;
+    }
+    var timeoutID;
+    Promise.race([
+      window.fetch(url.toString(), options),
+      new Promise(function (_resolve, reject) {
+        timeoutID = window.setTimeout(function () {
+          if (controller) controller.abort();
+          reject(new Error("Book fragment timed out"));
+        }, 12000);
+      })
+    ]).then(function (response) {
       if (!response.ok) {
         throw new Error("Book fragment unavailable");
       }
@@ -307,6 +321,7 @@
     }).catch(function () {
       bookRecoveryFailures += 1;
     }).finally(function () {
+      window.clearTimeout(timeoutID);
       bookRecoveryInFlight = false;
       if (bookRecoveryRoot()) {
         scheduleBookRecovery(Math.min(15000, 2000 * Math.pow(2, Math.min(bookRecoveryFailures, 3))));
