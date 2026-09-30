@@ -292,20 +292,21 @@
       options.signal = controller.signal;
     }
     var timeoutID;
+    var content = window.fetch(url.toString(), options).then(function (response) {
+      if (!response.ok) {
+        throw new Error("Book fragment unavailable");
+      }
+      return response.text();
+    });
     Promise.race([
-      window.fetch(url.toString(), options),
+      content,
       new Promise(function (_resolve, reject) {
         timeoutID = window.setTimeout(function () {
           if (controller) controller.abort();
           reject(new Error("Book fragment timed out"));
         }, 12000);
       })
-    ]).then(function (response) {
-      if (!response.ok) {
-        throw new Error("Book fragment unavailable");
-      }
-      return response.text();
-    }).then(function (html) {
+    ]).then(function (html) {
       if (route !== window.location.pathname + window.location.search || !bookRecoveryRoot()) {
         return;
       }
