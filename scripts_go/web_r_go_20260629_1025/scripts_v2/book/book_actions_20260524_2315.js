@@ -304,7 +304,7 @@
         timeoutID = window.setTimeout(function () {
           if (controller) controller.abort();
           reject(new Error("Book fragment timed out"));
-        }, 12000);
+        }, 45000);
       })
     ]).then(function (html) {
       if (route !== window.location.pathname + window.location.search || !bookRecoveryRoot()) {
