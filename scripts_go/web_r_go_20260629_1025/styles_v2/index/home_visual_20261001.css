@@ -418,13 +418,20 @@ body:has(.webr-home-compact) .webr-flowbite-header {
   line-height: 1.5;
 }
 
+.webr-home-compact__stat-copy {
+  min-width: 0;
+}
+
 .webr-home-compact__stat-value {
+  display: block;
+  max-width: 100%;
   color: #183468;
   font-size: 1.5rem;
   font-weight: 800;
   line-height: 1.5;
   letter-spacing: -0.035em;
   font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
 }
 
 .webr-home-compact__notice-list,
