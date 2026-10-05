@@ -47,7 +47,6 @@
   var summaryRecoveryAttempt = 0;
   var summaryRecoveryEpoch = 0;
   var summarySeen = false;
-  var summaryHasResources = false;
   var summaryInitialDeadline = 0;
   var summaryInitialTimer = 0;
   var summaryInitialSettled = false;
@@ -353,15 +352,6 @@
     copy.appendChild(title);
     copy.appendChild(uiElement("p", "webr-home-compact__section-description", "각 영역에서 가장 최근 자료 한 건만 빠르게 확인하세요."));
     heading.appendChild(copy);
-    var status = uiElement("p", "webr-home-compact__status", "");
-    status.setAttribute("role", "status");
-    status.setAttribute("aria-live", "polite");
-    heading.appendChild(status);
-    var retry = uiElement("button", "webr-home-compact__summary-retry webr-home-compact__notice-retry", "최신 자료 다시 확인");
-    retry.type = "button";
-    retry.hidden = true;
-    retry.addEventListener("click", retryUnavailableSummary);
-    heading.appendChild(retry);
     section.appendChild(heading);
 
     var layout = element("div", "webr-home-compact__portal-layout");
@@ -398,8 +388,6 @@
 
     refs = {
       section: section,
-      status: status,
-      retry: retry,
       categoryBodies: categoryBodies,
       statisticsBody: statistics.body,
       noticesBody: notices.body,
@@ -783,12 +771,10 @@
   }
 
   function renderSummary(payload) {
-    summaryHasResources = featuredMedia(payload).length > 0;
     categories.forEach(function renderOneCategory(definition) {
       var item = definition.key === "books"
         ? currentBookItem(payload)
         : normalizedItems(payload, definition.key)[0] || null;
-      if (item) summaryHasResources = true;
       renderCategory(definition, item, sectionUnavailable(payload, definition.key) ||
         (definition.key === "books" && !item && normalizedItems(payload, "books").length > 0));
     });
@@ -797,15 +783,12 @@
     // outlive a withdrawn notice and cannot authorize this card.
     renderMedia(payload);
     renderActivity(normalizedItems(payload, "activity"));
-    refs.retry.hidden = !summaryNeedsRecovery(payload);
     if (!summaryNeedsRecovery(payload)) {
       refs.section.setAttribute("aria-busy", "false");
       refs.section.dataset.homeSummaryState = "ready";
-      refs.status.textContent = "최신 자료";
     } else {
       refs.section.setAttribute("aria-busy", "true");
       refs.section.dataset.homeSummaryState = "refreshing";
-      refs.status.textContent = "나머지 최신 자료를 불러오는 중입니다.";
     }
   }
 
@@ -831,7 +814,6 @@
     if (summaryInitialSettled || !summaryRecoveryVisible()) return;
     settleInitialSummaryGrace();
     renderFallback();
-    refs.retry.hidden = false;
     document.dispatchEvent(new CustomEvent("webr:home-summary-ready", {
       detail: { ok: false, complete: false }
     }));
@@ -843,11 +825,9 @@
       Math.max(0, summaryInitialDeadline - Date.now()));
   }
 
-  function settlePartialSummary(failed) {
+  function settlePartialSummary() {
     refs.section.setAttribute("aria-busy", "false");
     refs.section.dataset.homeSummaryState = "partial";
-    refs.status.textContent = !failed && summaryHasResources
-      ? "일부 최신 자료" : "일부 자료 집계가 지연되고 있습니다.";
   }
 
   function renderFallback() {
@@ -860,7 +840,6 @@
     renderActivity([]);
     refs.section.setAttribute("aria-busy", "false");
     refs.section.dataset.homeSummaryState = "fallback";
-    refs.status.textContent = "일부 자료 집계가 지연되고 있습니다.";
   }
 
   function requestSummary(externalController) {
@@ -932,7 +911,6 @@
     var epoch = summaryRecoveryEpoch;
     var controller = typeof AbortController === "function" ? new AbortController() : null;
     summaryRecoveryController = controller;
-    refs.retry.disabled = true;
     requestSummary(controller).then(function acceptCurrentSummary(payload) {
       if (epoch !== summaryRecoveryEpoch || !summaryRecoveryVisible()) return;
       // Every lane is rendered from this current same-origin response. Notice
@@ -955,15 +933,13 @@
       if (withinInitialSummaryGrace()) return;
       settleInitialSummaryGrace();
       if (!summarySeen) renderFallback();
-      else settlePartialSummary(true);
-      refs.retry.hidden = false;
+      else settlePartialSummary();
       document.dispatchEvent(new CustomEvent("webr:home-summary-ready", {
         detail: { ok: false, complete: false }
       }));
     }).finally(function finishSummaryRecovery() {
       summaryRecoveryController = null;
       summaryRecoveryInFlight = false;
-      refs.retry.disabled = false;
       var interval = summaryRetryDelays[summaryRecoveryAttempt++] || 15000 + Math.floor(Math.random() * 5000);
       scheduleSummaryRecovery(epoch === summaryRecoveryEpoch ? interval : 0);
     });

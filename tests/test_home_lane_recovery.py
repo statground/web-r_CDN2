@@ -34,7 +34,11 @@ class HomeLaneRecoveryTests(unittest.TestCase):
         cls.browser.close()
         cls.playwright.stop()
 
-    def render(self, live, *, cached=None, hold=False, hold_notices=False, notices=None, deadline=None, grace_ms=None, status=200, real_retry=False):
+    def assert_global_controls_absent(self, page):
+        self.assertEqual(page.locator(".webr-home-compact__status, .webr-home-compact__summary-retry").count(), 0)
+        self.assertEqual(page.get_by_role("button", name="최신 자료 다시 확인", exact=True).count(), 0)
+
+    def render(self, live, *, cached=None, hold=False, hold_notices=False, notices=None, deadline=None, grace_ms=None, status=200, real_retry=False, manual_only=True):
         page = self.browser.new_page()
         self.addCleanup(page.close)
         errors = []
@@ -74,7 +78,7 @@ class HomeLaneRecoveryTests(unittest.TestCase):
           };
         """)
         if deadline:
-            page.add_init_script("window.__manualOnly=true;window.__deadline=" + str(deadline) + ";")
+            page.add_init_script("window.__manualOnly=" + json.dumps(manual_only) + ";window.__deadline=" + str(deadline) + ";")
         if cached:
             page.add_init_script("localStorage.setItem('webr.home.public-summary.v1', JSON.stringify({schema:1,stored_at:Date.now(),payload:" + json.dumps(cached) + "}));")
         page.route("**/*", lambda route: route.fulfill(status=200, content_type="text/html", body='<div id="div_main"></div>') if route.request.url == "https://home.test/" else route.abort())
@@ -83,6 +87,7 @@ class HomeLaneRecoveryTests(unittest.TestCase):
         page.add_script_tag(path=str(SCRIPTS / "set_main_compact_portal_20260930_lane_recovery.js"))
         page.add_script_tag(path=str(SCRIPTS / "home_summary_terminal_guard_20260828_2306.js"))
         page.evaluate("window.set_main()")
+        self.assert_global_controls_absent(page)
         return page, errors
 
     def test_delayed_first_response_keeps_quiet_placeholders_until_real_cards_arrive(self):
@@ -98,7 +103,7 @@ class HomeLaneRecoveryTests(unittest.TestCase):
         self.assertNotIn("전체 보기", portal.inner_text())
         self.assertNotIn("공지사항 확인 중", portal.inner_text())
         self.assertEqual(portal.locator("[data-home-category] .webr-home-compact__skeleton[aria-hidden=true]").count(), 6)
-        self.assertEqual(portal.locator(".webr-home-compact__status").inner_text(), "")
+        self.assert_global_controls_absent(page)
         self.assertEqual(portal.locator("[data-home-category] .webr-home-compact__more").count(), 6)
         page.evaluate("window.__held.shift()(window.__liveSummary)")
         page.get_by_role("link", name="Current R book", exact=False).wait_for()
@@ -121,7 +126,7 @@ class HomeLaneRecoveryTests(unittest.TestCase):
         self.assertIn("일부 자료 집계가 지연되고 있습니다.", unavailable_page.locator('[data-home-category="community"]').inner_text())
         unavailable_media = unavailable_page.locator(".webr-home-compact__rail-card").filter(has=unavailable_page.get_by_role("heading", name="강의 / YouTube"))
         self.assertIn("일부 자료 집계가 지연되고 있습니다.", unavailable_media.locator(".webr-home-compact__rail-body").inner_text())
-        unavailable_page.get_by_role("button", name="최신 자료 다시 확인").wait_for(state="visible")
+        self.assert_global_controls_absent(unavailable_page)
         self.assertNotIn("전체 보기", unavailable_page.locator('[data-home-category="community"]').inner_text())
         self.assertEqual(unavailable_errors, [])
 
@@ -130,7 +135,8 @@ class HomeLaneRecoveryTests(unittest.TestCase):
                          "title": "Verified current notice", "created_at": "2026-10-05"}}
         page, errors = self.render(summary(), hold=True, notices=notices, deadline=200)
         page.get_by_role("link", name="Verified current notice", exact=False).wait_for()
-        page.get_by_role("button", name="최신 자료 다시 확인").wait_for(state="visible")
+        page.wait_for_function("document.querySelector('#webr-home-portal').dataset.homeSummaryState === 'fallback'")
+        self.assert_global_controls_absent(page)
         self.assertIn("Verified current notice", page.locator("body").inner_text())
         self.assertEqual(errors, [])
 
@@ -139,29 +145,27 @@ class HomeLaneRecoveryTests(unittest.TestCase):
         unavailable["sections"] = {key: [] for key in KEYS}
         page, errors = self.render(unavailable, grace_ms=200)
         page.wait_for_function("document.querySelector('#webr-home-portal').dataset.homeSummaryState === 'fallback'")
-        status = page.locator(".webr-home-compact__status")
-        self.assertEqual(status.inner_text(), "일부 자료 집계가 지연되고 있습니다.")
+        self.assert_global_controls_absent(page)
+        self.assertIn("일부 자료 집계가 지연되고 있습니다.", page.locator('[data-home-category="community"]').inner_text())
         page.evaluate("window.__status=503")
         page.wait_for_function("window.__calls.length >= 4")
-        self.assertEqual(status.inner_text(), "일부 자료 집계가 지연되고 있습니다.")
-        page.get_by_role("button", name="최신 자료 다시 확인").wait_for(state="visible")
+        self.assert_global_controls_absent(page)
 
         page.evaluate("window.__status=200;window.__liveSummary=" + json.dumps(summary(unavailable=["books", "youtube"])))
         page.get_by_role("link", name="Healthy R package", exact=False).wait_for()
-        self.assertEqual(status.inner_text(), "일부 최신 자료")
+        self.assert_global_controls_absent(page)
         calls = page.evaluate("window.__calls.length")
         page.evaluate("window.__status=503")
         page.wait_for_function("window.__calls.length > " + str(calls))
         self.assertIn("Healthy R package", page.locator("body").inner_text())
-        self.assertEqual(status.inner_text(), "일부 자료 집계가 지연되고 있습니다.")
+        self.assert_global_controls_absent(page)
         self.assertEqual(page.evaluate("window.__maxActive"), 1)
         self.assertEqual(errors, [])
 
     def test_quick_initial_failures_and_empty_partial_stay_quiet_until_prepared_cards(self):
         page, errors = self.render(summary(), status=503, grace_ms=1000)
         page.wait_for_function("window.__calls.length >= 2")
-        status = page.locator(".webr-home-compact__status")
-        self.assertEqual(status.inner_text(), "")
+        self.assert_global_controls_absent(page)
         self.assertEqual(page.locator('[data-home-category] .webr-home-compact__skeleton').count(), 6)
         self.assertEqual(page.evaluate("window.__readyEvents.length"), 0)
         unavailable = summary(unavailable=KEYS[:6] + ["lectures", "youtube", "activity"])
@@ -169,7 +173,7 @@ class HomeLaneRecoveryTests(unittest.TestCase):
         page.evaluate("window.__status=200;window.__liveSummary=" + json.dumps(unavailable))
         calls = page.evaluate("window.__calls.length")
         page.wait_for_function("window.__calls.length > " + str(calls))
-        self.assertEqual(status.inner_text(), "")
+        self.assert_global_controls_absent(page)
         self.assertEqual(page.locator('[data-home-category] .webr-home-compact__skeleton').count(), 6)
         self.assertEqual(page.evaluate("window.__readyEvents.length"), 0)
         self.assertIn("8,160", page.locator('[data-stat-key="cnt_member"]').inner_text())
@@ -183,10 +187,10 @@ class HomeLaneRecoveryTests(unittest.TestCase):
     def test_persistent_initial_failure_becomes_explicit_when_grace_expires(self):
         page, errors = self.render(summary(), status=503, grace_ms=300)
         page.wait_for_function("window.__calls.length >= 2")
-        status = page.locator(".webr-home-compact__status")
-        self.assertEqual(status.inner_text(), "")
-        page.get_by_role("button", name="최신 자료 다시 확인").wait_for(state="visible")
-        self.assertEqual(status.inner_text(), "일부 자료 집계가 지연되고 있습니다.")
+        self.assert_global_controls_absent(page)
+        page.wait_for_function("document.querySelector('#webr-home-portal').dataset.homeSummaryState === 'fallback'")
+        self.assert_global_controls_absent(page)
+        self.assertIn("일부 자료 집계가 지연되고 있습니다.", page.locator('[data-home-category="community"]').inner_text())
         self.assertEqual(page.locator('[data-home-category] .webr-home-compact__skeleton').count(), 0)
         self.assertGreaterEqual(page.evaluate("window.__readyEvents.length"), 1)
         self.assertEqual(page.evaluate("window.__maxActive"), 1)
@@ -196,7 +200,7 @@ class HomeLaneRecoveryTests(unittest.TestCase):
         page, errors = self.render(summary(), status=503, real_retry=True)
         page.wait_for_function("window.__calls.length === 1")
         page.wait_for_timeout(300)
-        self.assertEqual(page.locator(".webr-home-compact__status").inner_text(), "")
+        self.assert_global_controls_absent(page)
         self.assertEqual(page.locator('[data-home-category] .webr-home-compact__skeleton').count(), 6)
         self.assertEqual(page.evaluate("window.__readyEvents.length"), 0)
         page.evaluate("window.__status=200;window.__liveSummary=" + json.dumps(summary(books=[BOOK], youtube=[VIDEO])))
@@ -213,7 +217,7 @@ class HomeLaneRecoveryTests(unittest.TestCase):
         del current["stale_sections"]
         page.evaluate("window.__liveSummary=" + json.dumps(current))
         page.wait_for_function("document.querySelector('#webr-home-portal').dataset.homeSummaryState === 'ready'", timeout=3000)
-        self.assertTrue(page.get_by_role("button", name="최신 자료 다시 확인").is_hidden())
+        self.assert_global_controls_absent(page)
         calls = page.evaluate("window.__calls.length")
         page.wait_for_timeout(150)
         self.assertEqual(page.evaluate("window.__calls.length"), calls)
@@ -226,7 +230,7 @@ class HomeLaneRecoveryTests(unittest.TestCase):
         malformed["stale_sections"] = None
         page.evaluate("window.__liveSummary=" + json.dumps(malformed))
         page.get_by_role("link", name="Current R book", exact=False).wait_for()
-        page.get_by_role("button", name="최신 자료 다시 확인").wait_for(state="visible")
+        self.assert_global_controls_absent(page)
         self.assertEqual(page.locator("#webr-home-portal").get_attribute("data-home-summary-state"), "partial")
         self.assertEqual(errors, [])
 
@@ -289,17 +293,16 @@ class HomeLaneRecoveryTests(unittest.TestCase):
         page.get_by_role("link", name="Healthy R lecture", exact=False).wait_for()
         self.assertNotIn("Current R book", page.locator("body").inner_text())
         self.assertNotIn("youtube video #qLZmigdY7wg", page.locator("body").inner_text())
-        page.get_by_role("button", name="최신 자료 다시 확인").wait_for(state="visible")
+        self.assert_global_controls_absent(page)
         self.assertEqual(errors, [])
 
-    def test_hanging_summary_has_deadline_and_manual_recovery(self):
-        page, errors = self.render(summary(), hold=True, deadline=20)
-        retry = page.get_by_role("button", name="최신 자료 다시 확인")
-        retry.wait_for(state="visible")
+    def test_hanging_summary_has_deadline_and_automatic_recovery_without_global_controls(self):
+        page, errors = self.render(summary(), hold=True, deadline=20, manual_only=False)
         page.wait_for_function("window.__aborts >= 1")
+        self.assert_global_controls_absent(page)
         page.evaluate("window.__holdSummary=false;window.__liveSummary=" + json.dumps(summary(youtube=[VIDEO])))
-        retry.click()
         page.get_by_role("link", name="Current R video", exact=False).wait_for()
+        self.assert_global_controls_absent(page)
         self.assertEqual(errors, [])
 
 
