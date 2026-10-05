@@ -48,6 +48,9 @@
   var summaryRecoveryEpoch = 0;
   var summarySeen = false;
   var summaryHasResources = false;
+  var summaryInitialDeadline = 0;
+  var summaryInitialTimer = 0;
+  var summaryInitialSettled = false;
   var summaryRecoveryTimer = 0;
   var summaryRecoveryController = null;
   var summaryRecoveryInFlight = false;
@@ -806,6 +809,40 @@
     }
   }
 
+  function summaryHasCurrentResources(payload) {
+    return featuredMedia(payload).length > 0 || categories.some(function hasCategory(definition) {
+      return definition.key === "books" ? !!currentBookItem(payload)
+        : normalizedItems(payload, definition.key).length > 0;
+    });
+  }
+
+  function withinInitialSummaryGrace() {
+    return !summaryInitialSettled && Date.now() < summaryInitialDeadline;
+  }
+
+  function settleInitialSummaryGrace() {
+    summaryInitialSettled = true;
+    if (summaryInitialTimer) window.clearTimeout(summaryInitialTimer);
+    summaryInitialTimer = 0;
+  }
+
+  function expireInitialSummaryGrace() {
+    summaryInitialTimer = 0;
+    if (summaryInitialSettled || !summaryRecoveryVisible()) return;
+    settleInitialSummaryGrace();
+    renderFallback();
+    refs.retry.hidden = false;
+    document.dispatchEvent(new CustomEvent("webr:home-summary-ready", {
+      detail: { ok: false, complete: false }
+    }));
+  }
+
+  function scheduleInitialSummaryGrace() {
+    if (summaryInitialSettled || summaryInitialTimer || !summaryInitialDeadline || !summaryRecoveryVisible()) return;
+    summaryInitialTimer = window.setTimeout(expireInitialSummaryGrace,
+      Math.max(0, summaryInitialDeadline - Date.now()));
+  }
+
   function settlePartialSummary(failed) {
     refs.section.setAttribute("aria-busy", "false");
     refs.section.dataset.homeSummaryState = "partial";
@@ -817,7 +854,6 @@
     categories.forEach(function renderFallbackCategory(definition) {
       renderCategory(definition, null, true);
     });
-    renderStatistics({});
     // Notices have their own current-state request and are unaffected by a
     // summary timeout. Its loader owns loading, errors and visible rows.
     renderMedia({ sections: {} });
@@ -855,8 +891,10 @@
 
   function summaryNeedsRecovery(payload) {
     if (!payload || payload.complete !== true) return true;
-    if (!Array.isArray(payload.unavailable_sections) || payload.unavailable_sections.length ||
-        !Array.isArray(payload.stale_sections) || payload.stale_sections.length) return true;
+    if ((payload.unavailable_sections !== undefined &&
+        (!Array.isArray(payload.unavailable_sections) || payload.unavailable_sections.length)) ||
+        (payload.stale_sections !== undefined &&
+        (!Array.isArray(payload.stale_sections) || payload.stale_sections.length))) return true;
     // A malformed Book row cannot turn completion into a visibility grant.
     return normalizedItems(payload, "books").length > 0 && !currentBookItem(payload);
   }
@@ -872,9 +910,12 @@
       summaryRecoveryTimer = 0;
     }
     if (summaryRecoveryController) summaryRecoveryController.abort();
+    if (summaryInitialTimer) window.clearTimeout(summaryInitialTimer);
+    summaryInitialTimer = 0;
   }
 
   function scheduleSummaryRecovery(interval) {
+    scheduleInitialSummaryGrace();
     if (!summaryRecoveryWanted || !summaryRecoveryVisible() || summaryRecoveryTimer || summaryRecoveryInFlight) return;
     var elapsed = summaryRecoveryLastStarted ? Math.max(0, Date.now() - summaryRecoveryLastStarted) : 0;
     var delay = summaryRecoveryLastStarted ? Math.max(0, interval - elapsed) : interval;
@@ -896,9 +937,14 @@
       if (epoch !== summaryRecoveryEpoch || !summaryRecoveryVisible()) return;
       // Every lane is rendered from this current same-origin response. Notice
       // visibility remains on its own endpoint; no saved Book/video replay.
+      summaryRecoveryWanted = summaryNeedsRecovery(payload);
+      if (summaryRecoveryWanted && !summaryHasCurrentResources(payload) && withinInitialSummaryGrace()) {
+        renderStatistics(payload.statistics);
+        return;
+      }
+      settleInitialSummaryGrace();
       renderSummary(payload);
       summarySeen = true;
-      summaryRecoveryWanted = summaryNeedsRecovery(payload);
       if (summaryRecoveryWanted) settlePartialSummary();
       document.dispatchEvent(new CustomEvent("webr:home-summary-ready", {
         detail: { ok: true, complete: !summaryRecoveryWanted }
@@ -906,6 +952,8 @@
     }).catch(function retainHealthySections() {
       if (epoch !== summaryRecoveryEpoch || !summaryRecoveryVisible()) return;
       summaryRecoveryWanted = true;
+      if (withinInitialSummaryGrace()) return;
+      settleInitialSummaryGrace();
       if (!summarySeen) renderFallback();
       else settlePartialSummary(true);
       refs.retry.hidden = false;
@@ -922,6 +970,7 @@
   }
 
   function loadSummary() {
+    summaryInitialDeadline = Date.now() + 12000;
     summaryRecoveryWanted = true;
     scheduleSummaryRecovery(0);
   }
