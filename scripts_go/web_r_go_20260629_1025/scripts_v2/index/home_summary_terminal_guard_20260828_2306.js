@@ -24,23 +24,13 @@
     "activity"
   ];
   var summaryItemKeys = ["kind", "title", "summary", "published_at", "href", "image"];
-  var placeholderSettleDelay = 2500;
   var noticeVisibleCharacterLimit = 28;
-  var settleTimer = 0;
   var noticeObserver = null;
   var cachedSummary = readCachedSummary();
   var servedCachedSummary = false;
   var completeLiveSummarySeen = false;
   var originalFetch = null;
   var wrappedFetch = null;
-  var categoryFallbacks = {
-    rcommunity: { label: "R Community", href: "/community/r-community/" },
-    community: { label: "커뮤니티", href: "/community/" },
-    books: { label: "도서", href: "/book/" },
-    packages: { label: "R 패키지", href: "/r-ecosystem/packages/" },
-    ecosystem: { label: "R 에코시스템", href: "/r-ecosystem/" },
-    workshops: { label: "워크샵", href: "/workshop/" }
-  };
 
   function cleanBoundedText(value, limit) {
     var text = typeof value === "string" ? value.replace(/\s+/g, " ").trim() : "";
@@ -379,57 +369,6 @@
     }
   }
 
-  function fallbackLink(href, text) {
-    var anchor = document.createElement("a");
-    anchor.className = "webr-home-compact__empty";
-    anchor.href = href;
-    anchor.textContent = text;
-    return anchor;
-  }
-
-  function replaceCategorySkeleton(card) {
-    if (!card || !card.querySelector(".webr-home-compact__skeleton")) {
-      return;
-    }
-    var body = card.querySelector(".webr-home-compact__category-body");
-    var key = card.dataset.homeCategory || "";
-    var fallback = categoryFallbacks[key];
-    if (!body || !fallback) {
-      return;
-    }
-    body.replaceChildren(fallbackLink(fallback.href, fallback.label + " 전체 보기"));
-  }
-
-  function replaceRailSkeleton(card) {
-    if (!card || !card.querySelector(".webr-home-compact__skeleton")) {
-      return;
-    }
-    var body = card.querySelector(".webr-home-compact__rail-body");
-    var titleNode = card.querySelector(".webr-home-compact__rail-title");
-    var title = titleNode ? titleNode.textContent.replace(/\s+/g, " ").trim() : "";
-    if (!body) {
-      return;
-    }
-    if (title === "공지사항") {
-      body.replaceChildren(fallbackLink("/intro/notice/", "공지사항 전체 보기"));
-      return;
-    }
-    if (title === "강의 / YouTube") {
-      body.replaceChildren(fallbackLink("/workshop/", "강의와 YouTube 전체 보기"));
-      return;
-    }
-    if (title === "지금 Web-R") {
-      var message = document.createElement("p");
-      message.className = "webr-home-compact__activity-empty";
-      message.textContent = "최근 활동을 다시 확인하고 있습니다.";
-      body.replaceChildren(message);
-      return;
-    }
-    card.querySelectorAll(".webr-home-compact__skeleton").forEach(function removeUnknownSkeleton(node) {
-      node.remove();
-    });
-  }
-
   function ensureNoticeTitleEllipsis(portal) {
     portal.querySelectorAll(".webr-home-compact__notice-title").forEach(function boundTitle(node) {
       var fullTitle = cleanBoundedText(
@@ -479,39 +418,7 @@
     ensureNoticeTitleEllipsis(portal);
   }
 
-  function settleLongRunningPlaceholders() {
-    settleTimer = 0;
-    var portal = document.getElementById("webr-home-portal");
-    if (!portal) {
-      return;
-    }
-    ensureNoticeTitleEllipsis(portal);
-    if (!portal.querySelector(".webr-home-compact__skeleton")) {
-      return;
-    }
-
-    portal.querySelectorAll("[data-home-category]").forEach(replaceCategorySkeleton);
-    portal.querySelectorAll(".webr-home-compact__rail-card").forEach(replaceRailSkeleton);
-    portal.setAttribute("aria-busy", "true");
-    portal.dataset.homeSummaryState = "refreshing";
-    var status = portal.querySelector(".webr-home-compact__status");
-    if (status) {
-      status.textContent = "자료 응답이 지연되어 다시 시도하고 있습니다.";
-    }
-  }
-
-  function schedulePlaceholderSettlement() {
-    if (settleTimer) {
-      window.clearTimeout(settleTimer);
-    }
-    settleTimer = window.setTimeout(settleLongRunningPlaceholders, placeholderSettleDelay);
-  }
-
   document.addEventListener("webr:home-summary-ready", function summaryReady() {
-    if (settleTimer) {
-      window.clearTimeout(settleTimer);
-      settleTimer = 0;
-    }
     var portal = document.getElementById("webr-home-portal");
     if (portal) {
       ensureNoticeTitleEllipsis(portal);
@@ -535,7 +442,6 @@
       installSummaryFetchCache();
       var result = originalSetMain.apply(this, arguments);
       observeNoticeTitles();
-      schedulePlaceholderSettlement();
       return result;
     };
   }

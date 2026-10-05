@@ -34,12 +34,13 @@ class HomeLaneRecoveryTests(unittest.TestCase):
         cls.browser.close()
         cls.playwright.stop()
 
-    def render(self, live, *, cached=None, hold=False, deadline=None):
+    def render(self, live, *, cached=None, hold=False, hold_notices=False, deadline=None):
         page = self.browser.new_page()
         self.addCleanup(page.close)
         errors = []
         page.on("pageerror", lambda error: errors.append(str(error)))
         page.add_init_script("window.__liveSummary=" + json.dumps(live) + ";window.__holdSummary=" + json.dumps(hold) + ";")
+        page.add_init_script("window.__holdNotices=" + json.dumps(hold_notices) + ";")
         page.add_init_script("""
           window.__hidden = false; window.__calls = []; window.__aborts = 0;
           window.__active = 0; window.__maxActive = 0; window.__held = [];
@@ -52,7 +53,8 @@ class HomeLaneRecoveryTests(unittest.TestCase):
               ms >= 800 && ms <= 3000 ? 1 : ms > 10000 && ms < 20000 ? 70 : ms, ...args);
           window.fetch = function(url, init = {}) {
             const path = new URL(url, location.href).pathname;
-            if (path === '/ajax_index_notice/') return Promise.resolve(new Response('{}', {status: 200}));
+            if (path === '/ajax_index_notice/') return window.__holdNotices
+              ? new Promise(() => {}) : Promise.resolve(new Response('{}', {status: 200}));
             if (path !== '/homepage/content-summary/') throw new Error('unexpected request ' + path);
             window.__calls.push({cache: init.cache, method: init.method, url: String(url)});
             window.__maxActive = Math.max(window.__maxActive, ++window.__active);
@@ -75,6 +77,46 @@ class HomeLaneRecoveryTests(unittest.TestCase):
         page.add_script_tag(path=str(SCRIPTS / "home_summary_terminal_guard_20260828_2306.js"))
         page.evaluate("window.set_main()")
         return page, errors
+
+    def test_delayed_first_response_keeps_quiet_placeholders_until_real_cards_arrive(self):
+        live = summary(books=[BOOK], youtube=[VIDEO])
+        for key in ["rcommunity", "community", "packages", "ecosystem", "workshops"]:
+            live["sections"][key] = [{"title": "Current " + key, "href": "/community/", "published_at": "2026-10-05"}]
+        page, errors = self.render(live, hold=True, hold_notices=True)
+        page.wait_for_function("window.__held.length === 1")
+        # The harness advances the old 2.5-second settlement timer. This checks
+        # the actual bundle/guard interaction while the source is still pending.
+        page.wait_for_timeout(100)
+        portal = page.locator("#webr-home-portal")
+        self.assertNotIn("전체 보기", portal.inner_text())
+        self.assertNotIn("공지사항 확인 중", portal.inner_text())
+        self.assertEqual(portal.locator("[data-home-category] .webr-home-compact__skeleton[aria-hidden=true]").count(), 6)
+        self.assertEqual(portal.locator(".webr-home-compact__status").inner_text(), "")
+        self.assertEqual(portal.locator("[data-home-category] .webr-home-compact__more").count(), 6)
+        page.evaluate("window.__held.shift()(window.__liveSummary)")
+        page.get_by_role("link", name="Current R book", exact=False).wait_for()
+        page.get_by_role("link", name="Current rcommunity", exact=False).wait_for()
+        self.assertEqual(portal.locator("[data-home-category] .webr-home-compact__skeleton").count(), 0)
+        self.assertEqual(errors, [])
+
+    def test_complete_empty_lanes_stay_quiet_and_unavailable_lanes_report_delay(self):
+        page, errors = self.render(summary())
+        page.wait_for_function("document.querySelector('#webr-home-portal').dataset.homeSummaryState === 'ready'")
+        empty_category = page.locator('[data-home-category="community"] .webr-home-compact__category-body')
+        self.assertEqual(empty_category.inner_text(), "")
+        media_card = page.locator(".webr-home-compact__rail-card").filter(has=page.get_by_role("heading", name="강의 / YouTube"))
+        self.assertEqual(media_card.locator(".webr-home-compact__rail-body").inner_text(), "")
+        self.assertNotIn("일부 자료 집계가 지연되고 있습니다.", page.locator("#webr-home-portal").inner_text())
+        self.assertEqual(errors, [])
+
+        unavailable_page, unavailable_errors = self.render(summary(unavailable=["community", "lectures", "youtube"]))
+        unavailable_page.wait_for_function("document.querySelector('#webr-home-portal').dataset.homeSummaryState === 'partial'")
+        self.assertIn("일부 자료 집계가 지연되고 있습니다.", unavailable_page.locator('[data-home-category="community"]').inner_text())
+        unavailable_media = unavailable_page.locator(".webr-home-compact__rail-card").filter(has=unavailable_page.get_by_role("heading", name="강의 / YouTube"))
+        self.assertIn("일부 자료 집계가 지연되고 있습니다.", unavailable_media.locator(".webr-home-compact__rail-body").inner_text())
+        unavailable_page.get_by_role("button", name="최신 자료 다시 확인").wait_for(state="visible")
+        self.assertNotIn("전체 보기", unavailable_page.locator('[data-home-category="community"]').inner_text())
+        self.assertEqual(unavailable_errors, [])
 
     def test_book_arrival_does_not_stop_later_youtube_and_other_lane_recovery(self):
         page, errors = self.render(summary(unavailable=["books", "youtube", "lectures"]))

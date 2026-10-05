@@ -229,6 +229,7 @@
 
   function skeleton(lines) {
     var wrapper = element("div", "webr-home-compact__skeleton");
+    wrapper.setAttribute("aria-hidden", "true");
     for (var index = 0; index < lines; index += 1) {
       wrapper.appendChild(element("span", "webr-home-compact__skeleton-line"));
     }
@@ -348,7 +349,7 @@
     copy.appendChild(title);
     copy.appendChild(uiElement("p", "webr-home-compact__section-description", "각 영역에서 가장 최근 자료 한 건만 빠르게 확인하세요."));
     heading.appendChild(copy);
-    var status = uiElement("p", "webr-home-compact__status", "최신 자료를 불러오고 있습니다.");
+    var status = uiElement("p", "webr-home-compact__status", "");
     status.setAttribute("role", "status");
     status.setAttribute("aria-live", "polite");
     heading.appendChild(status);
@@ -411,6 +412,15 @@
     return rows.filter(function validRow(row) {
       return row && typeof row === "object" && cleanText(row.title, 160);
     });
+  }
+
+  function sectionUnavailable(payload, key) {
+    if (!payload || !payload.sections || !Array.isArray(payload.sections[key])) return true;
+    var unavailable = payload.unavailable_sections;
+    var stale = payload.stale_sections;
+    return Array.isArray(unavailable)
+      ? unavailable.indexOf(key) >= 0 || (Array.isArray(stale) && stale.indexOf(key) >= 0)
+      : payload.complete !== true;
   }
 
   function currentBookItem(payload) {
@@ -477,11 +487,13 @@
     return frame;
   }
 
-  function renderCategory(definition, item) {
+  function renderCategory(definition, item, unavailable) {
     var body = refs.categoryBodies[definition.key];
     body.replaceChildren();
     if (!item) {
-      body.appendChild(uiLink(definition.href, "webr-home-compact__empty", "더 보기"));
+      if (unavailable) {
+        body.appendChild(uiElement("p", "webr-home-compact__article-summary", "일부 자료 집계가 지연되고 있습니다."));
+      }
       return;
     }
     var media = categoryMedia(definition, item);
@@ -612,7 +624,7 @@
     if (noticeRequest) {
       return noticeRequest;
     }
-    refs.noticesBody.replaceChildren(uiElement("p", "webr-home-compact__notice-loading", "공지사항 확인 중..."));
+    refs.noticesBody.replaceChildren(skeleton(3));
     noticeRequest = requestNotices().then(function showCurrentNotices(rows) {
       renderNotices(rows, { sections: { notices: rows }, unavailable_sections: [] });
       return rows;
@@ -695,7 +707,9 @@
     var existingMore = refs.mediaHeader.querySelector(".webr-home-compact__more");
     if (!mediaItems.length) {
       if (existingMore) existingMore.href = "/workshop/";
-      refs.mediaBody.appendChild(uiLink("/workshop/", "webr-home-compact__empty", "강의와 YouTube 전체 보기"));
+      if (sectionUnavailable(payload, "lectures") || sectionUnavailable(payload, "youtube")) {
+        refs.mediaBody.appendChild(uiElement("p", "webr-home-compact__article-summary", "일부 자료 집계가 지연되고 있습니다."));
+      }
       return;
     }
     if (existingMore) {
@@ -769,7 +783,8 @@
       var item = definition.key === "books"
         ? currentBookItem(payload)
         : normalizedItems(payload, definition.key)[0] || null;
-      renderCategory(definition, item);
+      renderCategory(definition, item, sectionUnavailable(payload, definition.key) ||
+        (definition.key === "books" && !item && normalizedItems(payload, "books").length > 0));
     });
     renderStatistics(payload.statistics);
     // Notices have a separate current-state request. A homepage summary may
@@ -796,7 +811,7 @@
 
   function renderFallback() {
     categories.forEach(function renderFallbackCategory(definition) {
-      renderCategory(definition, null);
+      renderCategory(definition, null, true);
     });
     renderStatistics({});
     renderNotices([], null);
