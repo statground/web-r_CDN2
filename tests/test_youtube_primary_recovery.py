@@ -138,6 +138,22 @@ class YouTubePrimaryRecoveryTests(unittest.TestCase):
         self.assertTrue(all(r["headers"]["x-csrftoken"] == "current-csrf" for r in requests if r["path"] == READ))
         self.assertEqual(errors, [])
 
+    def test_current_public_article_without_embed_or_title_keeps_original_rendering(self):
+        for payload in [{**ARTICLE, "youtube_url": "", "youtube_thumbnail": "https://fixture.test/current.jpg"},
+                        {**ARTICLE, "title": ""}, {**ARTICLE, "title": "", "youtube_url": ""}]:
+            with self.subTest(title_empty=payload["title"] == "", embed_empty=payload["youtube_url"] == ""):
+                page, requests, _, errors = self.render(lambda route, _, __: self.fulfill(route, payload))
+                title = payload["title"] or "제목 없음"
+                page.get_by_role("heading", name=title, exact=True).wait_for(timeout=1000)
+                self.assertEqual(page.evaluate("data_article.uuid"), ARTICLE_ID)
+                self.assertEqual(page.locator("#div_community_read_content").inner_text(), ARTICLE["content"])
+                self.assertEqual(self.primary_count(requests), 1)
+                self.assertEqual(sum(r["path"] == COMMENTS for r in requests), 1)
+                self.assertEqual(page.locator("#div_community_read_header [role=alert]").count(), 0)
+                if not payload["youtube_url"]:
+                    self.assertEqual(page.locator("#div_community_read_youtube iframe").count(), 0)
+                self.assertEqual(errors, [])
+
     def test_two_nine_second_reads_do_not_extend_seventeen_second_deadline(self):
         page, requests, parked, errors = self.render(lambda route, _, held: held.append(route))
         page.wait_for_function("primaryActive===1")

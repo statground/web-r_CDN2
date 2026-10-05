@@ -926,7 +926,7 @@ async function readYoutubePrimary(state) {
         return;
       }
       if (typeof data.uuid !== "string" || data.uuid.toLowerCase() !== state.id.toLowerCase() ||
-          typeof data.title !== "string" || !data.title.trim() || typeof data.youtube_url !== "string" || !data.youtube_url.trim()) {
+          typeof data.title !== "string") {
         throw new Error("primary read incomplete");
       }
       data_article = data;
