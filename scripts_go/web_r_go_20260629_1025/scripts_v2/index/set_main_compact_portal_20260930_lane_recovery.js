@@ -47,6 +47,7 @@
   var summaryRecoveryAttempt = 0;
   var summaryRecoveryEpoch = 0;
   var summarySeen = false;
+  var summaryHasResources = false;
   var summaryRecoveryTimer = 0;
   var summaryRecoveryController = null;
   var summaryRecoveryInFlight = false;
@@ -779,10 +780,12 @@
   }
 
   function renderSummary(payload) {
+    summaryHasResources = featuredMedia(payload).length > 0;
     categories.forEach(function renderOneCategory(definition) {
       var item = definition.key === "books"
         ? currentBookItem(payload)
         : normalizedItems(payload, definition.key)[0] || null;
+      if (item) summaryHasResources = true;
       renderCategory(definition, item, sectionUnavailable(payload, definition.key) ||
         (definition.key === "books" && !item && normalizedItems(payload, "books").length > 0));
     });
@@ -803,10 +806,11 @@
     }
   }
 
-  function settlePartialSummary() {
+  function settlePartialSummary(failed) {
     refs.section.setAttribute("aria-busy", "false");
     refs.section.dataset.homeSummaryState = "partial";
-    refs.status.textContent = "일부 최신 자료";
+    refs.status.textContent = !failed && summaryHasResources
+      ? "일부 최신 자료" : "일부 자료 집계가 지연되고 있습니다.";
   }
 
   function renderFallback() {
@@ -814,7 +818,8 @@
       renderCategory(definition, null, true);
     });
     renderStatistics({});
-    renderNotices([], null);
+    // Notices have their own current-state request and are unaffected by a
+    // summary timeout. Its loader owns loading, errors and visible rows.
     renderMedia({ sections: {} });
     renderActivity([]);
     refs.section.setAttribute("aria-busy", "false");
@@ -902,6 +907,7 @@
       if (epoch !== summaryRecoveryEpoch || !summaryRecoveryVisible()) return;
       summaryRecoveryWanted = true;
       if (!summarySeen) renderFallback();
+      else settlePartialSummary(true);
       refs.retry.hidden = false;
       document.dispatchEvent(new CustomEvent("webr:home-summary-ready", {
         detail: { ok: false, complete: false }

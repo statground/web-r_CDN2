@@ -34,13 +34,14 @@ class HomeLaneRecoveryTests(unittest.TestCase):
         cls.browser.close()
         cls.playwright.stop()
 
-    def render(self, live, *, cached=None, hold=False, hold_notices=False, deadline=None):
+    def render(self, live, *, cached=None, hold=False, hold_notices=False, notices=None, deadline=None):
         page = self.browser.new_page()
         self.addCleanup(page.close)
         errors = []
         page.on("pageerror", lambda error: errors.append(str(error)))
         page.add_init_script("window.__liveSummary=" + json.dumps(live) + ";window.__holdSummary=" + json.dumps(hold) + ";")
         page.add_init_script("window.__holdNotices=" + json.dumps(hold_notices) + ";")
+        page.add_init_script("window.__liveNotices=" + json.dumps(notices or {}) + ";")
         page.add_init_script("""
           window.__hidden = false; window.__calls = []; window.__aborts = 0;
           window.__active = 0; window.__maxActive = 0; window.__held = [];
@@ -54,7 +55,7 @@ class HomeLaneRecoveryTests(unittest.TestCase):
           window.fetch = function(url, init = {}) {
             const path = new URL(url, location.href).pathname;
             if (path === '/ajax_index_notice/') return window.__holdNotices
-              ? new Promise(() => {}) : Promise.resolve(new Response('{}', {status: 200}));
+              ? new Promise(() => {}) : Promise.resolve(new Response(JSON.stringify(window.__liveNotices), {status: 200}));
             if (path !== '/homepage/content-summary/') throw new Error('unexpected request ' + path);
             window.__calls.push({cache: init.cache, method: init.method, url: String(url)});
             window.__maxActive = Math.max(window.__maxActive, ++window.__active);
@@ -117,6 +118,38 @@ class HomeLaneRecoveryTests(unittest.TestCase):
         unavailable_page.get_by_role("button", name="최신 자료 다시 확인").wait_for(state="visible")
         self.assertNotIn("전체 보기", unavailable_page.locator('[data-home-category="community"]').inner_text())
         self.assertEqual(unavailable_errors, [])
+
+    def test_summary_timeout_preserves_independently_verified_notice(self):
+        notices = {"0": {"uuid": "11111111-1111-4111-8111-111111111111",
+                         "title": "Verified current notice", "created_at": "2026-10-05"}}
+        page, errors = self.render(summary(), hold=True, notices=notices, deadline=200)
+        page.get_by_role("link", name="Verified current notice", exact=False).wait_for()
+        page.get_by_role("button", name="최신 자료 다시 확인").wait_for(state="visible")
+        self.assertIn("Verified current notice", page.locator("body").inner_text())
+        self.assertEqual(errors, [])
+
+    def test_unavailable_summary_reports_delay_and_recovers_without_erasing_healthy_cards(self):
+        unavailable = summary(unavailable=KEYS[:6] + ["lectures", "youtube", "activity"])
+        unavailable["sections"] = {key: [] for key in KEYS}
+        page, errors = self.render(unavailable)
+        page.wait_for_function("window.__calls.length >= 2")
+        status = page.locator(".webr-home-compact__status")
+        self.assertEqual(status.inner_text(), "일부 자료 집계가 지연되고 있습니다.")
+        page.evaluate("window.__status=503")
+        page.wait_for_function("window.__calls.length >= 4")
+        self.assertEqual(status.inner_text(), "일부 자료 집계가 지연되고 있습니다.")
+        page.get_by_role("button", name="최신 자료 다시 확인").wait_for(state="visible")
+
+        page.evaluate("window.__status=200;window.__liveSummary=" + json.dumps(summary(unavailable=["books", "youtube"])))
+        page.get_by_role("link", name="Healthy R package", exact=False).wait_for()
+        self.assertEqual(status.inner_text(), "일부 최신 자료")
+        calls = page.evaluate("window.__calls.length")
+        page.evaluate("window.__status=503")
+        page.wait_for_function("window.__calls.length > " + str(calls))
+        self.assertIn("Healthy R package", page.locator("body").inner_text())
+        self.assertEqual(status.inner_text(), "일부 자료 집계가 지연되고 있습니다.")
+        self.assertEqual(page.evaluate("window.__maxActive"), 1)
+        self.assertEqual(errors, [])
 
     def test_book_arrival_does_not_stop_later_youtube_and_other_lane_recovery(self):
         page, errors = self.render(summary(unavailable=["books", "youtube", "lectures"]))
