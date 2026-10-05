@@ -114,39 +114,88 @@ function set_main() {
       ) : null);
     }));
   }
+  function AppListLoading() {
+    const source = "\uC790\uB8CC\uB97C \uBD88\uB7EC\uC624\uACE0 \uC788\uC2B5\uB2C8\uB2E4.";
+    const label = window.WebRI18n && window.WebRI18n.t ? window.WebRI18n.t(source) : source;
+    return /* @__PURE__ */ React.createElement(React.Fragment, null,
+      /* @__PURE__ */ React.createElement("span", { role: "status", "aria-live": "polite", className: "sr-only" }, label),
+      /* @__PURE__ */ React.createElement("div", { "aria-hidden": "true", className: "grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 animate-pulse" },
+        /* @__PURE__ */ React.createElement(AppSkeletonCard, null), /* @__PURE__ */ React.createElement(AppSkeletonCard, null),
+        /* @__PURE__ */ React.createElement(AppSkeletonCard, null), /* @__PURE__ */ React.createElement(AppSkeletonCard, null),
+        /* @__PURE__ */ React.createElement(AppSkeletonCard, null), /* @__PURE__ */ React.createElement(AppSkeletonCard, null)));
+  }
   function WebrLandingPage() {
     const [appData, setAppData] = React.useState(null);
     const [errorMsg, setErrorMsg] = React.useState("");
+    const [retryRevision, setRetryRevision] = React.useState(0);
     React.useEffect(() => {
       let alive = true;
+      let settled = false;
+      let activeRequest = null;
+      let retryTimer = null;
+      let retryCount = 0;
+      const deadline = Date.now() + 12000;
+      setAppData(null);
+      setErrorMsg("");
+      function failAppList() {
+        if (!alive || settled) return;
+        settled = true;
+        window.clearTimeout(retryTimer);
+        window.clearTimeout(deadlineTimer);
+        if (activeRequest) activeRequest.abort();
+        setErrorMsg("\uC571 \uBAA9\uB85D\uC744 \uBD88\uB7EC\uC624\uC9C0 \uBABB\uD588\uC2B5\uB2C8\uB2E4.");
+      }
+      const deadlineTimer = window.setTimeout(failAppList, 12000);
       async function loadAppList() {
-        setErrorMsg("");
+        if (!alive || settled) return;
+        const controller = new AbortController();
+        activeRequest = controller;
         try {
           const requestData = new FormData();
           requestData.append("tag", resolveWebrAccessTag(currentUrl));
-          const response = await fetch("/webr/ajax_get_shinyapp_list/", buildPostInit(requestData));
+          const init = buildPostInit(requestData);
+          init.credentials = "same-origin";
+          init.cache = "no-store";
+          init.signal = controller.signal;
+          const response = await fetch("/webr/ajax_get_shinyapp_list/", init);
           if (!response.ok) {
-            throw new Error("server_error");
+            const error = new Error("server_error");
+            error.retryable = response.status === 408 || response.status === 429 || response.status >= 500;
+            throw error;
           }
           const data = await response.json();
-          if (!alive) {
-            return;
+          if (!data || typeof data !== "object" || Array.isArray(data) || Object.keys(data).some((key) => {
+            const app = data[key];
+            return !app || typeof app !== "object" || Array.isArray(app) || typeof app.name !== "string" ||
+              !["YES", "NO"].includes(String(app.auth || "").toUpperCase());
+          })) {
+            throw new Error("invalid_response");
           }
-          setAppData(data || {});
+          if (!alive || settled || controller.signal.aborted) return;
+          settled = true;
+          window.clearTimeout(deadlineTimer);
+          setAppData(data);
         } catch (e) {
-          if (!alive) {
-            return;
+          if (!alive || settled || controller.signal.aborted) return;
+          if (e.retryable === false) {
+            failAppList();
+          } else {
+            const delay = Math.min(900 * ++retryCount, 3000);
+            if (Date.now() + delay < deadline) retryTimer = window.setTimeout(loadAppList, delay);
           }
-          setAppData({});
-          setErrorMsg("\uC571 \uBAA9\uB85D\uC744 \uBD88\uB7EC\uC624\uC9C0 \uBABB\uD588\uC2B5\uB2C8\uB2E4.");
+        } finally {
+          if (activeRequest === controller) activeRequest = null;
         }
       }
       loadAppList();
       return () => {
         alive = false;
+        window.clearTimeout(retryTimer);
+        window.clearTimeout(deadlineTimer);
+        if (activeRequest) activeRequest.abort();
       };
-    }, [currentUrl]);
-    return /* @__PURE__ */ React.createElement("div", { className: "mx-auto flex w-full max-w-7xl flex-col items-center px-6 py-8" }, /* @__PURE__ */ React.createElement(Div_page_header, { title: resolveWebrSubtitle(currentUrl), subtitle: "Web-R \uC811\uC18D" }), /* @__PURE__ */ React.createElement("div", { id: "div_app_list", className: "w-full" }, appData === null ? /* @__PURE__ */ React.createElement("div", { className: "grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 animate-pulse" }, /* @__PURE__ */ React.createElement(AppSkeletonCard, null), /* @__PURE__ */ React.createElement(AppSkeletonCard, null), /* @__PURE__ */ React.createElement(AppSkeletonCard, null), /* @__PURE__ */ React.createElement(AppSkeletonCard, null), /* @__PURE__ */ React.createElement(AppSkeletonCard, null), /* @__PURE__ */ React.createElement(AppSkeletonCard, null)) : errorMsg ? /* @__PURE__ */ React.createElement("div", { className: "w-full rounded-lg border border-rose-200 bg-rose-50 px-6 py-8 text-center text-sm text-rose-600" }, errorMsg) : /* @__PURE__ */ React.createElement(AppGrid, { data: appData })));
+    }, [currentUrl, retryRevision]);
+    return /* @__PURE__ */ React.createElement("div", { className: "mx-auto flex w-full max-w-7xl flex-col items-center px-6 py-8" }, /* @__PURE__ */ React.createElement(Div_page_header, { title: resolveWebrSubtitle(currentUrl), subtitle: "Web-R \uC811\uC18D" }), /* @__PURE__ */ React.createElement("div", { id: "div_app_list", "aria-busy": appData === null && !errorMsg, className: "w-full" }, errorMsg ? /* @__PURE__ */ React.createElement("div", { role: "alert", className: "w-full rounded-lg border border-rose-200 bg-rose-50 px-6 py-8 text-center text-sm text-rose-600" }, errorMsg, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("button", { type: "button", onClick: () => setRetryRevision((value) => value + 1), className: "mt-4 rounded-lg border border-gray-200 bg-white px-5 py-1.5 text-sm font-bold text-gray-900 focus:outline-none focus:ring-4 focus:ring-lime-300" }, "\uB2E4\uC2DC \uC2DC\uB3C4"))) : appData === null ? /* @__PURE__ */ React.createElement(AppListLoading, null) : /* @__PURE__ */ React.createElement(AppGrid, { data: appData })));
   }
   ReactDOM.render(/* @__PURE__ */ React.createElement(WebrLandingPage, null), document.getElementById("div_main"));
 }
