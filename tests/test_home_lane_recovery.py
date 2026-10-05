@@ -61,7 +61,7 @@ class HomeLaneRecoveryTests(unittest.TestCase):
               ms === 12000 ? (window.__deadline || ms) :
               window.__manualOnly && ms >= 800 ? 60000 :
               !window.__realRetry && ms >= 800 && ms <= 3000 ? 1 :
-              !window.__realRetry && ms > 10000 && ms < 20000 ? 70 : ms, ...args);
+              !window.__realRetry && ms > 3000 && ms < 20000 ? 70 : ms, ...args);
           window.fetch = function(url, init = {}) {
             const path = new URL(url, location.href).pathname;
             if (path === '/ajax_index_notice/') return window.__holdNotices

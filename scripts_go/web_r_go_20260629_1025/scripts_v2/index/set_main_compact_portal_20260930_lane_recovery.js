@@ -44,6 +44,7 @@
   ];
   var refs = null;
   var summaryRetryDelays = [900, 1800, 3000];
+  var summaryQuickRecoveryDeadline = 0;
   var summaryRecoveryAttempt = 0;
   var summaryRecoveryEpoch = 0;
   var summarySeen = false;
@@ -940,13 +941,21 @@
     }).finally(function finishSummaryRecovery() {
       summaryRecoveryController = null;
       summaryRecoveryInFlight = false;
-      var interval = summaryRetryDelays[summaryRecoveryAttempt++] || 15000 + Math.floor(Math.random() * 5000);
+      var interval = summaryRetryDelays[summaryRecoveryAttempt++];
+      if (!interval) {
+        // Prepared sources can finish after the first few quick reads. Keep
+        // this initial window bounded, then return to the normal backoff.
+        interval = Date.now() < summaryQuickRecoveryDeadline
+          ? 3000 + Math.floor(Math.random() * 1000)
+          : 15000 + Math.floor(Math.random() * 5000);
+      }
       scheduleSummaryRecovery(epoch === summaryRecoveryEpoch ? interval : 0);
     });
   }
 
   function loadSummary() {
     summaryInitialDeadline = Date.now() + 12000;
+    summaryQuickRecoveryDeadline = Date.now() + 30000;
     summaryRecoveryWanted = true;
     scheduleSummaryRecovery(0);
   }
