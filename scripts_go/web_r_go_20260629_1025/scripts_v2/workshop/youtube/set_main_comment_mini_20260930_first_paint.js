@@ -20,6 +20,7 @@ let youtubeSpotlightKey = "";
 let youtubeListError = "";
 let youtubeRetryTimer = null;
 let youtubeListObserver = null;
+const youtubeSidebarReads = new Map();
 const PAGE_SIZE = 20;
 const class_txt_file_delete = "rounded-lg hover:bg-red-100 cursor-pointer";
 const ENDPOINTS = {
@@ -68,6 +69,7 @@ async function postForm(url2, formData, options = {}) {
   }
   const text = await response.text();
   if (!text) {
+    if (options.rejectEmpty) throw new Error("Empty sidebar response");
     return {};
   }
   try {
@@ -77,6 +79,7 @@ async function postForm(url2, formData, options = {}) {
   }
 }
 function clearInfiniteScroll() {
+  cancelYoutubeSidebarReads();
   if (window.__workshopListScrollHandler) {
     window.removeEventListener("scroll", window.__workshopListScrollHandler);
     window.__workshopListScrollHandler = null;
@@ -628,28 +631,73 @@ function renderArticleSubmitButtons(loading = false) {
   ReactDOM.render(/* @__PURE__ */ React.createElement(Div_article_submit_buttons, { loading }), target);
 }
 async function get_article_famous_list() {
-  const target = document.getElementById("div_article_famous_list");
-  if (!target)
-    return;
-  const request_data = new FormData();
-  request_data.append("tag", url);
-  const data = await postForm(ENDPOINTS.articleFamous, request_data);
-  ReactDOM.render(
-    /* @__PURE__ */ React.createElement("div", { class: "flex flex-col justify-center items-center border border-gray-300 rounded-xl space-y-4 w-full p-8" }, /* @__PURE__ */ React.createElement(Div_box_header, { title: "\uCD5C\uC2E0 \uC778\uAE30 \uAE00" }), /* @__PURE__ */ React.createElement("div", { class: "flex flex-col justify-center items-start w-full space-y-2" }, Object.values(data || {}).map((article) => /* @__PURE__ */ React.createElement(Div_new_article_list, { key: article.id || article.uuid, data: article })))),
-    target
-  );
+  return loadYoutubeSidebar("div_article_famous_list", "\uCD5C\uC2E0 \uC778\uAE30 \uAE00", ENDPOINTS.articleFamous, "article");
 }
 async function get_new_comment_list() {
-  const target = document.getElementById("div_new_comment_list");
-  if (!target)
-    return;
-  const request_data = new FormData();
-  request_data.append("tag", url);
-  const data = await postForm(ENDPOINTS.newComment, request_data);
-  ReactDOM.render(
-    /* @__PURE__ */ React.createElement("div", { class: "flex flex-col justify-center items-center border border-gray-300 rounded-xl space-y-4 w-full p-8" }, /* @__PURE__ */ React.createElement(Div_box_header, { title: "\uCD5C\uC2E0 \uB313\uAE00" }), /* @__PURE__ */ React.createElement("div", { class: "flex flex-col justify-center items-start w-full space-y-2" }, Object.values(data || {}).map((comment) => /* @__PURE__ */ React.createElement(Div_new_comment, { key: comment.id || comment.uuid, data: comment })))),
-    target
-  );
+  return loadYoutubeSidebar("div_new_comment_list", "\uCD5C\uC2E0 \uB313\uAE00", ENDPOINTS.newComment, "comment");
+}
+function cancelYoutubeSidebarReads() {
+  youtubeSidebarReads.forEach((state) => {
+    window.clearTimeout(state.timer);
+    state.controller.abort();
+    state.target.setAttribute("aria-busy", "false");
+  });
+  youtubeSidebarReads.clear();
+}
+window.addEventListener("pagehide", cancelYoutubeSidebarReads);
+function youtubeSidebarRows(data, kind) {
+  // Sidebar endpoints return indexed row maps. Control envelopes are never rows.
+  if (!data || typeof data !== "object" || Array.isArray(data)) return null;
+  const validUUID = (value) => typeof value === "string" &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value) &&
+    value.toLowerCase() !== "00000000-0000-0000-0000-000000000000";
+  const keys = Object.keys(data);
+  if (keys.some((key) => !/^(0|[1-9]\d*)$/.test(key))) return null;
+  const rows = keys.map((key) => data[key]);
+  if (rows.some((row) => !row || typeof row !== "object" || Array.isArray(row) ||
+    !validUUID(row.uuid) || (kind === "article" ? typeof row.title !== "string" :
+      !validUUID(row.uuid_article) || typeof row.content !== "string" || typeof row.article_title !== "string"))) return null;
+  return rows;
+}
+async function loadYoutubeSidebar(targetID, title, endpoint, kind) {
+  const target = document.getElementById(targetID);
+  if (!target) return;
+  const previous = youtubeSidebarReads.get(targetID);
+  if (previous) {
+    window.clearTimeout(previous.timer);
+    previous.controller.abort();
+  }
+  const state = { target, controller: new AbortController(), timer: null };
+  youtubeSidebarReads.set(targetID, state);
+  const current = () => youtubeSidebarReads.get(targetID) === state && document.getElementById(targetID) === target;
+  const render = (body) => ReactDOM.render(React.createElement("div", {
+    class: "flex flex-col justify-center items-center border border-gray-300 rounded-xl space-y-4 w-full p-8"
+  }, React.createElement(Div_box_header, { title }), body), target);
+  target.setAttribute("aria-busy", "true");
+  render(React.createElement("div", { "aria-hidden": "true", class: "flex flex-col w-full space-y-2 animate-pulse" },
+    [0, 1, 2].map((key) => React.createElement("div", { key, class: "h-2.5 bg-gray-200 rounded-full w-full" }))));
+  state.timer = window.setTimeout(() => state.controller.abort(), 15000);
+  try {
+    const requestData = new FormData();
+    requestData.append("tag", url);
+    const data = await postForm(endpoint, requestData, { signal: state.controller.signal, rejectEmpty: true });
+    if (!current()) return;
+    const rows = youtubeSidebarRows(data, kind);
+    if (rows === null) throw new Error("Unavailable sidebar rows");
+    render(React.createElement("div", { class: "flex flex-col justify-center items-start w-full space-y-2" },
+      rows.map((row) => React.createElement(kind === "article" ? Div_new_article_list : Div_new_comment, { key: row.uuid, data: row }))));
+  } catch (error) {
+    if (!current()) return;
+    render(React.createElement("div", { class: "w-full space-y-2" },
+      React.createElement("p", { role: "alert" }, "\uBAA9\uB85D\uC744 \uC7A0\uC2DC \uBD88\uB7EC\uC624\uC9C0 \uBABB\uD588\uC2B5\uB2C8\uB2E4."),
+      React.createElement("button", { type: "button", class: "text-blue-600", onClick: () => loadYoutubeSidebar(targetID, title, endpoint, kind) }, "\uB2E4\uC2DC \uC2DC\uB3C4")));
+  } finally {
+    window.clearTimeout(state.timer);
+    if (youtubeSidebarReads.get(targetID) === state) {
+      if (document.getElementById(targetID) === target) target.setAttribute("aria-busy", "false");
+      youtubeSidebarReads.delete(targetID);
+    }
+  }
 }
 async function get_my_article_list() {
   const target = document.getElementById("div_my_article_list");
@@ -662,13 +710,7 @@ async function get_my_article_list() {
     );
     return;
   }
-  const request_data = new FormData();
-  request_data.append("tag", url);
-  const data = await postForm(ENDPOINTS.myArticle, request_data);
-  ReactDOM.render(
-    /* @__PURE__ */ React.createElement("div", { class: "flex flex-col justify-center items-center border border-gray-300 rounded-xl space-y-4 w-full p-8" }, /* @__PURE__ */ React.createElement(Div_box_header, { title: "\uB0B4\uAC00 \uC4F4 \uAE00" }), /* @__PURE__ */ React.createElement("div", { class: "flex flex-col justify-center items-start w-full space-y-2" }, Object.values(data || {}).map((article) => /* @__PURE__ */ React.createElement(Div_new_article_list, { key: article.id || article.uuid, data: article })))),
-    target
-  );
+  return loadYoutubeSidebar("div_my_article_list", "\uB0B4\uAC00 \uC4F4 \uAE00", ENDPOINTS.myArticle, "article");
 }
 async function get_my_comment_list() {
   const target = document.getElementById("div_my_comment_list");
@@ -681,13 +723,7 @@ async function get_my_comment_list() {
     );
     return;
   }
-  const request_data = new FormData();
-  request_data.append("tag", url);
-  const data = await postForm(ENDPOINTS.myComment, request_data);
-  ReactDOM.render(
-    /* @__PURE__ */ React.createElement("div", { class: "flex flex-col justify-center items-center border border-gray-300 rounded-xl space-y-4 w-full p-8" }, /* @__PURE__ */ React.createElement(Div_box_header, { title: "\uB0B4\uAC00 \uC4F4 \uB313\uAE00" }), /* @__PURE__ */ React.createElement("div", { class: "flex flex-col justify-center items-start w-full space-y-2" }, Object.values(data || {}).map((comment) => /* @__PURE__ */ React.createElement(Div_new_comment, { key: comment.id || comment.uuid, data: comment })))),
-    target
-  );
+  return loadYoutubeSidebar("div_my_comment_list", "\uB0B4\uAC00 \uC4F4 \uB313\uAE00", ENDPOINTS.myComment, "comment");
 }
 function renderYoutubeList() {
   if (youtubeListObserver) {
