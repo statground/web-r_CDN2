@@ -47,6 +47,9 @@ const WorkshopCatalogPage = (() => {
     deletingUUID: "",
     error: "",
     listNotice: "",
+    listReady: false,
+    listComplete: false,
+    listLoading: false,
     isAdmin: false,
     isLoggedIn: false,
     currentUserUUID: "",
@@ -202,19 +205,30 @@ const WorkshopCatalogPage = (() => {
   }
   async function load() {
     setupResponsivePagination();
-    setState({ loading: true, error: "", listNotice: "" });
+    if (state.mode === "list" && state.listLoading)
+      return;
+    setState({ loading: state.mode !== "list" || (!state.listReady && !state.error), listLoading: state.mode === "list", error: "", listNotice: "" });
     if (state.mode === "read" && state.readTarget) {
       await loadRead();
       return;
     }
     try {
-      const data = await fetch("/workshop/ajax_list/", { method: "POST" }).then((res) => res.json());
-      if (!data.ok) {
-        setState({ loading: false, error: data.error || "\uC6CC\uD06C\uC0F5 \uBAA9\uB85D\uC744 \uBD88\uB7EC\uC62C \uC218 \uC5C6\uC2B5\uB2C8\uB2E4.", workshops: [], isAdmin: !!data.is_admin });
-        return;
+      const response = await fetch("/workshop/ajax_list/", { method: "POST" });
+      if (!response.ok)
+        throw new Error("workshop list unavailable");
+      const data = await response.json();
+      if (!data || data.ok !== true || !Array.isArray(data.workshops)) {
+        if (state.mode !== "list") {
+          setState({ loading: false, error: data && data.error || "워크샵 목록을 불러올 수 없습니다.", workshops: [], isAdmin: !!(data && data.is_admin) });
+          return;
+        }
+        throw new Error("workshop list unavailable");
       }
-      const workshops = data.workshops || [];
-      const patch = { loading: false, workshops, isAdmin: !!data.is_admin, isLoggedIn: !!data.is_logged_in, currentUserUUID: data.current_user_uuid || "", error: "", listNotice: workshopListNotice(data) };
+      const complete = data.complete === true && data.partial !== true && !(Array.isArray(data.unavailable_sections) && data.unavailable_sections.length);
+      if (state.mode === "list" && !complete && data.workshops.length === 0)
+        throw new Error("workshop list incomplete");
+      const workshops = data.workshops;
+      const patch = { loading: false, listLoading: false, listReady: true, listComplete: complete, workshops, isAdmin: !!data.is_admin, isLoggedIn: !!data.is_logged_in, currentUserUUID: data.current_user_uuid || "", error: "", listNotice: workshopListNotice(data) };
       let selectedForBoard = null;
       if (state.mode === "write") {
         patch.draft = emptyDraft();
@@ -244,7 +258,10 @@ const WorkshopCatalogPage = (() => {
         loadBoard(selectedForBoard);
       }
     } catch (error) {
-      setState({ loading: false, error: error.message || "\uC6CC\uD06C\uC0F5 \uBAA9\uB85D\uC744 \uBD88\uB7EC\uC62C \uC218 \uC5C6\uC2B5\uB2C8\uB2E4.", workshops: [] });
+      if (state.mode === "list")
+        setState({ loading: false, listLoading: false, error: "워크샵 목록을 잠시 불러오지 못했습니다." });
+      else
+        setState({ loading: false, error: error.message || "워크샵 목록을 불러올 수 없습니다.", workshops: [] });
     }
   }
   async function loadRead() {
@@ -762,7 +779,7 @@ const WorkshopCatalogPage = (() => {
       pages.push(number);
     return pages;
   }
-  function WorkshopPagination({ page, pageCount, startIndex, endIndex, total }) {
+  function WorkshopPagination({ page, pageCount, startIndex, endIndex, total, showCount }) {
     if (pageCount <= 1)
       return null;
     const pageButton = (number) => h("button", {
@@ -778,7 +795,7 @@ const WorkshopCatalogPage = (() => {
       className: (disabled ? "cursor-not-allowed border-gray-200 bg-gray-50 text-gray-300" : "border-gray-300 bg-white text-gray-700 hover:bg-gray-50") + " h-10 rounded border px-4 text-sm font-semibold",
       onClick: () => setListPage(targetPage, pageCount)
     }, label);
-    return h("nav", { className: "mt-8 flex flex-col gap-3 border-t border-gray-100 pt-5 md:flex-row md:items-center md:justify-between", "aria-label": "워크샵 목록 페이지" }, h("p", { className: "text-sm text-gray-500" }, startIndex + 1, "-", endIndex, " / ", total), h("div", { className: "flex flex-row flex-wrap items-center gap-2" }, navButton("이전", page - 1, page <= 1), paginationPages(page, pageCount).map(pageButton), navButton("다음", page + 1, page >= pageCount)));
+    return h("nav", { className: "mt-8 flex flex-col gap-3 border-t border-gray-100 pt-5 md:flex-row md:items-center md:justify-between", "aria-label": "워크샵 목록 페이지" }, showCount && h("p", { className: "text-sm text-gray-500" }, startIndex + 1, "-", endIndex, " / ", total), h("div", { className: "flex flex-row flex-wrap items-center gap-2" }, navButton("이전", page - 1, page <= 1), paginationPages(page, pageCount).map(pageButton), navButton("다음", page + 1, page >= pageCount)));
   }
   function ListPage() {
     const items = filteredWorkshops();
@@ -788,7 +805,19 @@ const WorkshopCatalogPage = (() => {
     const startIndex = (currentPage - 1) * pageSize;
     const pageItems = items.slice(startIndex, startIndex + pageSize);
     const endIndex = Math.min(items.length, startIndex + pageItems.length);
-    return h("div", { className: "w-full" }, h(PageHeader, null), h("section", { className: "mx-auto flex w-full max-w-screen-xl flex-col items-start gap-4 px-6 pt-8 md:flex-row md:items-center md:justify-between" }, h("div", null, h("p", { className: "text-xl font-normal text-gray-900" }, items.length, "개의 워크샵이 검색되었습니다."), pageCount > 1 && h("p", { className: "mt-1 text-sm text-gray-500" }, currentPage, " / ", pageCount, " 페이지")), h(AdminToolbar, null)), h(SearchFilters, null), h("section", { className: "mx-auto w-full max-w-screen-xl px-6 py-8" }, state.listNotice && h("p", { role: "status", "data-workshop-list-status": "partial", className: "mb-5 border-l-4 border-blue-500 bg-blue-50 px-4 py-3 text-sm leading-6 text-blue-800" }, state.listNotice), state.error && h("div", { className: "mb-5 border-y border-red-100 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700" }, state.error), items.length === 0 ? h("div", { className: "border-y border-gray-200 py-12 text-center text-gray-500" }, "등록된 워크샵이 없습니다.") : h(React.Fragment, null, h("div", { className: "grid grid-cols-1 gap-x-6 gap-y-8 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4" }, pageItems.map((item) => h(WorkshopCard, { key: item.uuid, item }))), h(WorkshopPagination, { page: currentPage, pageCount, startIndex, endIndex, total: items.length }))));
+    const countReady = state.listReady && state.listComplete && !state.error && !state.listLoading;
+    return h("div", { className: "w-full" }, h(PageHeader, null),
+      h("section", { className: "mx-auto flex w-full max-w-screen-xl flex-col items-start gap-4 px-6 pt-8 md:flex-row md:items-center md:justify-between" },
+        h("div", null, countReady && h("p", { className: "text-xl font-normal text-gray-900", "data-workshop-count": "complete" }, items.length, "개의 워크샵이 검색되었습니다."),
+          countReady && pageCount > 1 && h("p", { className: "mt-1 text-sm text-gray-500" }, currentPage, " / ", pageCount, " 페이지")), h(AdminToolbar, null)),
+      h(SearchFilters, null), h("section", { className: "mx-auto w-full max-w-screen-xl px-6 py-8" },
+        state.listNotice && h("p", { role: "status", "data-workshop-list-status": "partial", className: "mb-5 border-l-4 border-blue-500 bg-blue-50 px-4 py-3 text-sm leading-6 text-blue-800" }, state.listNotice),
+        state.listLoading && h("p", { role: "status", className: "mb-5 text-sm text-gray-500" }, "워크샵 목록을 다시 확인하고 있습니다."),
+        state.error && h("div", { role: "alert", className: "mb-5 border-y border-red-100 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700" },
+          h("p", null, state.error), h("button", { type: "button", className: buttonClass("ghost") + " mt-3", disabled: state.listLoading, onClick: load }, "다시 시도")),
+        items.length === 0 ? countReady && h("div", { "data-workshop-empty": "complete", className: "border-y border-gray-200 py-12 text-center text-gray-500" }, "등록된 워크샵이 없습니다.") :
+          h(React.Fragment, null, h("div", { className: "grid grid-cols-1 gap-x-6 gap-y-8 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4" }, pageItems.map((item) => h(WorkshopCard, { key: item.uuid, item }))),
+            h(WorkshopPagination, { page: currentPage, pageCount, startIndex, endIndex, total: items.length, showCount: countReady }))));
   }
   function FormPage() {
     const missingEditTarget = state.mode === "edit" && !state.editTarget;
