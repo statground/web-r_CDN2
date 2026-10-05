@@ -21,6 +21,7 @@ let youtubeListError = "";
 let youtubeRetryTimer = null;
 let youtubeListObserver = null;
 const youtubeSidebarReads = new Map();
+let youtubePrimaryRead = null;
 const PAGE_SIZE = 20;
 const class_txt_file_delete = "rounded-lg hover:bg-red-100 cursor-pointer";
 const ENDPOINTS = {
@@ -852,7 +853,140 @@ function render_article() {
     WebRSolidEdit.renderContent(contentTarget, data_article.content || "");
   }
 }
+function youtubePrimaryText(source, english) {
+  const i18n = window.WebRI18n;
+  const translated = i18n && i18n.t ? i18n.t(source) : source;
+  const language = i18n && i18n.language || document.documentElement.lang || "ko";
+  return translated !== source ? translated : /^en(?:-|$)/i.test(language) ? english : source;
+}
+function currentYoutubePrimary(state) {
+  return youtubePrimaryRead === state && !state.finished && !state.cancelled &&
+    window.location.pathname === state.path && orderID === state.id &&
+    document.getElementById("div_community_read_header") === state.target;
+}
+function cancelYoutubePrimary() {
+  const state = youtubePrimaryRead;
+  if (!state) return;
+  state.cancelled = true;
+  state.controller.abort();
+  window.clearTimeout(state.timer);
+  if (state.retryTimer) window.clearTimeout(state.retryTimer);
+  if (state.retryResolve) state.retryResolve();
+  if (state.cancelResolve) state.cancelResolve();
+  if (document.getElementById("div_community_read_header") === state.target) state.target.setAttribute("aria-busy", "false");
+}
+window.addEventListener("pagehide", cancelYoutubePrimary);
+function renderYoutubePrimaryFailure(state, terminal) {
+  if (!currentYoutubePrimary(state)) return;
+  data_article = null;
+  for (const id of ["div_community_read_youtube", "div_community_read_content", "div_community_read_file", "div_article_read_buttons", "div_community_read_comment"]) {
+    const target = document.getElementById(id);
+    if (target) ReactDOM.render(null, target);
+  }
+  ReactDOM.render(React.createElement("div", { class: "space-y-4 text-white" },
+    React.createElement("p", { role: "alert" }, terminal ?
+      youtubePrimaryText("게시글을 찾을 수 없습니다.", "This article is unavailable.") :
+      youtubePrimaryText("잠시 요청을 완료하지 못했습니다.", "The request could not be completed. Please try again.")),
+    !terminal && React.createElement("button", { type: "button", class: "text-blue-600", onClick: () => get_read_article("init") },
+      youtubePrimaryText("다시 시도", "Try again"))), state.target);
+}
+async function readYoutubePrimary(state) {
+  for (let attempt = 0; attempt < 3 && currentYoutubePrimary(state); attempt++) {
+    try {
+      if (performance.now() >= state.deadline) {
+        renderYoutubePrimaryFailure(state, false);
+        return;
+      }
+      const request_data = new FormData();
+      request_data.append("orderID", state.id);
+      const response = await fetch(ENDPOINTS.read, {
+        method: "post", headers: { "X-CSRFToken": getCsrfToken() }, body: request_data, signal: state.controller.signal
+      });
+      if (!currentYoutubePrimary(state)) return;
+      if ([401, 403, 404].includes(response.status)) {
+        renderYoutubePrimaryFailure(state, true);
+        return;
+      }
+      if (!response.ok) {
+        const error = new Error("primary read unavailable");
+        error.terminal = response.status < 500 && ![408, 429].includes(response.status);
+        throw error;
+      }
+      const data = await response.json();
+      if (!currentYoutubePrimary(state)) return;
+      if (data && (data.not_found === true || data.denied === true || data.withdrawn === true || normalizeBool(data.is_secret))) {
+        renderYoutubePrimaryFailure(state, true);
+        return;
+      }
+      if (!data || typeof data !== "object" || Array.isArray(data) || data.pending || data.partial || data.complete === false || data.error || data.board_error) {
+        throw new Error("primary read pending");
+      }
+      if (data.ok === false) {
+        renderYoutubePrimaryFailure(state, true);
+        return;
+      }
+      if (typeof data.uuid !== "string" || data.uuid.toLowerCase() !== state.id.toLowerCase() ||
+          typeof data.title !== "string") {
+        throw new Error("primary read incomplete");
+      }
+      data_article = data;
+      render_article();
+      // Comments keep their own existing read path and run only for an article.
+      void get_read_article_comment(state.id);
+      return;
+    } catch (error) {
+      if (!currentYoutubePrimary(state)) return;
+      if (error.terminal) {
+        renderYoutubePrimaryFailure(state, true);
+        return;
+      }
+      const delay = 150 * (attempt + 1);
+      if (attempt === 2 || performance.now() + delay >= state.deadline) {
+        renderYoutubePrimaryFailure(state, false);
+        return;
+      }
+      await new Promise((resolve) => {
+        state.retryResolve = resolve;
+        state.retryTimer = window.setTimeout(resolve, delay);
+      });
+      state.retryTimer = null;
+      state.retryResolve = null;
+    }
+  }
+}
 async function get_read_article(mode_value) {
+  if (mode_value === "init") {
+    const target = document.getElementById("div_community_read_header");
+    const path = init_url + "read/" + orderID + "/";
+    if (!target || window.location.pathname !== path || !/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(orderID)) return;
+    if (youtubePrimaryRead && currentYoutubePrimary(youtubePrimaryRead)) return youtubePrimaryRead.promise;
+    cancelYoutubePrimary();
+    const state = { target, path, id: orderID, controller: new AbortController(), deadline: performance.now() + 17000,
+      timer: null, retryTimer: null, retryResolve: null, cancelResolve: null, cancelled: false, finished: false };
+    youtubePrimaryRead = state;
+    target.setAttribute("aria-busy", "true");
+    const status = document.createElement("span");
+    status.className = "sr-only";
+    status.setAttribute("role", "status");
+    status.setAttribute("aria-live", "polite");
+    status.textContent = youtubePrimaryText("자료를 불러오고 있습니다.", "Loading items.");
+    target.appendChild(status);
+    state.promise = Promise.race([readYoutubePrimary(state), new Promise((resolve) => { state.cancelResolve = resolve; }), new Promise((resolve) => {
+      state.timer = window.setTimeout(() => {
+        state.controller.abort();
+        renderYoutubePrimaryFailure(state, false);
+        resolve();
+      }, 17000);
+    })]).finally(() => {
+      state.finished = true;
+      state.controller.abort();
+      window.clearTimeout(state.timer);
+      if (state.retryTimer) window.clearTimeout(state.retryTimer);
+      if (state.retryResolve) state.retryResolve();
+      if (youtubePrimaryRead === state && document.getElementById("div_community_read_header") === target) target.setAttribute("aria-busy", "false");
+    });
+    return state.promise;
+  }
   const request_data = new FormData();
   request_data.append("orderID", orderID);
   data_article = await postForm(ENDPOINTS.read, request_data);
