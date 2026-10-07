@@ -61,6 +61,7 @@
   var noticeRequest = null;
   var latestStatistics = null;
   var latestActivity = null;
+  var latestActivityUnavailable = false;
 
   function element(tagName, className, text) {
     var node = document.createElement(tagName);
@@ -189,29 +190,6 @@
     } catch (error) {
       return "";
     }
-  }
-
-  function relativeTime(value) {
-    var raw = cleanText(value, 80);
-    if (!raw) {
-      return "";
-    }
-    var normalized = raw.indexOf("T") >= 0 ? raw : raw.replace(" ", "T") + "+09:00";
-    var parsed = new Date(normalized);
-    if (Number.isNaN(parsed.getTime())) {
-      return formatDate(raw);
-    }
-    var seconds = Math.max(0, Math.floor((Date.now() - parsed.getTime()) / 1000));
-    try {
-      var formatter = new Intl.RelativeTimeFormat(activeLanguage(), { numeric: "auto", style: "short" });
-      if (seconds < 60) return formatter.format(0, "second");
-      if (seconds < 3600) return formatter.format(-Math.floor(seconds / 60), "minute");
-      if (seconds < 86400) return formatter.format(-Math.floor(seconds / 3600), "hour");
-      if (seconds < 604800) return formatter.format(-Math.floor(seconds / 86400), "day");
-    } catch (error) {
-      // Unsupported browser locale retains the language-neutral date below.
-    }
-    return formatDate(raw);
   }
 
   function numberText(value, unit) {
@@ -741,12 +719,13 @@
     });
   }
 
-  function renderActivity(items) {
+  function renderActivity(items, unavailable) {
     refs.activityBody.replaceChildren();
     var rows = items.slice(0, 3);
     latestActivity = rows;
+    latestActivityUnavailable = unavailable === true;
     if (!rows.length) {
-      refs.activityBody.appendChild(uiElement("p", "webr-home-compact__activity-empty", "표시할 최근 활동이 없습니다."));
+      refs.activityBody.appendChild(uiElement("p", "webr-home-compact__activity-empty", unavailable ? "활동을 확인하지 못했습니다. 잠시 후 다시 시도해 주세요." : "표시할 최근 활동이 없습니다."));
       return;
     }
     var list = element("div", "webr-home-compact__activity-list");
@@ -762,10 +741,6 @@
         titleNode.setAttribute("data-webr-i18n", title);
       }
       row.appendChild(titleNode);
-      var time = relativeTime(item.published_at);
-      if (time) {
-        row.appendChild(element("span", "webr-home-compact__activity-time", time));
-      }
       list.appendChild(row);
     });
     refs.activityBody.appendChild(list);
@@ -783,7 +758,7 @@
     // Notices have a separate current-state request. A homepage summary may
     // outlive a withdrawn notice and cannot authorize this card.
     renderMedia(payload);
-    renderActivity(normalizedItems(payload, "activity"));
+    renderActivity(normalizedItems(payload, "activity"), Array.isArray(payload.unavailable_sections) && payload.unavailable_sections.indexOf("activity") >= 0);
     if (!summaryNeedsRecovery(payload)) {
       refs.section.setAttribute("aria-busy", "false");
       refs.section.dataset.homeSummaryState = "ready";
@@ -838,7 +813,7 @@
     // Notices have their own current-state request and are unaffected by a
     // summary timeout. Its loader owns loading, errors and visible rows.
     renderMedia({ sections: {} });
-    renderActivity([]);
+    renderActivity([], true);
     refs.section.setAttribute("aria-busy", "false");
     refs.section.dataset.homeSummaryState = "fallback";
   }
@@ -994,7 +969,7 @@
   window.addEventListener("webr:language-change", function relocalizeNumbersAndTimes() {
     if (!refs) return;
     if (latestStatistics) renderStatistics(latestStatistics);
-    if (latestActivity) renderActivity(latestActivity);
+    if (latestActivity) renderActivity(latestActivity, latestActivityUnavailable);
   });
 
   window.set_main = setMain;
