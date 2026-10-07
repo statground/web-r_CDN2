@@ -55,8 +55,13 @@ class HomeLaneRecoveryTests(unittest.TestCase):
           document.addEventListener('webr:home-summary-ready', event => window.__readyEvents.push(event.detail));
           Object.defineProperty(document, 'hidden', {get: () => window.__hidden});
           Object.defineProperty(document, 'visibilityState', {get: () => window.__hidden ? 'hidden' : 'visible'});
+          const realNow = Date.now.bind(Date);
+          window.__wallOffset = 0;
+          Date.now = () => realNow() + window.__wallOffset;
           const timer = window.setTimeout.bind(window);
-          window.setTimeout = (fn, ms, ...args) => timer(fn,
+          window.setTimeout = (fn, ms, ...args) => fn.name === 'expirePendingLaneGrace' && (window.__initialGraceMs || window.__deadline)
+            ? timer(() => { window.__wallOffset = 31000; fn(...args); }, window.__initialGraceMs || window.__deadline)
+            : timer(fn,
             fn.name === 'expireInitialSummaryGrace' ? (window.__initialGraceMs || window.__deadline || ms) :
               ms === 12000 ? (window.__deadline || ms) :
               window.__manualOnly && ms >= 800 ? 60000 :
@@ -118,14 +123,15 @@ class HomeLaneRecoveryTests(unittest.TestCase):
         self.assertEqual(empty_category.inner_text(), "")
         media_card = page.locator(".webr-home-compact__rail-card").filter(has=page.get_by_role("heading", name="강의 / YouTube"))
         self.assertEqual(media_card.locator(".webr-home-compact__rail-body").inner_text(), "")
-        self.assertNotIn("일부 자료 집계가 지연되고 있습니다.", page.locator("#webr-home-portal").inner_text())
+        self.assertNotIn("자료를 불러오지 못했습니다.", page.locator("#webr-home-portal").inner_text())
         self.assertEqual(errors, [])
 
-        unavailable_page, unavailable_errors = self.render(summary(unavailable=["community", "lectures", "youtube"]))
+        unavailable_page, unavailable_errors = self.render(summary(unavailable=["community", "lectures", "youtube"]), grace_ms=200)
         unavailable_page.wait_for_function("document.querySelector('#webr-home-portal').dataset.homeSummaryState === 'partial'")
-        self.assertIn("일부 자료 집계가 지연되고 있습니다.", unavailable_page.locator('[data-home-category="community"]').inner_text())
+        unavailable_page.locator('[data-home-category="community"] .webr-home-compact__lane-error').wait_for()
+        self.assertIn("자료를 불러오지 못했습니다.", unavailable_page.locator('[data-home-category="community"]').inner_text())
         unavailable_media = unavailable_page.locator(".webr-home-compact__rail-card").filter(has=unavailable_page.get_by_role("heading", name="강의 / YouTube"))
-        self.assertIn("일부 자료 집계가 지연되고 있습니다.", unavailable_media.locator(".webr-home-compact__rail-body").inner_text())
+        self.assertIn("자료를 불러오지 못했습니다.", unavailable_media.locator(".webr-home-compact__rail-body").inner_text())
         self.assert_global_controls_absent(unavailable_page)
         self.assertNotIn("전체 보기", unavailable_page.locator('[data-home-category="community"]').inner_text())
         self.assertEqual(unavailable_errors, [])
@@ -146,7 +152,7 @@ class HomeLaneRecoveryTests(unittest.TestCase):
         page, errors = self.render(unavailable, grace_ms=200)
         page.wait_for_function("document.querySelector('#webr-home-portal').dataset.homeSummaryState === 'fallback'")
         self.assert_global_controls_absent(page)
-        self.assertIn("일부 자료 집계가 지연되고 있습니다.", page.locator('[data-home-category="community"]').inner_text())
+        self.assertIn("자료를 불러오지 못했습니다.", page.locator('[data-home-category="community"]').inner_text())
         page.evaluate("window.__status=503")
         page.wait_for_function("window.__calls.length >= 4")
         self.assert_global_controls_absent(page)
@@ -181,7 +187,7 @@ class HomeLaneRecoveryTests(unittest.TestCase):
         page.get_by_role("link", name="Current R book", exact=False).wait_for()
         page.wait_for_timeout(1100)
         self.assertIn("Current R book", page.locator("body").inner_text())
-        self.assertNotIn("일부 자료 집계가 지연되고 있습니다.", page.locator("#webr-home-portal").inner_text())
+        self.assertNotIn("자료를 불러오지 못했습니다.", page.locator("#webr-home-portal").inner_text())
         self.assertEqual(errors, [])
 
     def test_persistent_initial_failure_becomes_explicit_when_grace_expires(self):
@@ -190,7 +196,7 @@ class HomeLaneRecoveryTests(unittest.TestCase):
         self.assert_global_controls_absent(page)
         page.wait_for_function("document.querySelector('#webr-home-portal').dataset.homeSummaryState === 'fallback'")
         self.assert_global_controls_absent(page)
-        self.assertIn("일부 자료 집계가 지연되고 있습니다.", page.locator('[data-home-category="community"]').inner_text())
+        self.assertIn("자료를 불러오지 못했습니다.", page.locator('[data-home-category="community"]').inner_text())
         self.assertEqual(page.locator('[data-home-category] .webr-home-compact__skeleton').count(), 0)
         self.assertGreaterEqual(page.evaluate("window.__readyEvents.length"), 1)
         self.assertEqual(page.evaluate("window.__maxActive"), 1)
@@ -206,7 +212,7 @@ class HomeLaneRecoveryTests(unittest.TestCase):
         page.evaluate("window.__status=200;window.__liveSummary=" + json.dumps(summary(books=[BOOK], youtube=[VIDEO])))
         page.get_by_role("link", name="Current R book", exact=False).wait_for(timeout=2500)
         self.assertEqual(page.evaluate("window.__calls.length"), 2)
-        self.assertNotIn("일부 자료 집계가 지연되고 있습니다.", page.locator("#webr-home-portal").inner_text())
+        self.assertNotIn("자료를 불러오지 못했습니다.", page.locator("#webr-home-portal").inner_text())
         self.assertEqual(errors, [])
 
     def test_complete_server_dto_omits_empty_section_metadata_and_stops_recovery(self):
