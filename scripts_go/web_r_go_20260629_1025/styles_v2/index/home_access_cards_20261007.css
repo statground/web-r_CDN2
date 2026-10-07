@@ -108,7 +108,7 @@
 }
 @media (prefers-reduced-motion: reduce) {
   .webr-home-compact__product-card,
-  .webr-home-compact__product-card .webr-home-compact__product-arrow { transition: none; }
+  .webr-home-compact__product-card .webr-home-compact__product-arrow { transition: none !important; }
   .webr-home-compact__product-card:hover { transform: none; }
 }
 @media (forced-colors: active) {
