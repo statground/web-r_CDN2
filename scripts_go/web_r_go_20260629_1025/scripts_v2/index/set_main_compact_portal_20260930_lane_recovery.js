@@ -51,6 +51,7 @@
   var summaryInitialDeadline = 0;
   var summaryInitialTimer = 0;
   var summaryInitialSettled = false;
+  var pendingLaneTimer = 0;
   var summaryRecoveryTimer = 0;
   var summaryRecoveryController = null;
   var summaryRecoveryInFlight = false;
@@ -218,6 +219,64 @@
     return wrapper;
   }
 
+  function pendingCard(body, book) {
+    body.setAttribute("aria-busy", "true");
+    body.dataset.homePending = "true";
+    var waiting = element("div", "webr-home-compact__pending-card" + (book ? " webr-home-compact__pending-card--book" : ""));
+    waiting.setAttribute("role", "status");
+    if (book) {
+      var cover = element("span", "webr-home-compact__pending-cover");
+      cover.setAttribute("aria-hidden", "true");
+      waiting.appendChild(cover);
+    }
+    waiting.appendChild(skeleton(2));
+    waiting.appendChild(uiElement("span", "webr-home-compact__sr-status", "자료를 불러오는 중입니다."));
+    body.appendChild(waiting);
+  }
+
+  function unavailableCard(body, book) {
+    if (Date.now() < summaryQuickRecoveryDeadline) {
+      pendingCard(body, book);
+      schedulePendingLaneGrace();
+      return;
+    }
+    body.setAttribute("aria-busy", "false");
+    var failure = element("div", "webr-home-compact__lane-error");
+    failure.setAttribute("role", "status");
+    failure.appendChild(uiElement("p", "webr-home-compact__article-summary", "자료를 불러오지 못했습니다."));
+    var retry = uiElement("button", "webr-home-compact__lane-retry", "다시 확인");
+    retry.type = "button";
+    retry.addEventListener("click", function retryThisSummary() {
+      if (summaryRecoveryInFlight || !summaryRecoveryVisible()) return;
+      retry.disabled = true;
+      retryUnavailableSummary();
+    });
+    failure.appendChild(retry);
+    body.appendChild(failure);
+  }
+
+  function expirePendingLaneGrace() {
+    pendingLaneTimer = 0;
+    if (!refs || !summaryRecoveryVisible()) return;
+    categories.forEach(function finishWaitingLane(definition) {
+      if (refs.categoryBodies[definition.key].dataset.homePending === "true") {
+        renderCategory(definition, null, true);
+      }
+    });
+    if (refs.mediaBody.dataset.homePending === "true") {
+      refs.mediaBody.replaceChildren();
+      delete refs.mediaBody.dataset.homePending;
+      unavailableCard(refs.mediaBody, false);
+    }
+  }
+
+  function schedulePendingLaneGrace() {
+    if (!refs || pendingLaneTimer || !summaryQuickRecoveryDeadline || !summaryRecoveryVisible() ||
+        !refs.section.querySelector('[data-home-pending="true"]')) return;
+    pendingLaneTimer = window.setTimeout(expirePendingLaneGrace,
+      Math.max(0, summaryQuickRecoveryDeadline - Date.now()));
+  }
+
   function productCard(item) {
     var card = link(item.href, "webr-home-compact__product-card webr-home-compact__product-card--" + item.tone);
     var title = uiElement("strong", "webr-home-compact__product-title", item.label);
@@ -273,7 +332,7 @@
     header.appendChild(uiLink(definition.href, "webr-home-compact__more", "더 보기"));
     card.appendChild(header);
     var body = element("div", "webr-home-compact__category-body");
-    body.appendChild(skeleton(2));
+    pendingCard(body, definition.key === "books");
     card.appendChild(body);
     return { card: card, body: body };
   }
@@ -461,9 +520,11 @@
   function renderCategory(definition, item, unavailable) {
     var body = refs.categoryBodies[definition.key];
     body.replaceChildren();
+    body.setAttribute("aria-busy", "false");
+    delete body.dataset.homePending;
     if (!item) {
       if (unavailable) {
-        body.appendChild(uiElement("p", "webr-home-compact__article-summary", "일부 자료 집계가 지연되고 있습니다."));
+        unavailableCard(body, definition.key === "books");
       }
       return;
     }
@@ -674,12 +735,14 @@
 
   function renderMedia(payload) {
     refs.mediaBody.replaceChildren();
+    refs.mediaBody.setAttribute("aria-busy", "false");
+    delete refs.mediaBody.dataset.homePending;
     var mediaItems = featuredMedia(payload);
     var existingMore = refs.mediaHeader.querySelector(".webr-home-compact__more");
     if (!mediaItems.length) {
       if (existingMore) existingMore.href = "/workshop/";
       if (sectionUnavailable(payload, "lectures") || sectionUnavailable(payload, "youtube")) {
-        refs.mediaBody.appendChild(uiElement("p", "webr-home-compact__article-summary", "일부 자료 집계가 지연되고 있습니다."));
+        unavailableCard(refs.mediaBody, false);
       }
       return;
     }
@@ -812,7 +875,7 @@
     });
     // Notices have their own current-state request and are unaffected by a
     // summary timeout. Its loader owns loading, errors and visible rows.
-    renderMedia({ sections: {} });
+    renderMedia({ sections: {}, unavailable_sections: ["lectures", "youtube"] });
     renderActivity([], true);
     refs.section.setAttribute("aria-busy", "false");
     refs.section.dataset.homeSummaryState = "fallback";
@@ -867,10 +930,13 @@
     if (summaryRecoveryController) summaryRecoveryController.abort();
     if (summaryInitialTimer) window.clearTimeout(summaryInitialTimer);
     summaryInitialTimer = 0;
+    if (pendingLaneTimer) window.clearTimeout(pendingLaneTimer);
+    pendingLaneTimer = 0;
   }
 
   function scheduleSummaryRecovery(interval) {
     scheduleInitialSummaryGrace();
+    schedulePendingLaneGrace();
     if (!summaryRecoveryWanted || !summaryRecoveryVisible() || summaryRecoveryTimer || summaryRecoveryInFlight) return;
     var elapsed = summaryRecoveryLastStarted ? Math.max(0, Date.now() - summaryRecoveryLastStarted) : 0;
     var delay = summaryRecoveryLastStarted ? Math.max(0, interval - elapsed) : interval;
@@ -916,6 +982,7 @@
     }).finally(function finishSummaryRecovery() {
       summaryRecoveryController = null;
       summaryRecoveryInFlight = false;
+      if (refs) refs.section.querySelectorAll(".webr-home-compact__lane-retry").forEach(function enableRetry(button) { button.disabled = false; });
       var interval = summaryRetryDelays[summaryRecoveryAttempt++];
       if (!interval) {
         // Prepared sources can finish after the first few quick reads. Keep
