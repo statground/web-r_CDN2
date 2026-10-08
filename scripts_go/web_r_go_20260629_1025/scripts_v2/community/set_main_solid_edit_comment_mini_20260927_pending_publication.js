@@ -2129,38 +2129,167 @@ function set_article() {
     contentEl.classList.toggle("webr-rcommunity-digest-viewer", categoryURL === "rcommunity");
   }
 }
-async function get_read_article(loadMode) {
-  const localeEpoch = communityLocaleEpoch;
-  const request_data = new FormData();
-  request_data.append("orderID", orderID);
-  request_data.append("lang", communityDisplayLocale());
-  try {
-    const res = await fetch("/blank/ajax_board/get_read_article/", {
-      method: "POST",
-      headers: { "X-CSRFToken": getCookie("csrftoken") },
-      body: request_data
-    });
-    if (!res.ok) {
-      throw new Error(`get_read_article HTTP error: ${res.status}`);
+let communityDetailRead = null;
+function communityDetailOwnerKey() {
+  return JSON.stringify([String(orderID || "").toLowerCase(), communityLocaleEpoch, communityDisplayLocale(),
+    getCommunityMode(), window.location.pathname,
+    typeof gv_username === "undefined" || gv_username == null ? "" : String(gv_username),
+    window.gv_role == null ? "" : String(window.gv_role)]);
+}
+function currentCommunityDetail(state) {
+  return communityDetailRead === state && !state.cancelled && state.key === communityDetailOwnerKey() &&
+    document.getElementById("div_community_read_header") === state.target;
+}
+function clearCommunityDetailBody() {
+  communityState.articleData = null;
+  communityState.commentData = null;
+  for (const id of ["div_community_read_content", "div_community_read_file", "div_article_read_buttons", "div_community_read_comment"]) {
+    const target = document.getElementById(id);
+    if (target) {
+      if (id === "div_community_read_content") target.replaceChildren();
+      else ReactDOM.render(null, target);
     }
-    const articleData = await res.json();
-    if (localeEpoch !== communityLocaleEpoch) return;
-    communityState.articleData = articleData;
-    syncCommunityReadContext(communityState.articleData);
-    if (loadMode === "init" || loadMode === "locale") {
-      set_article();
-    }
-    get_read_article_comment(orderID);
-    let normalizedCategory = null;
-    if (communityState.articleData && typeof communityState.articleData.category_url === "string") {
-      normalizedCategory = communityState.articleData.category_url.trim().toLowerCase();
-    }
-    if (normalizedCategory === "rblogger" && loadMode === "init") {
-      refresh_article_rblogger(orderID);
-    }
-  } catch (err) {
-    console.error("[get_read_article] fetch or JSON error:", err);
   }
+}
+function cancelCommunityDetail(state = communityDetailRead) {
+  if (!state) return;
+  state.cancelled = true;
+  state.controller.abort();
+  window.clearTimeout(state.timer);
+  window.clearInterval(state.ownerTimer);
+  if (state.retryTimer) window.clearTimeout(state.retryTimer);
+  if (state.retryResolve) state.retryResolve();
+  if (state.cancelResolve) state.cancelResolve();
+  if (communityDetailRead === state && document.getElementById("div_community_read_header") === state.target) {
+    clearCommunityDetailBody();
+    ReactDOM.render(null, state.target);
+    state.target.setAttribute("aria-busy", "false");
+  }
+}
+window.addEventListener("pagehide", () => cancelCommunityDetail());
+window.addEventListener("popstate", () => cancelCommunityDetail());
+window.addEventListener("pageshow", (event) => {
+  if (event.persisted && getCommunityMode() === "read" && typeof orderID === "string" && orderID &&
+      window.location.pathname.toLowerCase().replace(/\/$/, "").endsWith("/read/" + orderID.toLowerCase()) &&
+      document.getElementById("div_community_read_header")) void get_read_article("init");
+});
+function renderCommunityDetailStatus(state, pending, terminal = false) {
+  if (!currentCommunityDetail(state)) return;
+  clearCommunityDetailBody();
+  state.target.setAttribute("aria-busy", pending ? "true" : "false");
+  const text = pending ? communityT("게시글을 불러오고 있습니다.") : terminal ?
+    communityT("게시글을 찾을 수 없거나 읽을 수 없습니다.") :
+    communityT("게시글을 불러오지 못했습니다. 다시 시도해 주세요.");
+  ReactDOM.render(React.createElement("div", { class: "w-full py-4 space-y-3" },
+    React.createElement("p", { role: pending ? "status" : "alert", "aria-live": "polite", class: "text-sm text-gray-600" }, text),
+    !pending && !terminal && React.createElement("button", { type: "button", class: "rounded-lg border px-3 py-2 text-sm",
+      onClick: () => { if (currentCommunityDetail(state)) void get_read_article("init"); } }, communityT("다시 시도"))), state.target);
+  if (pending) {
+    const content = document.getElementById("div_community_read_content");
+    const motion = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "" : " animate-pulse";
+    if (content) {
+      const skeleton = document.createElement("div");
+      skeleton.setAttribute("aria-hidden", "true");
+      skeleton.className = "w-full h-48 bg-gray-200 rounded-lg" + motion;
+      content.replaceChildren(skeleton);
+    }
+  }
+}
+function validCommunityDetail(data, id) {
+  return data && typeof data === "object" && !Array.isArray(data) && data.ok !== false &&
+    !data.pending && !data.partial && data.complete !== false && !data.error && !data.board_error &&
+    !data.not_found && !data.access_denied && !data.denied && !data.withdrawn &&
+    typeof data.uuid === "string" && data.uuid.toLowerCase() === id.toLowerCase() &&
+    typeof data.title === "string" && typeof data.content === "string" &&
+    typeof data.category_url === "string" && data.category_url.trim() !== "" &&
+    ["user", "writer", "admin"].includes(data.check_reader) && [0, 1].includes(data.is_secret);
+}
+async function readCommunityDetail(state, loadMode) {
+  for (let attempt = 1; attempt <= COMMUNITY_CARD_FETCH_ATTEMPTS && currentCommunityDetail(state); attempt += 1) {
+    if (performance.now() >= state.deadline) break;
+    try {
+      const request_data = new FormData();
+      request_data.append("orderID", state.id);
+      request_data.append("lang", state.locale);
+      const response = await fetch("/blank/ajax_board/get_read_article/", {
+        method: "POST", headers: { "X-CSRFToken": getCookie("csrftoken") }, body: request_data, signal: state.controller.signal
+      });
+      if (!currentCommunityDetail(state)) return;
+      if (state.expired || performance.now() >= state.deadline) {
+        state.expired = true;
+        renderCommunityDetailStatus(state, false);
+        return;
+      }
+      if ([401, 403, 404, 410].includes(response.status)) {
+        renderCommunityDetailStatus(state, false, true);
+        return;
+      }
+      if (!response.ok) break;
+      const data = await response.json();
+      if (!currentCommunityDetail(state)) return;
+      if (state.expired || performance.now() >= state.deadline) {
+        state.expired = true;
+        renderCommunityDetailStatus(state, false);
+        return;
+      }
+      if (data && (data.not_found === true || data.access_denied === true || data.denied === true || data.withdrawn === true)) {
+        renderCommunityDetailStatus(state, false, true);
+        return;
+      }
+      if (validCommunityDetail(data, state.id)) {
+        communityState.articleData = data;
+        syncCommunityReadContext(data);
+        if (loadMode === "init" || loadMode === "locale") set_article();
+        state.target.setAttribute("aria-busy", "false");
+        void get_read_article_comment(state.id);
+        if (data.category_url.trim().toLowerCase() === "rblogger" && loadMode === "init") void refresh_article_rblogger(state.id);
+        return;
+      }
+      // Only the original typed pending envelope can trigger another fresh read.
+      if (!data || data.ok !== false || data.pending !== true || data.partial || data.error || data.board_error ||
+          data.not_found || data.access_denied || data.denied || data.withdrawn) break;
+    } catch (_) {
+      if (!currentCommunityDetail(state)) return;
+      break;
+    }
+    const delay = COMMUNITY_CARD_RETRY_BASE_MS * attempt;
+    if (attempt >= COMMUNITY_CARD_FETCH_ATTEMPTS || performance.now() + delay >= state.deadline) break;
+    await new Promise((resolve) => {
+      state.retryResolve = resolve;
+      state.retryTimer = window.setTimeout(resolve, delay);
+    });
+    state.retryResolve = null;
+    state.retryTimer = null;
+  }
+  renderCommunityDetailStatus(state, false);
+}
+async function get_read_article(loadMode) {
+  const target = document.getElementById("div_community_read_header");
+  if (!target || getCommunityMode() !== "read" || typeof orderID !== "string" || !orderID) return;
+  const key = communityDetailOwnerKey();
+  if (communityDetailRead && communityDetailRead.running && currentCommunityDetail(communityDetailRead)) return communityDetailRead.promise;
+  cancelCommunityDetail();
+  const state = { target, key, id: orderID, locale: communityDisplayLocale(), controller: new AbortController(),
+    deadline: performance.now() + COMMUNITY_PARTIAL_RECOVERY_MS, timer: null, ownerTimer: null,
+    retryTimer: null, retryResolve: null, cancelResolve: null, cancelled: false, expired: false, running: true };
+  communityDetailRead = state;
+  renderCommunityDetailStatus(state, true);
+  state.ownerTimer = window.setInterval(() => { if (!currentCommunityDetail(state)) cancelCommunityDetail(state); }, 100);
+  state.promise = Promise.race([readCommunityDetail(state, loadMode), new Promise((resolve) => { state.cancelResolve = resolve; }),
+    new Promise((resolve) => { state.timer = window.setTimeout(() => {
+      state.expired = true;
+      state.controller.abort();
+      renderCommunityDetailStatus(state, false);
+      resolve();
+    }, COMMUNITY_PARTIAL_RECOVERY_MS); })]).finally(() => {
+    state.running = false;
+    state.controller.abort();
+    window.clearTimeout(state.timer);
+    window.clearInterval(state.ownerTimer);
+    if (state.retryTimer) window.clearTimeout(state.retryTimer);
+    if (state.retryResolve) state.retryResolve();
+  });
+  return state.promise;
 }
 async function refresh_article_rblogger(articleId) {
   const request_data = new FormData();
@@ -2617,6 +2746,7 @@ async function comment_file_action(action, uuid_comment) {
 }
 async function get_read_article_comment(orderID_param) {
   const localeEpoch = communityLocaleEpoch;
+  const ownerKey = communityDetailOwnerKey();
   const request_data = new FormData();
   request_data.append("orderID", orderID_param);
   request_data.append("lang", communityDisplayLocale());
@@ -2625,7 +2755,8 @@ async function get_read_article_comment(orderID_param) {
     headers: { "X-CSRFToken": getCookie("csrftoken") },
     body: request_data
   }).then((res) => res.json());
-  if (localeEpoch !== communityLocaleEpoch) return;
+  if (localeEpoch !== communityLocaleEpoch || ownerKey !== communityDetailOwnerKey() ||
+      !communityState.articleData || String(communityState.articleData.uuid).toLowerCase() !== String(orderID_param).toLowerCase()) return;
   if (!responseData || responseData.error || responseData.checker === "ERROR") {
     console.error("[get_read_article_comment] failed", responseData);
     return;
