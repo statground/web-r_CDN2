@@ -129,6 +129,17 @@ class CommunityPartialRecoveryTests(unittest.TestCase):
         page.wait_for_timeout(160)
         self.assertEqual(page.evaluate("window.__calls.length"), 3)
 
+    def test_main_retains_verified_partial_after_retryable_http_or_network_failure(self):
+        for failed in [{"status": 503, "body": {}}, {"network": True}]:
+            with self.subTest(failed=failed):
+                page, errors, requests = self.render([{"body": payload("Retained main row", partial=True)}, failed], generic=True)
+                self.settled(page, errors, requests)
+                self.assertIn("Retained main row", page.locator("#div_article_list").inner_text())
+                self.assertEqual(page.locator("nav").count(), 0)
+                self.assertEqual(page.evaluate("Object.keys(communityArticlePageCache).length"), 0)
+                self.assertEqual(page.evaluate("window.__calls.length"), 3)
+                self.assertEqual(page.evaluate("communityState.article_counter"), 0)
+
     def test_exact_last_good_rows_survive_but_partial_does_not_renew_authority(self):
         page, errors, requests = self.render([{"body": payload("Prior complete")}])
         self.settled(page, errors, requests)

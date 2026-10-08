@@ -1708,6 +1708,7 @@ async function fetchCommunityCardData(tag, page, attempts = COMMUNITY_CARD_FETCH
 async function fetchCommunityArticleListResponse(requestData, pendingAttempts, isCurrent, onPartial = () => {}) {
   let lastData = null;
   let lastPartial = null;
+  let lastPartialResponse = null;
   let response = null;
   let stopped = false;
   let controller = null;
@@ -1743,6 +1744,7 @@ async function fetchCommunityArticleListResponse(requestData, pendingAttempts, i
         if (response.ok && cacheStatus !== "pending" && !isCommunityArticleListPending(data)) {
           if (!isCommunityArticleListRetryablePartial(data)) return { response, data };
           lastPartial = data;
+          lastPartialResponse = response;
           onPartial(data);
         }
       } catch (error) {
@@ -1766,7 +1768,7 @@ async function fetchCommunityArticleListResponse(requestData, pendingAttempts, i
         await sleepCommunityCardRetry(attempt);
       }
     }
-    return { response, data: lastPartial || {
+    return { response: lastPartial ? lastPartialResponse : response, data: lastPartial || {
       ok: false,
       pending: true,
       message: communityArticleListPendingMessage(lastData),
