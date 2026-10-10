@@ -298,6 +298,120 @@ function resetListPagination() {
   communityState.cardPages = { free: 1, notebook: 1, rcommunity: 1 };
   communityState.cardCounters = { free: 0, notebook: 0, rcommunity: 0 };
 }
+// UI ownership is not authorization: every server request retains fresh rights checks.
+const COMMUNITY_ACTION_WINDOW_MS = 45000;
+const communityActions = new Map();
+const communityCommentCreateIDs = new Map();
+function communityViewerOwnerKey() {
+  return JSON.stringify([typeof gv_username === "undefined" ? "" : String(gv_username || ""),
+    String(window.gv_role || ""), !!window.gv_is_admin]);
+}
+function communityDraftOwnerKey() {
+  return JSON.stringify([location.pathname, typeof orderID === "undefined" ? "" : String(orderID || ""),
+    typeof url === "undefined" ? "" : String(url || ""), communityViewerOwnerKey()]);
+}
+function communityActionOwnerKey() {
+  return communityDraftOwnerKey() + "|" + communityLocaleEpoch + "|" + getCommunityMode();
+}
+function currentCommunityAction(state) {
+  return !!state && communityActions.get(state.scope) === state && !state.cancelled &&
+    performance.now() < state.deadline &&
+    state.owner === communityActionOwnerKey() && (!state.target || document.getElementById(state.target.id) === state.target);
+}
+function cancelCommunityAction(state, expired = false) {
+  if (!state || state.cancelled) return;
+  state.expired = expired;
+  state.cancelled = true;
+  state.controller.abort();
+  state.cancelReject?.(new DOMException("Action retired", "AbortError"));
+}
+function beginCommunityAction(scope, target) {
+  const previous = communityActions.get(scope);
+  if (previous && currentCommunityAction(previous)) return null;
+  if (previous) { cancelCommunityAction(previous); finishCommunityAction(previous); }
+  const state = { scope, target, owner: communityActionOwnerKey(), draftOwner: communityDraftOwnerKey(), viewer: communityViewerOwnerKey(),
+    controller: new AbortController(), cancelled: false, expired: false, acknowledged: false,
+    deadline: performance.now() + COMMUNITY_ACTION_WINDOW_MS };
+  state.cancelPromise = new Promise((_, reject) => { state.cancelReject = reject; });
+  state.cancelPromise.catch(() => {});
+  communityActions.set(scope, state);
+  state.timer = window.setTimeout(() => cancelCommunityAction(state, true), COMMUNITY_ACTION_WINDOW_MS);
+  state.ownerTimer = window.setInterval(() => {
+    if (!currentCommunityAction(state)) {
+      if (state.viewer !== communityViewerOwnerKey() && state.target && document.getElementById(state.target.id) === state.target)
+        retireCommunityActionRights();
+      cancelCommunityAction(state);
+    }
+  }, 100);
+  return state;
+}
+function finishCommunityAction(state) {
+  window.clearTimeout(state.timer);
+  window.clearInterval(state.ownerTimer);
+  if (communityActions.get(state.scope) === state) communityActions.delete(state.scope);
+}
+function communityActionStillOwned(state) {
+  return state.owner === communityActionOwnerKey() && (!state.target || document.getElementById(state.target.id) === state.target);
+}
+function communityActionMessage(state, text) {
+  if (!communityActionStillOwned(state) || !state.target?.parentElement) return;
+  const id = state.target.id + "_action_status";
+  let status = document.getElementById(id);
+  if (!status) {
+    status = document.createElement("p"); status.id = id;
+    status.setAttribute("data-webr-community-action-status", state.scope);
+    status.setAttribute("role", "alert"); status.setAttribute("aria-live", "polite");
+    status.className = "mt-2 text-sm text-gray-600";
+    state.target.insertAdjacentElement("afterend", status);
+  }
+  status.textContent = text;
+}
+function retireCommunityActionRights() {
+  communityActions.forEach((state) => cancelCommunityAction(state));
+  communityCommentCreateIDs.clear();
+  communityState.deletedCommentIDs = {};
+  communityState.commentEditors = {}; communityState.commentFiles = {};
+  clearCommunityDetailBody();
+  const main = document.getElementById("div_main");
+  if (main) ReactDOM.render(React.createElement("p", { role: "alert", class: "py-4 text-sm text-gray-600" },
+    communityT("현재 계정으로 처리할 수 없습니다. 로그인과 접근 권한을 확인해 주세요.")), main);
+}
+async function communityActionJSON(state, endpoint, body) {
+  if (!currentCommunityAction(state)) throw new DOMException("Action retired", "AbortError");
+  const result = await Promise.race([state.cancelPromise, (async () => {
+    const response = await fetch(endpoint, { method: "POST", headers: { "X-CSRFToken": getCookie("csrftoken") },
+      body, signal: state.controller.signal });
+    if (!currentCommunityAction(state)) throw new DOMException("Action retired", "AbortError");
+    if ([401, 403, 404, 410].includes(response.status)) { retireCommunityActionRights(); throw new Error("Access denied"); }
+    if (!response.ok) throw new Error("HTTP " + response.status);
+    const data = await response.json();
+    if (!currentCommunityAction(state)) throw new DOMException("Action retired", "AbortError");
+    if (data?.access_denied === true || data?.denied === true || data?.withdrawn === true) {
+      retireCommunityActionRights(); throw new Error("Access denied");
+    }
+    return data;
+  })()]);
+  return result;
+}
+function communityActionFailure(state) {
+  return state.acknowledged ? communityT("내용은 저장되었습니다. 첨부 파일의 저장 상태를 확인하지 못했습니다. 현재 내용을 확인해 주세요.") :
+    communityT("저장 상태를 확인하지 못했습니다. 입력 내용은 유지됩니다. 현재 내용을 확인한 뒤 같은 화면에서 다시 시도해 주세요.");
+}
+function communityCommentRequestID(editorKey, content, secret) {
+  const key = communityDraftOwnerKey() + "|" + editorKey;
+  const signature = JSON.stringify([content, secret]);
+  const previous = communityCommentCreateIDs.get(key);
+  if (previous && previous.signature !== signature) throw new Error(communityT("이전 댓글의 저장 상태를 먼저 확인해 주세요. 입력 내용은 유지됩니다."));
+  const id = previous?.id || globalThis.crypto?.randomUUID?.();
+  if (!id) throw new Error(communityT("요청 ID를 생성할 수 없습니다. 보안 연결에서 다시 시도해 주세요."));
+  communityCommentCreateIDs.set(key, { id, signature });
+  return id;
+}
+window.addEventListener("pagehide", () => {
+  communityActions.forEach((state) => cancelCommunityAction(state));
+  communityState.commentData = null;
+  communityState.deletedCommentIDs = {};
+});
 function resetEditorState() {
   communityState.toggle_click_submit = false;
   communityState.articleEditor = null;
@@ -341,7 +455,7 @@ function getArticleStorageKey() {
   const board = typeof url === "undefined" || url == null || url === "" || url === "None" ? "free" : url;
   const currentMode = getCommunityMode() || "write";
   const articleID = typeof orderID === "undefined" || orderID == null || orderID === "" || orderID === "None" ? "new" : orderID;
-  return ["web-r", "community", board, currentMode, articleID].join(":");
+  return ["web-r", "community", board, currentMode, articleID, communityDraftOwnerKey()].join(":");
 }
 async function mountSolidArticleEditor(initialHTML = null) {
   const host = document.getElementById("div_editor");
@@ -610,13 +724,14 @@ async function uploadQueuedFiles(files, options = {}) {
     if (options.commentUUID) {
       formData.append("uuid_comment", options.commentUUID);
     }
-    const result = await fetch("/blank/ajax_file_upload/", {
-      method: "POST",
-      headers: { "X-CSRFToken": getCookie("csrftoken") },
-      body: formData
-    }).then((res) => res.json());
-    if (result && result.error) {
-      throw new Error(result.error);
+    const result = await communityActionJSON(options.state, "/blank/ajax_file_upload/", formData);
+    if (!result || result.error || result.checker === "ERROR" || result.ok === false) throw new Error("Upload not acknowledged");
+    // Remove only this acknowledged file; later queued files and failed uploads stay.
+    if (options.scope === "article") communityState.articleFiles = queuedArticleFiles().filter((file) => file !== uploadFiles[index]);
+    else if (options.scope === "comment") {
+      Object.keys(communityState.commentFiles).forEach((key) => {
+        communityState.commentFiles[key] = queuedCommentFiles(key).filter((file) => file !== uploadFiles[index]);
+      });
     }
   }
 }
@@ -777,7 +892,7 @@ function scheduleCommentEditorRecovery(commentId, hostID = null, initialHTML = "
 function getCommentStorageKey(commentId) {
   const board = typeof url === "undefined" || url == null || url === "" || url === "None" ? "free" : url;
   const articleID = typeof orderID === "undefined" || orderID == null || orderID === "" || orderID === "None" ? "new" : orderID;
-  return ["web-r", "community", board, "comment", articleID, commentId || "new"].join(":");
+  return ["web-r", "community", board, "comment", articleID, commentId || "new", communityDraftOwnerKey()].join(":");
 }
 async function mountSolidCommentEditor(commentId, initialHTML = "", hostID = null) {
   const key = commentId == null ? "new" : String(commentId);
@@ -1427,6 +1542,7 @@ function deletedCommentShellRow(uuid, seed) {
     attachments: [],
     check_comment_reader: "user",
     __optimistic: row.__syntheticDeletedShell ? false : true,
+    __owner: communityDraftOwnerKey(),
     __optimisticAt: Date.now(),
     __optimisticAction: row.__syntheticDeletedShell ? "" : "delete-shell"
   };
@@ -2384,30 +2500,24 @@ async function refresh_article_rblogger(articleId) {
   }
 }
 async function click_btn_delete() {
-  if (!confirm(communityT("\uC815\uB9D0\uB85C \uC0AD\uC81C\uD560\uAE4C\uC694?"))) {
-    return;
-  }
-  const request_data = new FormData();
-  request_data.append("uuid", orderID);
+  if (!confirm(communityT("정말로 삭제할까요?"))) return;
+  const state = beginCommunityAction("article-delete", document.getElementById("div_article_read_buttons"));
+  if (!state) return;
+  const buttons = [...(state.target?.querySelectorAll("button") || [])];
+  buttons.forEach((button) => { button.disabled = true; });
+  let message = "";
   try {
-    const response = await fetch("/blank/ajax_board/delete_article/", {
-      method: "POST",
-      headers: { "X-CSRFToken": getCookie("csrftoken") },
-      body: request_data
-    });
-    if (!response.ok) {
-      throw new Error(`delete_article HTTP ${response.status}`);
-    }
-    const result = await response.json();
-    if (!result || result.checker !== "SUCCESS") {
-      alert(result && result.error || communityT("\uAC8C\uC2DC\uAE00\uC744 \uC0AD\uC81C\uD558\uC9C0 \uBABB\uD588\uC2B5\uB2C8\uB2E4. \uD604\uC7AC \uAE00\uC744 \uD655\uC778\uD55C \uB4A4 \uB2E4\uC2DC \uC2DC\uB3C4\uD574 \uC8FC\uC138\uC694."));
-      return;
-    }
+    const body = new FormData(); body.append("uuid", orderID);
+    const data = await communityActionJSON(state, "/blank/ajax_board/delete_article/", body);
+    if (!data || data.checker !== "SUCCESS" || data.error) { message = data?.error || communityActionFailure(state); return; }
     location.href = init_url;
-  } catch (_) {
-    alert(communityT("\uC0AD\uC81C \uC0C1\uD0DC\uB97C \uD655\uC778\uD558\uC9C0 \uBABB\uD588\uC2B5\uB2C8\uB2E4. \uD604\uC7AC \uAE00\uC744 \uD655\uC778\uD574 \uC8FC\uC138\uC694."));
+  } catch (_) { message = communityActionFailure(state); }
+  finally {
+    const owned = communityActionStillOwned(state); finishCommunityAction(state);
+    if (owned) { buttons.forEach((button) => { button.disabled = false; }); if (message) communityActionMessage(state, message); }
   }
 }
+
 function isAdminViewer() {
   return !!window.gv_is_admin || String(window.gv_role || "").trim() === "\uAD00\uB9AC\uC790";
 }
@@ -2420,42 +2530,30 @@ function canAdminBlockAuthor(data) {
   return isAdminViewer() && !!data && !isBotAuthor(data);
 }
 async function adminBlockAuthor(scope, uuid, label) {
-  const targetLabel = label || communityT("\uC791\uC131\uC790");
-  if (!isAdminViewer()) {
-    alert(communityT("\uAD00\uB9AC\uC790\uB9CC \uCC98\uB9AC\uD560 \uC218 \uC788\uC2B5\uB2C8\uB2E4."));
-    return;
-  }
-  if (!uuid) {
-    alert(communityT("\uCC28\uB2E8\uD560 \uB300\uC0C1\uC744 \uD655\uC778\uD560 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4."));
-    return;
-  }
-  if (!confirm(communityT("{author}\uB2D8\uC744 \uCC28\uB2E8\uD560\uAE4C\uC694?", { author: targetLabel }))) {
-    return;
-  }
-  const requestData = new FormData();
-  requestData.append("scope", scope);
-  requestData.append("uuid", uuid);
+  if (!isAdminViewer() || !uuid) return;
+  if (!confirm(communityT("{author}님을 차단할까요?", { author: label || communityT("작성자") }))) return;
+  const target = document.getElementById(scope === "comment" ? "div_comment_footer_" + uuid : "div_article_read_buttons");
+  const state = beginCommunityAction(scope === "comment" ? "comment:" + uuid : "article-delete", target);
+  if (!state) return;
+  const buttons = [...(target?.querySelectorAll("button") || [])];
+  buttons.forEach((button) => { button.disabled = true; });
+  let message = "";
   try {
-    const result = await fetch("/blank/ajax_board/admin_block_author/", {
-      method: "POST",
-      headers: { "X-CSRFToken": getCookie("csrftoken") },
-      body: requestData
-    }).then((res) => res.json());
-    if (!result || result.checker !== "SUCCESS") {
-      alert(result && result.error ? result.error : communityT("\uC791\uC131\uC790 \uCC28\uB2E8\uC744 \uCC98\uB9AC\uD558\uC9C0 \uBABB\uD588\uC2B5\uB2C8\uB2E4."));
-      return;
-    }
-    alert(communityT("\uC791\uC131\uC790\uB97C \uCC28\uB2E8\uD588\uC2B5\uB2C8\uB2E4."));
+    const body = new FormData(); body.append("scope", scope); body.append("uuid", uuid);
+    const data = await communityActionJSON(state, "/blank/ajax_board/admin_block_author/", body);
+    if (!data || data.checker !== "SUCCESS" || data.error) { message = data?.error || communityActionFailure(state); return; }
     if (scope === "comment") {
+      // A fresh denial must not be merged back from the acknowledged lag buffer.
+      Object.values(communityState.commentData || {}).forEach((row) => { if (row.uuid === uuid) row.__optimistic = false; });
       await get_read_article_comment(orderID);
-    } else {
-      location.href = init_url;
-    }
-  } catch (err) {
-    console.error("[adminBlockAuthor] error:", err);
-    alert(communityT("\uC791\uC131\uC790 \uCC28\uB2E8\uC744 \uCC98\uB9AC\uD558\uC9C0 \uBABB\uD588\uC2B5\uB2C8\uB2E4."));
+    } else location.href = init_url;
+  } catch (_) { message = communityActionFailure(state); }
+  finally {
+    const owned = communityActionStillOwned(state); finishCommunityAction(state);
+    if (owned) { buttons.forEach((button) => { button.disabled = false; }); if (message) communityActionMessage(state, message); }
   }
 }
+
 function Div_btn_comment_editor_footer_button(props) {
   const label = props.label || communityT("\uB4F1\uB85D");
   return /* @__PURE__ */ React.createElement(
@@ -2654,6 +2752,7 @@ async function upsertCommentFromMutationResponse(comment, action = "submit") {
     attachments: responseAttachments.length > 0 ? responseAttachments : existingAttachments,
     rereply: comment.rereply || (existing && existing.rereply) || {},
     __optimistic: true,
+    __owner: communityDraftOwnerKey(),
     __optimisticAt: Date.now(),
     __optimisticAction: action === "edit" ? "edit" : "insert"
   });
@@ -2665,7 +2764,7 @@ function mergeOptimisticComments(responseData) {
   const rawServerIDs = new Set(rawServerRows.map((item) => item && item.uuid).filter(Boolean));
   const now = Date.now();
   const optimisticRows = Object.values(communityState.commentData || {}).filter((item) => {
-    if (!item || !item.uuid || !item.__optimistic) {
+    if (!item || !item.uuid || !item.__optimistic || item.__owner !== communityDraftOwnerKey()) {
       return false;
     }
     if (isCommentDeletedLocally(item.uuid)) {
@@ -2680,7 +2779,11 @@ function mergeOptimisticComments(responseData) {
   const optimisticByID = new Map(optimisticRows.map((item) => [item.uuid, item]));
   const serverRows = rawServerRows.filter((item) => item && !isCommentDeletedLocally(item.uuid)).map((item) => {
     const optimistic = optimisticByID.get(item.uuid);
-    if (optimistic && (optimistic.__optimisticAction === "edit" || optimistic.__optimisticAction === "delete-shell")) {
+    // Legacy lists carry no completeness/current-rights marker. Missing fields
+    // cannot establish withdrawal; explicit current-row rights changes win.
+    const sameRights = optimistic && ["active", "visible", "is_secret", "check_comment_reader", "uuid_article", "user_uuid", "uuid_upper"].every((key) =>
+      item[key] == null || String(item[key]) === String(optimistic[key] ?? ""));
+    if (sameRights && (optimistic.__optimisticAction === "edit" || optimistic.__optimisticAction === "delete-shell")) {
       return optimistic;
     }
     return item;
@@ -2699,111 +2802,73 @@ function refreshCommentsQuietly() {
 }
 async function comment_action(action, uuid_comment) {
   const isNew = uuid_comment === "new";
-  if (action === "delete") {
-    if (!confirm(communityT("\uC815\uB9D0\uB85C \uC0AD\uC81C\uD560\uAE4C\uC694?"))) {
-      return;
-    }
-    const isUpper = (communityState.commentUpper || []).map((item) => item.uuid).includes(uuid_comment);
-    const target = Object.values(communityState.commentData || {}).find((item) => item.uuid === uuid_comment);
-    ReactDOM.render(
-      /* @__PURE__ */ React.createElement(Div_comment_button_list, { data: target || { active: 1, check_comment_reader: "" }, depth: isUpper ? 1 : 2, loading: true }),
-      document.getElementById("div_comment_footer_" + uuid_comment)
-    );
-    const request_data2 = new FormData();
-    request_data2.append("uuid", uuid_comment);
-    try {
-      const responseData = await fetch("/blank/ajax_board/delete_comment/", {
-        method: "POST",
-        headers: { "X-CSRFToken": getCookie("csrftoken") },
-        body: request_data2
-      }).then((res) => res.json());
-      if (!responseData || responseData.error || responseData.checker === "ERROR") {
-        alert(responseData && responseData.error ? responseData.error : communityT("\uB313\uAE00\uC744 \uC0AD\uC81C\uD558\uC9C0 \uBABB\uD588\uC2B5\uB2C8\uB2E4."));
-        restoreCommentActionButtons(uuid_comment, isUpper, target);
-        return;
-      }
-      await removeCommentTreeFromView(responseData && responseData.uuid ? responseData.uuid : uuid_comment);
-      refreshCommentsQuietly();
-    } catch (error) {
-      console.error("[comment_action:delete] failed", error);
-      alert(communityT("\uB313\uAE00\uC744 \uC0AD\uC81C\uD558\uC9C0 \uBABB\uD588\uC2B5\uB2C8\uB2E4. \uC7A0\uC2DC \uD6C4 \uB2E4\uC2DC \uC2DC\uB3C4\uD574 \uC8FC\uC138\uC694."));
-      restoreCommentActionButtons(uuid_comment, isUpper, target);
-    }
-    return;
-  }
+  const deleting = action === "delete";
+  if (deleting && !confirm(communityT("정말로 삭제할까요?"))) return;
   const editorKey = isNew ? "new" : uuid_comment;
   const currentEditor = communityState.commentEditors[editorKey];
-  if (!currentEditor) {
-    alert(communityT("\uC5D0\uB514\uD130\uAC00 \uCD08\uAE30\uD654\uB418\uC9C0 \uC54A\uC558\uC2B5\uB2C8\uB2E4. \uC0C8\uB85C\uACE0\uCE68 \uD6C4 \uB2E4\uC2DC \uC2DC\uB3C4\uD574\uC8FC\uC138\uC694."));
-    return;
-  }
-  const txt_content = getCommentEditorHTML(currentEditor);
-  const chk_id = isNew ? "chk_secret_new" : "chk_secret_" + uuid_comment;
-  const secretEl = document.getElementById(chk_id);
-  const chk_secret = secretEl ? secretEl.checked : false;
-  if (isCommentContentEmpty(txt_content)) {
-    alert(communityT("\uB0B4\uC6A9\uC744 \uC785\uB825\uD574\uC8FC\uC138\uC694."));
-    return;
-  }
-  const btnId = isNew ? "btn_comment_editor_footer_button" : "btn_comment_editor_footer_button_" + uuid_comment;
-  const buttonLabel = action === "edit" ? communityT("\uC218\uC815") : communityT("\uB4F1\uB85D");
-  const btnEl = document.getElementById(btnId);
-  if (btnEl) {
-    ReactDOM.render(/* @__PURE__ */ React.createElement(Div_btn_comment_editor_footer_button_loading, { label: buttonLabel }), btnEl);
-  }
-  const request_data = new FormData();
-  let requestUrl = "";
-  if (action === "submit") {
-    requestUrl = "/blank/ajax_board/insert_comment/";
-    request_data.append("uuid_article", orderID);
-    if (!isNew) {
-      request_data.append("uuid_comment", uuid_comment);
-    }
-  } else if (action === "edit") {
-    requestUrl = "/blank/ajax_board/update_comment/";
-    request_data.append("uuid_comment", uuid_comment);
-  } else {
-    console.error("Unknown comment_action:", action);
-    return;
-  }
-  request_data.append("txt_content", txt_content);
-  request_data.append("chk_secret", chk_secret);
+  if (!deleting && !currentEditor) return;
+  const content = deleting ? "" : getCommentEditorHTML(currentEditor);
+  const secretEl = document.getElementById(isNew ? "chk_secret_new" : "chk_secret_" + uuid_comment);
+  const secret = !!secretEl?.checked;
+  if (!deleting && isCommentContentEmpty(content)) { alert(communityT("내용을 입력해주세요.")); return; }
+  const buttonID = deleting ? "div_comment_footer_" + uuid_comment :
+    isNew ? "btn_comment_editor_footer_button" : "btn_comment_editor_footer_button_" + uuid_comment;
+  const target = document.getElementById(buttonID);
+  const state = beginCommunityAction("comment:" + editorKey, target);
+  if (!state) return;
+  const isUpper = (communityState.commentUpper || []).some((item) => item.uuid === uuid_comment);
+  const row = Object.values(communityState.commentData || {}).find((item) => item.uuid === uuid_comment);
+  const label = communityT(action === "edit" ? "수정" : "등록");
+  if (target) ReactDOM.render(deleting ? React.createElement(Div_comment_button_list, { data: row, depth: isUpper ? 1 : 2, loading: true }) :
+    React.createElement(Div_btn_comment_editor_footer_button_loading, { label }), target);
+  let message = "";
   try {
-    const responseData = await fetch(requestUrl, {
-      method: "POST",
-      headers: { "X-CSRFToken": getCookie("csrftoken") },
-      body: request_data
-    }).then((res) => res.json());
-    if (!responseData || responseData.error || responseData.checker === "ERROR") {
-      alert(responseData && responseData.error ? responseData.error : communityT("\uB313\uAE00\uC744 \uC800\uC7A5\uD558\uC9C0 \uBABB\uD588\uC2B5\uB2C8\uB2E4."));
-      return;
+    const body = new FormData();
+    let endpoint;
+    if (deleting) { endpoint = "/blank/ajax_board/delete_comment/"; body.append("uuid", uuid_comment); }
+    else if (action === "submit") {
+      endpoint = "/blank/ajax_board/insert_comment/"; body.append("uuid_article", orderID);
+      if (!isNew) body.append("uuid_comment", uuid_comment);
+      body.append("request_id", communityCommentRequestID(editorKey, content, secret));
+    } else if (action === "edit") {
+      endpoint = "/blank/ajax_board/update_comment/"; body.append("uuid_comment", uuid_comment);
+    } else return;
+    if (!deleting) { body.append("txt_content", content); body.append("chk_secret", secret); }
+    const data = await communityActionJSON(state, endpoint, body);
+    const comment = data?.comment;
+    const expectedReply = action === "submit" ? (isNew ? "" : uuid_comment) : String(row?.uuid_upper || "");
+    const validACK = data?.checker === "SUCCESS" && typeof data.uuid === "string" && data.uuid !== "" &&
+      (deleting ? data.uuid === uuid_comment : comment?.uuid === data.uuid && comment.uuid_article === orderID &&
+        (action !== "edit" || data.uuid === uuid_comment) && String(comment.uuid_upper || "") === expectedReply &&
+        typeof comment.content === "string" && ["writer", "admin"].includes(comment.check_comment_reader) &&
+        Number(comment.active) === 1 && [0, 1].includes(Number(comment.is_secret)));
+    if (!validACK || data.error) { message = data?.error || communityActionFailure(state); return; }
+    state.acknowledged = true;
+    if (deleting) await removeCommentTreeFromView(data.uuid);
+    else {
+      await uploadQueuedFiles(queuedCommentFiles(uuid_comment), { note: "Comment", scope: "comment", articleUUID: orderID,
+        commentUUID: data.uuid, state });
+      if (!currentCommunityAction(state)) return;
+      // Clear only the submitted revision; text typed while saving remains a draft.
+      const editor = communityState.commentEditors[editorKey];
+      if (editor && getCommentEditorHTML(editor) === content && !!secretEl?.checked === secret) setCommentEditorHTML(editor, "");
+      communityCommentCreateIDs.delete(state.draftOwner + "|" + editorKey);
+      await upsertCommentFromMutationResponse(comment, action);
     }
-    const savedCommentUUID = responseData && responseData.uuid ? responseData.uuid : uuid_comment;
-    if (responseData && responseData.comment) {
-      await upsertCommentFromMutationResponse(responseData.comment, action);
-    }
-    const queuedFiles = queuedCommentFiles(uuid_comment);
-    await uploadQueuedFiles(queuedFiles, {
-      note: "Comment",
-      scope: "comment",
-      articleUUID: orderID,
-      commentUUID: savedCommentUUID
-    });
-    clearQueuedCommentFiles(uuid_comment);
-    refreshCommentsQuietly();
-  } catch (error) {
-    console.error("[comment_action] failed", error);
-    alert(communityT("\uB313\uAE00\uC744 \uC800\uC7A5\uD558\uC9C0 \uBABB\uD588\uC2B5\uB2C8\uB2E4. \uC7A0\uC2DC \uD6C4 \uB2E4\uC2DC \uC2DC\uB3C4\uD574 \uC8FC\uC138\uC694."));
-  } finally {
-    const btnElAfter = document.getElementById(btnId);
-    if (btnElAfter) {
-      ReactDOM.render(
-        /* @__PURE__ */ React.createElement(Div_btn_comment_editor_footer_button, { uuid_comment, label: buttonLabel, function: () => comment_action(action, uuid_comment) }),
-        btnElAfter
-      );
+    if (currentCommunityAction(state)) refreshCommentsQuietly();
+  } catch (error) { message = error.message && error.message.includes("이전 댓글") ? error.message : communityActionFailure(state); }
+  finally {
+    const owned = communityActionStillOwned(state); finishCommunityAction(state);
+    if (owned) {
+      const nextTarget = document.getElementById(buttonID);
+      if (deleting) restoreCommentActionButtons(uuid_comment, isUpper, row);
+      else if (nextTarget) ReactDOM.render(React.createElement(Div_btn_comment_editor_footer_button,
+        { uuid_comment, label, function: () => comment_action(action, uuid_comment) }), nextTarget);
+      if (message) communityActionMessage(state, message);
     }
   }
 }
+
 async function comment_file_action(action, uuid_comment) {
   if (action === "delete") {
     clearQueuedCommentFiles(uuid_comment);
@@ -2819,26 +2884,59 @@ async function comment_file_action(action, uuid_comment) {
   }
 }
 async function get_read_article_comment(orderID_param) {
-  const localeEpoch = communityLocaleEpoch;
-  const ownerKey = communityDetailOwnerKey();
-  const request_data = new FormData();
-  request_data.append("orderID", orderID_param);
-  request_data.append("lang", communityDisplayLocale());
-  const responseData = await fetch("/blank/ajax_board/get_read_article_comment/", {
-    method: "POST",
-    headers: { "X-CSRFToken": getCookie("csrftoken") },
-    body: request_data
-  }).then((res) => res.json());
-  if (localeEpoch !== communityLocaleEpoch || ownerKey !== communityDetailOwnerKey() ||
-      !communityState.articleData || String(communityState.articleData.uuid).toLowerCase() !== String(orderID_param).toLowerCase()) return;
-  if (!responseData || responseData.error || responseData.checker === "ERROR") {
-    console.error("[get_read_article_comment] failed", responseData);
-    return;
+  if (!communityState.articleData || communityState.articleData.uuid !== orderID_param) return;
+  const state = beginCommunityAction("comment-read", document.getElementById("div_community_read_comment"));
+  if (!state) return;
+  try {
+    const body = new FormData(); body.append("orderID", orderID_param); body.append("lang", communityDisplayLocale());
+    const data = await communityActionJSON(state, "/blank/ajax_board/get_read_article_comment/", body);
+    if (!data || data.error || data.checker === "ERROR" || data.ok === false || data.pending || data.partial) {
+      communityActionMessage(state, communityT("댓글을 확인하지 못했습니다. 입력 내용은 유지됩니다.")); return;
+    }
+    if (!Object.values(data).every((row) => row && typeof row.uuid === "string" && typeof row.content === "string")) return;
+    communityState.commentData = mergeOptimisticComments(data);
+    await set_comment();
+  } catch (_) {
+    if (communityActionStillOwned(state)) communityActionMessage(state, communityT("댓글을 확인하지 못했습니다. 입력 내용은 유지됩니다."));
+  } finally { finishCommunityAction(state); }
+}
+
+function captureCommunityCommentDrafts() {
+  const owner = communityDraftOwnerKey();
+  const focus = document.activeElement;
+  const drafts = {};
+  Object.entries(communityState.commentEditors || {}).forEach(([key, editor]) => {
+    const secret = document.getElementById("chk_secret_" + key);
+    drafts[key] = { html: getCommentEditorHTML(editor), secret: !!secret?.checked,
+      edit: !!document.getElementById("div_comment_editor_main_" + key) };
+  });
+  return { owner, drafts, focusID: focus?.id, start: focus?.selectionStart, end: focus?.selectionEnd };
+}
+async function restoreCommunityCommentDrafts(snapshot) {
+  if (snapshot.owner !== communityDraftOwnerKey()) return;
+  for (const [key, draft] of Object.entries(snapshot.drafts)) {
+    if (key !== "new" && draft.html) {
+      const row = Object.values(communityState.commentData || {}).find((item) => item.uuid === key);
+      if (!row || !isActiveComment(row)) continue;
+      if (draft.edit) {
+        if (!["writer", "admin"].includes(row.check_comment_reader)) continue;
+        await click_btn_edit_comment(key);
+      } else await click_btn_reply_comment(key);
+    }
+    if (snapshot.owner !== communityDraftOwnerKey()) return;
+    const editor = communityState.commentEditors[key];
+    if (editor) setCommentEditorHTML(editor, draft.html);
+    const secret = document.getElementById("chk_secret_" + key);
+    if (secret) secret.checked = draft.secret;
   }
-  communityState.commentData = mergeOptimisticComments(responseData);
-  await set_comment();
+  const focus = snapshot.focusID && document.getElementById(snapshot.focusID);
+  if (focus) {
+    focus.focus({ preventScroll: true });
+    if (typeof focus.setSelectionRange === "function" && Number.isInteger(snapshot.start)) focus.setSelectionRange(snapshot.start, snapshot.end);
+  }
 }
 async function set_comment() {
+  const draftSnapshot = captureCommunityCommentDrafts();
   if (!communityState.commentData) {
     const container = document.getElementById("div_community_read_comment");
     if (container) {
@@ -2886,8 +2984,9 @@ async function set_comment() {
   const newFormEl = document.querySelector("#div_community_read_comment_new_form");
   if (newFormEl) {
     communityState.commentEditors["new"] = await mountSolidCommentEditor("new", "");
-    setCommentEditorHTML(communityState.commentEditors["new"], "");
+    setCommentEditorHTML(communityState.commentEditors["new"], draftSnapshot.drafts.new?.html || "");
   }
+  await restoreCommunityCommentDrafts(draftSnapshot);
 }
 async function set_main_read() {
   resetEditorState();
@@ -2933,7 +3032,7 @@ function Div_button() {
   ));
 }
 function Div_button_loading() {
-  return /* @__PURE__ */ React.createElement("div", { class: "grid grid-cols-2 justify-center items-center gap-2 w-full" }, /* @__PURE__ */ React.createElement("button", { type: "button", class: "text-white bg-gradient-to-r from-blue-500 via-blue-600 to-blue-700 font-medium rounded-lg text-sm px-5 py-2.5 text-center w-full cursor-not-allowed hover:bg-gradient-to-br focus:ring-4 focus:outline-none focus:ring-blue-300" }, /* @__PURE__ */ React.createElement("svg", { "aria-hidden": "true", role: "status", class: "inline w-4 h-4 me-3 text-gray-200 animate-spin dark:text-gray-600", viewBox: "0 0 100 101", fill: "none", xmlns: "http://www.w3.org/2000/svg" }, /* @__PURE__ */ React.createElement("path", { d: "M100 50.5908C100 78.2051 77.6142 100.591 50 100.591C22.3858 100.591 0 78.2051 0 50.5908C0 22.9766 22.3858 0.59082 50 0.59082C77.6142 0.59082 100 22.9766 100 50.5908ZM9.08144 50.5908C9.08144 73.1895 27.4013 91.5094 50 91.5094C72.5987 91.5094 90.9186 73.1895 90.9186 50.5908C90.9186 27.9921 72.5987 9.67226 50 9.67226C27.4013 9.67226 9.08144 27.9921 9.08144 50.5908Z", fill: "currentColor" }), /* @__PURE__ */ React.createElement("path", { d: "M93.9676 39.0409C96.393 38.4038 97.8624 35.9116 97.0079 33.5539C95.2932 28.8227 92.871 24.3692 89.8167 20.348C85.8452 15.1192 80.8826 10.7238 75.2124 7.41289C69.5422 4.10194 63.2754 1.94025 56.7698 1.05124C51.7666 0.367541 46.6976 0.446843 41.7345 1.27873C39.2613 1.69328 37.813 4.19778 38.4501 6.62326C39.0873 9.04874 41.5694 10.4717 44.0505 10.1071C47.8511 9.54855 51.7191 9.52689 55.5402 10.0491C60.8642 10.7766 65.9928 12.5457 70.6331 15.2552C75.2735 17.9648 79.3347 21.5619 82.5849 25.841C84.9175 28.9121 86.7997 32.2913 88.1811 35.8758C89.083 38.2158 91.5421 39.6781 93.9676 39.0409Z", fill: "#1C64F2" })), communityT("\uC644\uB8CC")), /* @__PURE__ */ React.createElement("button", { type: "button", class: "text-gray-900 bg-white border border-gray-700 font-medium rounded-lg text-sm px-5 py-2.5 cursor-not-allowed focus:outline-none hover:bg-gray-100 focus:ring-4 focus:ring-gray-100" }, /* @__PURE__ */ React.createElement("svg", { "aria-hidden": "true", role: "status", class: "inline w-4 h-4 me-3 text-gray-200 animate-spin dark:text-gray-600", viewBox: "0 0 100 101", fill: "none", xmlns: "http://www.w3.org/2000/svg" }, /* @__PURE__ */ React.createElement("path", { d: "M100 50.5908C100 78.2051 77.6142 100.591 50 100.591C22.3858 100.591 0 78.2051 0 50.5908C0 22.9766 22.3858 0.59082 50 0.59082C77.6142 0.59082 100 22.9766 100 50.5908ZM9.08144 50.5908C9.08144 73.1895 27.4013 91.5094 50 91.5094C72.5987 91.5094 90.9186 73.1895 90.9186 50.5908C90.9186 27.9921 72.5987 9.67226 50 9.67226C27.4013 9.67226 9.08144 27.9921 9.08144 50.5908Z", fill: "currentColor" }), /* @__PURE__ */ React.createElement("path", { d: "M93.9676 39.0409C96.393 38.4038 97.8624 35.9116 97.0079 33.5539C95.2932 28.8227 92.871 24.3692 89.8167 20.348C85.8452 15.1192 80.8826 10.7238 75.2124 7.41289C69.5422 4.10194 63.2754 1.94025 56.7698 1.05124C51.7666 0.367541 46.6976 0.446843 41.7345 1.27873C39.2613 1.69328 37.813 4.19778 38.4501 6.62326C39.0873 9.04874 41.5694 10.4717 44.0505 10.1071C47.8511 9.54855 51.7191 9.52689 55.5402 10.0491C60.8642 10.7766 65.9928 12.5457 70.6331 15.2552C75.2735 17.9648 79.3347 21.5619 82.5849 25.841C84.9175 28.9121 86.7997 32.2913 88.1811 35.8758C89.083 38.2158 91.5421 39.6781 93.9676 39.0409Z", fill: "#1C64F2" })), communityT("\uBAA9\uB85D\uC73C\uB85C")));
+  return /* @__PURE__ */ React.createElement("div", { class: "grid grid-cols-2 justify-center items-center gap-2 w-full" }, /* @__PURE__ */ React.createElement("button", { type: "button", disabled: true, "aria-busy": "true", class: "text-white bg-gradient-to-r from-blue-500 via-blue-600 to-blue-700 font-medium rounded-lg text-sm px-5 py-2.5 text-center w-full cursor-not-allowed hover:bg-gradient-to-br focus:ring-4 focus:outline-none focus:ring-blue-300" }, /* @__PURE__ */ React.createElement("svg", { "aria-hidden": "true", role: "status", class: "inline w-4 h-4 me-3 text-gray-200 animate-spin dark:text-gray-600", viewBox: "0 0 100 101", fill: "none", xmlns: "http://www.w3.org/2000/svg" }, /* @__PURE__ */ React.createElement("path", { d: "M100 50.5908C100 78.2051 77.6142 100.591 50 100.591C22.3858 100.591 0 78.2051 0 50.5908C0 22.9766 22.3858 0.59082 50 0.59082C77.6142 0.59082 100 22.9766 100 50.5908ZM9.08144 50.5908C9.08144 73.1895 27.4013 91.5094 50 91.5094C72.5987 91.5094 90.9186 73.1895 90.9186 50.5908C90.9186 27.9921 72.5987 9.67226 50 9.67226C27.4013 9.67226 9.08144 27.9921 9.08144 50.5908Z", fill: "currentColor" }), /* @__PURE__ */ React.createElement("path", { d: "M93.9676 39.0409C96.393 38.4038 97.8624 35.9116 97.0079 33.5539C95.2932 28.8227 92.871 24.3692 89.8167 20.348C85.8452 15.1192 80.8826 10.7238 75.2124 7.41289C69.5422 4.10194 63.2754 1.94025 56.7698 1.05124C51.7666 0.367541 46.6976 0.446843 41.7345 1.27873C39.2613 1.69328 37.813 4.19778 38.4501 6.62326C39.0873 9.04874 41.5694 10.4717 44.0505 10.1071C47.8511 9.54855 51.7191 9.52689 55.5402 10.0491C60.8642 10.7766 65.9928 12.5457 70.6331 15.2552C75.2735 17.9648 79.3347 21.5619 82.5849 25.841C84.9175 28.9121 86.7997 32.2913 88.1811 35.8758C89.083 38.2158 91.5421 39.6781 93.9676 39.0409Z", fill: "#1C64F2" })), communityT("\uC644\uB8CC")), /* @__PURE__ */ React.createElement("button", { type: "button", disabled: true, "aria-busy": "true", class: "text-gray-900 bg-white border border-gray-700 font-medium rounded-lg text-sm px-5 py-2.5 cursor-not-allowed focus:outline-none hover:bg-gray-100 focus:ring-4 focus:ring-gray-100" }, /* @__PURE__ */ React.createElement("svg", { "aria-hidden": "true", role: "status", class: "inline w-4 h-4 me-3 text-gray-200 animate-spin dark:text-gray-600", viewBox: "0 0 100 101", fill: "none", xmlns: "http://www.w3.org/2000/svg" }, /* @__PURE__ */ React.createElement("path", { d: "M100 50.5908C100 78.2051 77.6142 100.591 50 100.591C22.3858 100.591 0 78.2051 0 50.5908C0 22.9766 22.3858 0.59082 50 0.59082C77.6142 0.59082 100 22.9766 100 50.5908ZM9.08144 50.5908C9.08144 73.1895 27.4013 91.5094 50 91.5094C72.5987 91.5094 90.9186 73.1895 90.9186 50.5908C90.9186 27.9921 72.5987 9.67226 50 9.67226C27.4013 9.67226 9.08144 27.9921 9.08144 50.5908Z", fill: "currentColor" }), /* @__PURE__ */ React.createElement("path", { d: "M93.9676 39.0409C96.393 38.4038 97.8624 35.9116 97.0079 33.5539C95.2932 28.8227 92.871 24.3692 89.8167 20.348C85.8452 15.1192 80.8826 10.7238 75.2124 7.41289C69.5422 4.10194 63.2754 1.94025 56.7698 1.05124C51.7666 0.367541 46.6976 0.446843 41.7345 1.27873C39.2613 1.69328 37.813 4.19778 38.4501 6.62326C39.0873 9.04874 41.5694 10.4717 44.0505 10.1071C47.8511 9.54855 51.7191 9.52689 55.5402 10.0491C60.8642 10.7766 65.9928 12.5457 70.6331 15.2552C75.2735 17.9648 79.3347 21.5619 82.5849 25.841C84.9175 28.9121 86.7997 32.2913 88.1811 35.8758C89.083 38.2158 91.5421 39.6781 93.9676 39.0409Z", fill: "#1C64F2" })), communityT("\uBAA9\uB85D\uC73C\uB85C")));
 }
 async function check_file_upload() {
   const inputEl = document.getElementById("id_file_upload");
@@ -2978,43 +3077,46 @@ function showPendingArticlePublication(uuid) {
   identifier.className = "mt-2 break-all text-slate-600";
   identifier.textContent = communityT("글 ID: {id}", { id: uuid });
   const check = document.createElement("button");
+  check.id = "webr_pending_publication_check";
   check.type = "button";
   check.className = "mt-3 rounded-lg border border-blue-400 bg-white px-3 py-2 font-medium text-blue-700";
   check.textContent = communityT("공개 여부 확인");
   const result = document.createElement("p");
   result.className = "mt-2 text-slate-600";
   check.addEventListener("click", async () => {
+    const state = beginCommunityAction("article-publication", check);
+    if (!state) return;
     check.disabled = true;
     result.textContent = communityT("게시 상태를 확인하고 있습니다.");
     try {
       const body = new FormData();
       body.append("orderID", uuid);
-      const response = await fetch("/blank/ajax_board/get_read_article/", {
-        method: "POST",
-        headers: { "X-CSRFToken": getCookie("csrftoken") },
-        body
-      }).then((res) => res.json());
-      if (response && !response.pending && response.uuid === uuid) {
+      const response = await communityActionJSON(state, "/blank/ajax_board/get_read_article/", body);
+      if (validCommunityDetail(response, uuid)) {
         clearCommunityCreateRequestID();
         location.href = init_url + "read/" + uuid + "/";
         return;
       }
       result.textContent = communityT("아직 게시 데이터 검증 중입니다. 잠시 후 다시 확인해 주세요.");
     } catch (_) {
-      result.textContent = communityT("게시 상태를 확인하지 못했습니다. 잠시 후 다시 시도해 주세요.");
+      if (communityActionStillOwned(state)) result.textContent = communityT("게시 상태를 확인하지 못했습니다. 잠시 후 다시 시도해 주세요.");
     } finally {
-      check.disabled = false;
+      const owned = communityActionStillOwned(state);
+      finishCommunityAction(state);
+      if (owned) check.disabled = false;
     }
   });
   panel.append(heading, explanation, identifier, check, result);
   container.replaceChildren(panel);
 }
 let communityCreateRequestID = "";
-const communityCreateRequestStorageKey = "web-r:community:create:" + location.pathname;
+let communityCreateRequestOwner = "";
+function communityCreateRequestStorageKey() { return "web-r:community:create:" + communityDraftOwnerKey(); }
 function stableCommunityCreateRequestID() {
+  if (communityCreateRequestOwner !== communityDraftOwnerKey()) { communityCreateRequestID = ""; communityCreateRequestOwner = communityDraftOwnerKey(); }
   if (!communityCreateRequestID) {
     try {
-      communityCreateRequestID = sessionStorage.getItem(communityCreateRequestStorageKey) || "";
+      communityCreateRequestID = sessionStorage.getItem(communityCreateRequestStorageKey()) || "";
     } catch (_) {
     }
   }
@@ -3022,7 +3124,7 @@ function stableCommunityCreateRequestID() {
     communityCreateRequestID = globalThis.crypto && crypto.randomUUID ? crypto.randomUUID() : "";
     if (communityCreateRequestID) {
       try {
-        sessionStorage.setItem(communityCreateRequestStorageKey, communityCreateRequestID);
+        sessionStorage.setItem(communityCreateRequestStorageKey(), communityCreateRequestID);
       } catch (_) {
       }
     }
@@ -3032,7 +3134,7 @@ function stableCommunityCreateRequestID() {
 function clearCommunityCreateRequestID() {
   communityCreateRequestID = "";
   try {
-    sessionStorage.removeItem(communityCreateRequestStorageKey);
+    sessionStorage.removeItem(communityCreateRequestStorageKey());
   } catch (_) {
   }
 }
@@ -3040,125 +3142,75 @@ async function submit_write() {
   const txt_title = document.getElementById("txt_title").value.trim();
   const txt_content = getArticleEditorHTML();
   const chk_secret = document.getElementById("chk_secret").checked;
-  if (communityState.toggle_click_submit) {
-    return;
+  if (!txt_title || isArticleContentEmpty(txt_content)) {
+    alert(communityT(!txt_title ? "제목을 입력해주세요." : "내용을 입력해주세요.")); return;
   }
+  const state = beginCommunityAction("article-save", document.getElementById("div_button_list"));
+  if (!state) return;
   communityState.toggle_click_submit = true;
-  ReactDOM.render(/* @__PURE__ */ React.createElement(Div_button_loading, null), document.getElementById("div_button_list"));
-  if (txt_title == null || txt_title === "") {
-    alert(communityT("\uC81C\uBAA9\uC744 \uC785\uB825\uD574\uC8FC\uC138\uC694."));
-  } else if (isArticleContentEmpty(txt_content)) {
-    alert(communityT("\uB0B4\uC6A9\uC744 \uC785\uB825\uD574\uC8FC\uC138\uC694."));
-  } else {
-    const request_data = new FormData();
-    request_data.append("tag", url);
-    request_data.append("tag_sub", sub);
-    request_data.append("txt_title", txt_title);
-    request_data.append("txt_content", txt_content);
-    request_data.append("chk_secret", chk_secret);
+  ReactDOM.render(React.createElement(Div_button_loading), state.target);
+  let message = "";
+  try {
+    const body = new FormData();
+    body.append("tag", url); body.append("tag_sub", sub); body.append("txt_title", txt_title);
+    body.append("txt_content", txt_content); body.append("chk_secret", chk_secret);
     const requestID = stableCommunityCreateRequestID();
-    if (!requestID) {
-      alert(communityT("요청 ID를 생성할 수 없습니다. 보안 연결에서 다시 시도해 주세요."));
-      communityState.toggle_click_submit = false;
-      ReactDOM.render(/* @__PURE__ */ React.createElement(Div_button, null), document.getElementById("div_button_list"));
-      return;
-    }
-    request_data.append("request_id", requestID);
-    const data = await fetch("/blank/ajax_board/insert_article/", {
-      method: "POST",
-      headers: { "X-CSRFToken": getCookie("csrftoken") },
-      body: request_data
-    }).then((res) => res.json());
-    if (data && data.pending && data.uuid) {
-      showPendingArticlePublication(data.uuid);
-      return;
-    }
-    if (!data || data.error || !data.uuid) {
-      alert(data && data.error || communityT("게시글 저장 상태를 확인하지 못했습니다. 같은 화면에서 다시 시도해 주세요."));
-      communityState.toggle_click_submit = false;
-      ReactDOM.render(/* @__PURE__ */ React.createElement(Div_button, null), document.getElementById("div_button_list"));
-      return;
-    }
-    try {
-      await uploadQueuedFiles(queuedArticleFiles(), {
-        note: "Article",
-        scope: "article",
-        articleUUID: data.uuid
-      });
-    } catch (error) {
-      alert(communityT("\uAC8C\uC2DC\uAE00\uC740 \uC800\uC7A5\uB418\uC5C8\uC9C0\uB9CC \uD30C\uC77C \uC5C5\uB85C\uB4DC\uC5D0 \uC2E4\uD328\uD588\uC2B5\uB2C8\uB2E4: {error}", { error: error.message }));
-    }
-    if (data.publication_pending) {
-      showPendingArticlePublication(data.uuid);
-      return;
-    }
+    if (!requestID) throw new Error("Request identity unavailable");
+    body.append("request_id", requestID);
+    const data = await communityActionJSON(state, "/blank/ajax_board/insert_article/", body);
+    if (!data || data.error || !data.uuid) { message = data?.error || communityActionFailure(state); return; }
+    state.acknowledged = true;
+    if (data.pending) { showPendingArticlePublication(data.uuid); return; }
+    await uploadQueuedFiles(queuedArticleFiles(), { note: "Article", scope: "article", articleUUID: data.uuid, state });
+    if (!currentCommunityAction(state)) return;
+    if (data.publication_pending) { showPendingArticlePublication(data.uuid); return; }
     clearCommunityCreateRequestID();
     location.href = init_url + "read/" + data.uuid + "/";
+  } catch (_) { message = communityActionFailure(state); }
+  finally {
+    const owned = communityActionStillOwned(state);
+    finishCommunityAction(state);
+    if (owned) {
+      communityState.toggle_click_submit = false;
+      if (!state.acknowledged || message) ReactDOM.render(React.createElement(Div_button), state.target);
+      if (message) communityActionMessage(state, message);
+    }
   }
-  communityState.toggle_click_submit = false;
-  ReactDOM.render(/* @__PURE__ */ React.createElement(Div_button, null), document.getElementById("div_button_list"));
 }
+
 async function submit_edit() {
   const txt_title = document.getElementById("txt_title").value.trim();
   const txt_content = getArticleEditorHTML();
   const chk_secret = document.getElementById("chk_secret").checked;
-  if (communityState.toggle_click_submit) {
-    return;
+  if (!txt_title || isArticleContentEmpty(txt_content)) {
+    alert(communityT(!txt_title ? "제목을 입력해주세요." : "내용을 입력해주세요.")); return;
   }
+  const state = beginCommunityAction("article-save", document.getElementById("div_button_list"));
+  if (!state) return;
   communityState.toggle_click_submit = true;
-  ReactDOM.render(/* @__PURE__ */ React.createElement(Div_button_loading, null), document.getElementById("div_button_list"));
-  if (txt_title == null || txt_title === "") {
-    alert(communityT("\uC81C\uBAA9\uC744 \uC785\uB825\uD574\uC8FC\uC138\uC694."));
-  } else if (isArticleContentEmpty(txt_content)) {
-    alert(communityT("\uB0B4\uC6A9\uC744 \uC785\uB825\uD574\uC8FC\uC138\uC694."));
-  } else {
-    const request_data = new FormData();
-    request_data.append("tag", url);
-    request_data.append("tag_sub", sub);
-    request_data.append("uuid_article", orderID);
-    request_data.append("txt_title", txt_title);
-    request_data.append("txt_content", txt_content);
-    request_data.append("chk_secret", chk_secret);
-    if (communityState.articleData && communityState.articleData.file_url != null) {
-      request_data.append("attached_file", communityState.articleData.file_url);
-    }
-    let response_data;
-    try {
-      const response = await fetch("/blank/ajax_board/update_article/", {
-        method: "POST",
-        headers: { "X-CSRFToken": getCookie("csrftoken") },
-        body: request_data
-      });
-      if (!response.ok) {
-        throw new Error(`update_article HTTP ${response.status}`);
-      }
-      response_data = await response.json();
-    } catch (_) {
-      alert(communityT("\uC218\uC815 \uC0C1\uD0DC\uB97C \uD655\uC778\uD558\uC9C0 \uBABB\uD588\uC2B5\uB2C8\uB2E4. \uD604\uC7AC \uAE00\uC744 \uD655\uC778\uD574 \uC8FC\uC138\uC694."));
+  ReactDOM.render(React.createElement(Div_button_loading), state.target);
+  let message = "";
+  try {
+    const body = new FormData();
+    body.append("tag", url); body.append("tag_sub", sub); body.append("uuid_article", orderID);
+    body.append("txt_title", txt_title); body.append("txt_content", txt_content); body.append("chk_secret", chk_secret);
+    if (communityState.articleData?.file_url != null) body.append("attached_file", communityState.articleData.file_url);
+    const data = await communityActionJSON(state, "/blank/ajax_board/update_article/", body);
+    if (!data || data.error || data.uuid !== orderID) { message = data?.error || communityActionFailure(state); return; }
+    state.acknowledged = true;
+    await uploadQueuedFiles(queuedArticleFiles(), { note: "Article", scope: "article", articleUUID: data.uuid, state });
+    if (currentCommunityAction(state)) location.href = init_url + "read/" + data.uuid + "/";
+  } catch (_) { message = communityActionFailure(state); }
+  finally {
+    const owned = communityActionStillOwned(state); finishCommunityAction(state);
+    if (owned) {
       communityState.toggle_click_submit = false;
-      ReactDOM.render(/* @__PURE__ */ React.createElement(Div_button, null), document.getElementById("div_button_list"));
-      return;
+      ReactDOM.render(React.createElement(Div_button), state.target);
+      if (message) communityActionMessage(state, message);
     }
-    if (!response_data || response_data.error || !response_data.uuid) {
-      alert(response_data && response_data.error || communityT("\uC218\uC815 \uC644\uB8CC\uB97C \uD655\uC778\uD558\uC9C0 \uBABB\uD588\uC2B5\uB2C8\uB2E4. \uD604\uC7AC \uAE00\uC744 \uD655\uC778\uD574 \uC8FC\uC138\uC694."));
-      communityState.toggle_click_submit = false;
-      ReactDOM.render(/* @__PURE__ */ React.createElement(Div_button, null), document.getElementById("div_button_list"));
-      return;
-    }
-    try {
-      await uploadQueuedFiles(queuedArticleFiles(), {
-        note: "Article",
-        scope: "article",
-        articleUUID: response_data.uuid || orderID
-      });
-    } catch (error) {
-      alert(communityT("\uAC8C\uC2DC\uAE00\uC740 \uC800\uC7A5\uB418\uC5C8\uC9C0\uB9CC \uD30C\uC77C \uC5C5\uB85C\uB4DC\uC5D0 \uC2E4\uD328\uD588\uC2B5\uB2C8\uB2E4: {error}", { error: error.message }));
-    }
-    location.href = init_url + "read/" + response_data.uuid + "/";
   }
-  communityState.toggle_click_submit = false;
-  ReactDOM.render(/* @__PURE__ */ React.createElement(Div_button, null), document.getElementById("div_button_list"));
 }
+
 async function click_btn_submit() {
   if (getCommunityMode() === "edit") {
     return submit_edit();
@@ -3176,30 +3228,31 @@ async function set_main_write() {
 }
 async function set_main_edit() {
   resetEditorState();
-  if (!gv_username) {
-    location.href = init_url;
-    return;
-  }
-  ReactDOM.render(/* @__PURE__ */ React.createElement(Div_check_writer, null), document.getElementById("div_main"));
-  const fd = new FormData();
-  fd.append("orderID", orderID);
-  fd.append("source_only", "true");
-  communityState.articleData = await fetch("/blank/ajax_board/get_read_article/", {
-    method: "POST",
-    headers: { "X-CSRFToken": getCookie("csrftoken") },
-    body: fd
-  }).then((res) => res.json());
-  if (communityState.articleData.check_reader === "user") {
-    ReactDOM.render(/* @__PURE__ */ React.createElement(Div_main_stop, null), document.getElementById("div_main"));
-    return;
-  }
-  ReactDOM.render(/* @__PURE__ */ React.createElement(Div_main, null), document.getElementById("div_main"));
-  document.getElementById("txt_title").value = communityState.articleData.title;
-  await mountArticleEditor(communityState.articleData.content || "");
-  setArticleEditorHTML(communityState.articleData.content);
-  document.getElementById("chk_secret").checked = communityState.articleData.is_secret == 1;
-  renderArticleAttachmentControl();
+  if (!gv_username) { location.href = init_url; return; }
+  const target = document.getElementById("div_main");
+  const state = beginCommunityAction("article-edit-load", target);
+  if (!state) return;
+  ReactDOM.render(React.createElement(Div_check_writer), target);
+  try {
+    const body = new FormData(); body.append("orderID", orderID); body.append("source_only", "true");
+    const data = await communityActionJSON(state, "/blank/ajax_board/get_read_article/", body);
+    if (!validCommunityDetail(data, orderID) || !["writer", "admin"].includes(data.check_reader)) {
+      ReactDOM.render(React.createElement(Div_main_stop), target); return;
+    }
+    communityState.articleData = data;
+    ReactDOM.render(React.createElement(Div_main), target);
+    document.getElementById("txt_title").value = data.title;
+    await mountArticleEditor(data.content);
+    if (!currentCommunityAction(state)) return;
+    setArticleEditorHTML(data.content);
+    document.getElementById("chk_secret").checked = data.is_secret === 1;
+    renderArticleAttachmentControl();
+  } catch (_) {
+    if (communityActionStillOwned(state)) ReactDOM.render(React.createElement("div", { role: "alert", class: "py-4 text-sm" },
+      communityT("수정할 내용을 확인하지 못했습니다. 다시 확인해 주세요.")), target);
+  } finally { finishCommunityAction(state); }
 }
+
 function refreshCommunityEditingChrome() {
   const title = document.getElementById("txt_title");
   if (title) title.placeholder = communityT("제목을 입력해주세요.");
