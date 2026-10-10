@@ -2069,11 +2069,7 @@ async function goToArticlePage(page) {
   }
 }
 async function click_btn_search() {
-  const search_text = communitySearchText();
-  if (!search_text) {
-    alert(communityT("\uAC80\uC0C9\uC5B4\uB97C \uC785\uB825\uD558\uC138\uC694."));
-    return;
-  }
+  communitySearchText();
   resetListPagination();
   renderListPageShell();
   if (isCommunityCardMode()) {
