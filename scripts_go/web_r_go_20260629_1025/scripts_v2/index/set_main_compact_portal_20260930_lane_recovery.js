@@ -784,7 +784,7 @@
 
   function renderActivity(items, unavailable) {
     refs.activityBody.replaceChildren();
-    var rows = items.slice(0, 3);
+    var rows = items.slice(0, 5);
     latestActivity = rows;
     latestActivityUnavailable = unavailable === true;
     if (!rows.length) {

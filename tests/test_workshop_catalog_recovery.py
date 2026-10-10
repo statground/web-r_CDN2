@@ -1,6 +1,7 @@
 import json
 import os
 import unittest
+from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -28,11 +29,12 @@ class WorkshopCatalogRecoveryTests(unittest.TestCase):
         cls.browser.close()
         cls.playwright.stop()
 
-    def render(self, scenarios, *, width=1440):
+    def render(self, scenarios, *, width=1440, native_stage=None):
         page = self.browser.new_page(viewport={"width": width, "height": 1000})
         page.set_default_timeout(3000)
         self.addCleanup(page.close)
-        page_errors, calls = [], []
+        page_errors, calls, held = [], [], []
+        self.held = held
         page.on("pageerror", lambda error: page_errors.append(str(error)))
         pending = list(scenarios)
 
@@ -44,7 +46,9 @@ class WorkshopCatalogRecoveryTests(unittest.TestCase):
             elif path == "/workshop/ajax_list/":
                 calls.append({"path": path, "method": route.request.method})
                 scenario = pending.pop(0) if len(pending) > 1 else pending[0]
-                if scenario.get("network"):
+                if scenario.get("hold"):
+                    held.append(route)
+                elif scenario.get("network"):
                     route.abort("failed")
                 else:
                     route.fulfill(status=scenario.get("status", 200), content_type="application/json",
@@ -54,11 +58,88 @@ class WorkshopCatalogRecoveryTests(unittest.TestCase):
 
         page.route("**/*", respond)
         page.goto("https://workshop.test/workshop/")
+        if native_stage:
+            page.clock.install(time=datetime(2026, 10, 10, tzinfo=timezone.utc))
+            page.clock.pause_at(datetime(2026, 10, 10, 0, 0, 1, tzinfo=timezone.utc))
+            page.evaluate("""stage => {
+                window.controlledList = {calls: 0, aborted: false, release: null};
+                window.fetch = (_url, options) => {
+                    const owner = window.controlledList;
+                    owner.calls++;
+                    options.signal.addEventListener('abort', () => { owner.aborted = true; });
+                    if (owner.calls > 1) return Promise.resolve({ok: true, json: () => Promise.resolve(window.controlledComplete)});
+                    const stalled = new Promise(resolve => { owner.release = resolve; });
+                    return stage === 'fetch' ? stalled : Promise.resolve({ok: true, json: () => stalled});
+                };
+            }""", native_stage)
+            page.evaluate("data => { window.controlledComplete = data; }", COMPLETE)
         page.add_style_tag(path=str(ROOT / "styles_v2/common/public_tailwind_20260905.min.css"))
         page.add_script_tag(path=str(ROOT / "vendor/common/react_stack_jquery_react_htmx_alpine_20260510.js"))
         page.add_script_tag(path=str(SCRIPT))
         page.evaluate("set_main()")
         return page, calls, page_errors
+
+    def test_original_deadline_bounds_fetch_and_body_even_when_transport_ignores_abort(self):
+        for stage in ("fetch", "body"):
+            with self.subTest(stage=stage):
+                page, _, errors = self.render([{"hold": True}], native_stage=stage)
+                page.locator("[data-workshop-catalog-progress]").wait_for(state="attached")
+                page.clock.fast_forward(44999)
+                self.assertEqual(page.get_by_role("alert").count(), 0)
+                page.clock.fast_forward(1)
+                self.assert_failed_without_empty(page)
+                self.assertTrue(page.evaluate("controlledList.aborted"))
+                self.assertEqual(page.evaluate("controlledList.calls"), 1)
+                page.get_by_role("button", name="다시 시도", exact=True).click()
+                self.assert_full_list(page)
+                late = {**COMPLETE, "workshops": [{**ROWS[0], "title": "Obsolete late response"}]}
+                page.evaluate("({stage, data}) => controlledList.release(stage === 'fetch' ? {ok:true,json:()=>Promise.resolve(data)} : data)", {"stage": stage, "data": late})
+                page.wait_for_timeout(10)
+                self.assert_full_list(page)
+                self.assertNotIn("Obsolete late response", page.locator("#div_main").inner_text())
+                self.assertEqual(page.evaluate("controlledList.calls"), 2)
+                self.assertEqual(errors, [])
+
+    def test_pagehide_aborts_and_late_body_does_not_paint_or_retry(self):
+        page, _, errors = self.render([{"hold": True}], native_stage="body")
+        page.locator("[data-workshop-catalog-progress]").wait_for(state="attached")
+        page.evaluate("dispatchEvent(new PageTransitionEvent('pagehide'))")
+        self.assertTrue(page.evaluate("controlledList.aborted"))
+        page.evaluate("controlledList.release(controlledComplete)")
+        page.clock.fast_forward(45000)
+        self.assertEqual(page.locator(CARDS).count(), 0)
+        self.assertEqual(page.locator("[data-workshop-count], [role=alert]").count(), 0)
+        self.assertEqual(page.evaluate("controlledList.calls"), 1)
+        self.assertEqual(errors, [])
+
+    def test_obsolete_root_or_address_cannot_receive_late_body(self):
+        for replacement in ("root", "address", "silent-address"):
+            with self.subTest(replacement=replacement):
+                page, _, errors = self.render([{"hold": True}], native_stage="body")
+                page.locator("[data-workshop-catalog-progress]").wait_for(state="attached")
+                page.evaluate("kind => { if (kind === 'root') document.querySelector('#div_main').outerHTML='<div id=div_main>New owner</div>'; else { history.replaceState(null,'','/workshop/?q=new-owner'); if (kind === 'address') dispatchEvent(new PopStateEvent('popstate')); } }", replacement)
+                if replacement != "silent-address":
+                    page.wait_for_function("controlledList.aborted")
+                page.evaluate("controlledList.release(controlledComplete)")
+                page.clock.fast_forward(45000)
+                self.assertEqual(page.locator(CARDS).count(), 0)
+                self.assertEqual(page.locator("[data-workshop-count], [role=alert]").count(), 0)
+                self.assertEqual(page.evaluate("controlledList.calls"), 1)
+                self.assertEqual(errors, [])
+
+    def test_pending_list_keeps_live_filters_without_count_or_empty_claim(self):
+        page, calls, errors = self.render([{"hold": True}])
+        page.locator("[data-workshop-catalog-progress]").wait_for(state="attached")
+        self.assertEqual(page.locator("[data-workshop-count], [data-workshop-empty]").count(), 0)
+        page.locator("input[placeholder='검색어']").fill("Public R workshop 31")
+        self.assertNotIn("불러오는 중입니다.", page.locator("#div_main").inner_text())
+        self.held.pop().fulfill(content_type="application/json", body=json.dumps(COMPLETE))
+        page.locator("[data-workshop-count]").wait_for()
+        self.assertEqual(page.locator(CARDS).count(), 1)
+        self.assertEqual(page.locator(CARDS + " h2").inner_text(), "Public R workshop 31")
+        self.assertEqual(page.locator("[data-workshop-catalog-progress]").count(), 0)
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(errors, [])
 
     def screenshot(self, page, label):
         output = os.environ.get("WEBR_WORKSHOP_TEST_ARTIFACTS")

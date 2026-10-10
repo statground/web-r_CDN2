@@ -16,6 +16,7 @@ let header_subtitle = communityT("\uCEE4\uBBA4\uB2C8\uD2F0");
 const communityArticlePageCache = {};
 const communityArticlePrefetching = {};
 const communityCardLastGood = {};
+const communitySidebarRequests = {};
 let communityLocaleEpoch = 0;
 function communityDisplayLocale() {
   return window.WebRI18n && window.WebRI18n.language || "ko";
@@ -187,27 +188,108 @@ function communitySidebarRows(data, limit) {
   const maxItems = Number(limit || 0);
   return maxItems > 0 ? rows.slice(0, maxItems) : rows;
 }
-async function fetchCommunitySidebarJSON(endpoint, requestData, retryCount = 2) {
-  try {
-    const response = await fetch(endpoint, {
-      method: "POST",
-      headers: { "X-CSRFToken": getCookie("csrftoken") },
-      body: requestData
-    });
-    const data = await response.json().catch(() => ({ ok: false, pending: true }));
-    const cacheStatus = String(response.headers.get("X-WebR-Cache") || "").toLowerCase();
-    if ((isCommunitySidebarPending(data) || cacheStatus === "pending") && retryCount > 0) {
-      await sleepCommunitySidebar(COMMUNITY_SIDEBAR_RETRY_DELAY_MS);
-      return fetchCommunitySidebarJSON(endpoint, requestData, retryCount - 1);
+function communitySidebarOwnerKey() {
+  return JSON.stringify([getSidebarTag(), normalizedCommunityTagSub(), communityLocaleEpoch,
+    communityDisplayLocale(), getCommunityMode(), window.location.pathname, communitySearchText(),
+    communitySearchScope(), communitySourceGroup(), typeof gv_username === "undefined" ? "" : String(gv_username || ""),
+    String(window.gv_role || "")]);
+}
+function currentCommunitySidebar(state) {
+  return communitySidebarRequests[state.id] === state && !state.cancelled &&
+    state.key === communitySidebarOwnerKey() && document.getElementById(state.id) === state.target;
+}
+function cancelCommunitySidebar(state) {
+  if (!state) return;
+  state.cancelled = true;
+  state.controller.abort();
+  window.clearTimeout(state.timer);
+  window.clearInterval(state.ownerTimer);
+  window.clearTimeout(state.retryTimer);
+  if (state.retryResolve) state.retryResolve();
+  if (state.cancelResolve) state.cancelResolve({ ok: false, sidebar_cancelled: true });
+  if (document.getElementById(state.id) === state.target) state.target.setAttribute("aria-busy", "false");
+}
+window.addEventListener("pagehide", () => Object.values(communitySidebarRequests).forEach(cancelCommunitySidebar));
+window.addEventListener("popstate", () => Object.values(communitySidebarRequests).forEach(cancelCommunitySidebar));
+function completeCommunitySidebarPayload(data) {
+  return !!(data && typeof data === "object" && !Array.isArray(data) &&
+    Object.entries(data).every(([key, row]) => /^\d+$/.test(key) && row && typeof row === "object" &&
+      !Array.isArray(row) && !row.pending && row.ok !== false));
+}
+async function fetchCommunitySidebarJSON(endpoint, requestData, state, retryCount = 2) {
+  for (let attempt = 0; attempt <= retryCount && currentCommunitySidebar(state) && !state.expired; attempt += 1) {
+    try {
+      const response = await fetch(endpoint, {
+        method: "POST",
+        headers: { "X-CSRFToken": getCookie("csrftoken") },
+        body: requestData,
+        signal: state.controller.signal
+      });
+      if (!currentCommunitySidebar(state) || state.expired) break;
+      if (response.status === 401 || response.status === 403) {
+        return { ok: false, sidebar_error: true, access_denied: true };
+      }
+      const data = await response.json().catch(() => null);
+      if (!currentCommunitySidebar(state) || state.expired) break;
+      const cacheStatus = String(response.headers.get("X-WebR-Cache") || "").toLowerCase();
+      if (response.ok && cacheStatus !== "pending" && completeCommunitySidebarPayload(data)) return data;
+    } catch (error) {
+      if (!currentCommunitySidebar(state) || state.expired) break;
     }
-    return data;
-  } catch (error) {
-    if (retryCount > 0) {
-      await sleepCommunitySidebar(COMMUNITY_SIDEBAR_RETRY_DELAY_MS);
-      return fetchCommunitySidebarJSON(endpoint, requestData, retryCount - 1);
+    if (attempt < retryCount && currentCommunitySidebar(state) && !state.expired) {
+      await new Promise((resolve) => {
+        state.retryResolve = resolve;
+        state.retryTimer = window.setTimeout(resolve, COMMUNITY_SIDEBAR_RETRY_DELAY_MS);
+      });
+      state.retryResolve = null;
+      state.retryTimer = null;
     }
   }
-  return { ok: false, pending: true };
+  return { ok: false, sidebar_error: true };
+}
+async function loadCommunitySidebarWidget(endpoint, id, title, renderItem, empty) {
+  const target = document.getElementById(id);
+  if (!target) return;
+  const previous = communitySidebarRequests[id];
+  if (previous && previous.running && currentCommunitySidebar(previous)) return previous.promise;
+  cancelCommunitySidebar(previous);
+  const state = { id, target, key: communitySidebarOwnerKey(), controller: new AbortController(),
+    timer: null, ownerTimer: null, retryTimer: null, retryResolve: null, cancelResolve: null,
+    cancelled: false, expired: false, running: true };
+  communitySidebarRequests[id] = state;
+  target.setAttribute("aria-busy", "true");
+  ReactDOM.render(React.createElement("div", { role: "status", "aria-label": communityT("불러오는 중입니다.") },
+    React.createElement(Div_sidelist_skeleton, { title })), target);
+  const requestData = new FormData();
+  requestData.append("tag", getSidebarTag());
+  requestData.append("url", getSidebarTag());
+  state.ownerTimer = window.setInterval(() => {
+    if (!currentCommunitySidebar(state)) cancelCommunitySidebar(state);
+  }, 100);
+  state.promise = Promise.race([
+    fetchCommunitySidebarJSON(endpoint, requestData, state),
+    new Promise((resolve) => { state.cancelResolve = resolve; }),
+    new Promise((resolve) => { state.timer = window.setTimeout(() => {
+      state.expired = true;
+      state.controller.abort();
+      resolve({ ok: false, sidebar_error: true });
+    }, COMMUNITY_PARTIAL_RECOVERY_MS); })
+  ]).then((data) => {
+    if (!currentCommunitySidebar(state)) return;
+    target.setAttribute("aria-busy", "false");
+    ReactDOM.render(React.createElement(SidebarCard, { title, data, empty, limit: COMMUNITY_SIDEBAR_ITEM_LIMIT,
+      renderItem, onRetry: () => {
+        if (currentCommunitySidebar(state) && !state.running) void loadCommunitySidebarWidget(endpoint, id, title, renderItem, empty);
+      } }), target);
+  }).finally(() => {
+    state.running = false;
+    state.controller.abort();
+    window.clearTimeout(state.timer);
+    window.clearInterval(state.ownerTimer);
+    window.clearTimeout(state.retryTimer);
+    if (state.retryResolve) state.retryResolve();
+  });
+  return state.promise;
 }
 function resetListPagination() {
   communityState.page_num = 1;
@@ -1252,6 +1334,15 @@ function ArticlePagination(props) {
   return /* @__PURE__ */ React.createElement("nav", { class: "flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 pt-4" }, /* @__PURE__ */ React.createElement("p", { class: "text-sm text-slate-500" }, communityT("\uCD1D {total}\uAC74 / {page} / {pages}\uD398\uC774\uC9C0", { total: totalCount.toLocaleString(communityDisplayLocale()), page: currentPage.toLocaleString(communityDisplayLocale()), pages: totalPages.toLocaleString(communityDisplayLocale()) })), /* @__PURE__ */ React.createElement("div", { class: "flex flex-wrap items-center gap-2" }, /* @__PURE__ */ React.createElement(PaginationButton, { disabled: currentPage <= 1, onClick: () => onPageChange(currentPage - 1) }, communityT("\uC774\uC804")), nodes, /* @__PURE__ */ React.createElement(PaginationButton, { disabled: currentPage >= totalPages, onClick: () => onPageChange(currentPage + 1) }, communityT("\uB2E4\uC74C"))));
 }
 function SidebarCard(props) {
+  if (props.data && props.data.sidebar_error) {
+    const denied = props.data.access_denied === true;
+    return React.createElement("div", { class: SIDEBAR_CARD_CLASS }, React.createElement(Div_box_header, { title: props.title }),
+      React.createElement("div", { class: "flex min-h-[120px] flex-col items-center justify-center gap-3 text-center text-sm text-slate-500" },
+        React.createElement("p", { role: "alert", "aria-live": "polite" }, denied ? communityT("이 목록을 볼 권한이 없습니다.") :
+          communityT("목록을 일시적으로 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.")),
+        !denied && typeof props.onRetry === "function" && React.createElement("button", { type: "button", onClick: props.onRetry,
+          class: "rounded-lg border px-3 py-2 text-sm" }, communityT("다시 시도"))));
+  }
   const items = communitySidebarRows(props.data, props.limit);
   const emptyText = isCommunitySidebarPending(props.data) ? communityT("\uBD88\uB7EC\uC624\uB294 \uC911\uC785\uB2C8\uB2E4.") : props.empty || communityT("\uD45C\uC2DC\uD560 \uB0B4\uC6A9\uC774 \uC5C6\uC2B5\uB2C8\uB2E4.");
   return /* @__PURE__ */ React.createElement("div", { class: SIDEBAR_CARD_CLASS }, /* @__PURE__ */ React.createElement(Div_box_header, { title: props.title, count: items.length > 0 ? items.length : null }), items.length === 0 ? /* @__PURE__ */ React.createElement("div", { class: "flex min-h-[120px] items-center justify-center text-center text-sm text-slate-500" }, emptyText) : /* @__PURE__ */ React.createElement("div", { class: "mt-3 flex flex-col gap-2" }, items.map((item, index) => props.renderItem(item, index))));
@@ -1476,15 +1567,8 @@ function Div_sidebar_notice(props) {
   return /* @__PURE__ */ React.createElement("div", { class: SIDEBAR_CARD_CLASS }, /* @__PURE__ */ React.createElement(Div_box_header, { title: props.title }), /* @__PURE__ */ React.createElement("div", { class: "flex min-h-[120px] items-center justify-center text-center text-sm text-slate-500" }, props.message));
 }
 async function get_article_famous_list() {
-  function Div_article_list(props) {
-    return /* @__PURE__ */ React.createElement(SidebarCard, { title: communityT("\uCD5C\uC2E0 \uC778\uAE30 \uAE00"), data: props.data, limit: COMMUNITY_SIDEBAR_ITEM_LIMIT, renderItem: (article) => /* @__PURE__ */ React.createElement(SidebarArticleItem, { key: article.id || article.uuid, data: article }) });
-  }
-  const request_data = new FormData();
-  const tag = getSidebarTag();
-  request_data.append("tag", tag);
-  request_data.append("url", tag);
-  const data = await fetchCommunitySidebarJSON("/blank/ajax_board/get_article_famous_list/", request_data);
-  ReactDOM.render(/* @__PURE__ */ React.createElement(Div_article_list, { data }), document.getElementById("div_article_famous_list"));
+  return loadCommunitySidebarWidget("/blank/ajax_board/get_article_famous_list/", "div_article_famous_list",
+    communityT("\uCD5C\uC2E0 \uC778\uAE30 \uAE00"), (article) => React.createElement(SidebarArticleItem, { key: article.id || article.uuid, data: article }));
 }
 async function get_my_article_list() {
   if (!gv_username) {
@@ -1521,15 +1605,9 @@ async function get_my_comment_list() {
   ReactDOM.render(/* @__PURE__ */ React.createElement(Div_comment_list, { data }), document.getElementById("div_my_comment_list"));
 }
 async function get_new_comment_list() {
-  function Div_comment_list(props) {
-    return /* @__PURE__ */ React.createElement(SidebarCard, { title: communityT("\uCD5C\uC2E0 \uB313\uAE00"), data: props.data, limit: COMMUNITY_SIDEBAR_ITEM_LIMIT, renderItem: (comment) => /* @__PURE__ */ React.createElement(SidebarCommentItem, { key: comment.id || comment.uuid, data: comment }) });
-  }
-  const request_data = new FormData();
-  const tag = getSidebarTag();
-  request_data.append("tag", tag);
-  request_data.append("url", tag);
-  const data = await fetchCommunitySidebarJSON("/blank/ajax_board/get_new_comment_list/", request_data);
-  ReactDOM.render(/* @__PURE__ */ React.createElement(Div_comment_list, { data }), document.getElementById("div_new_comment_list"));
+  return loadCommunitySidebarWidget("/blank/ajax_board/get_new_comment_list/", "div_new_comment_list",
+    communityT("\uCD5C\uC2E0 \uB313\uAE00"), (comment) => React.createElement(SidebarCommentItem, { key: comment.id || comment.uuid, data: comment }),
+    communityT("표시할 최근 댓글이 없습니다."));
 }
 function refreshSidebarWidgets() {
   get_article_famous_list();
@@ -1991,11 +2069,7 @@ async function goToArticlePage(page) {
   }
 }
 async function click_btn_search() {
-  const search_text = communitySearchText();
-  if (!search_text) {
-    alert(communityT("\uAC80\uC0C9\uC5B4\uB97C \uC785\uB825\uD558\uC138\uC694."));
-    return;
-  }
+  communitySearchText();
   resetListPagination();
   renderListPageShell();
   if (isCommunityCardMode()) {
