@@ -1,5 +1,6 @@
 const WorkshopCatalogPage = (() => {
   const globals = window.__webr_globals__ || {};
+  const workshopStaticScriptURL = document.currentScript && document.currentScript.src || "";
   const query = new URLSearchParams(window.location.search || "");
   function emptyDraft() {
     return {
@@ -130,30 +131,54 @@ const WorkshopCatalogPage = (() => {
   const h = React.createElement;
   const money = (value) => (Number(value) || 0).toLocaleString("ko-KR");
   function currentCDN2Base() {
-    const scriptURL = typeof document !== "undefined" && document.currentScript && document.currentScript.src ? document.currentScript.src : "";
-    const match = scriptURL.match(/gh\/statground\/web-r_CDN2@([^/,]+)\//);
-    return match ? "https://cdn.jsdelivr.net/gh/statground/web-r_CDN2@" + match[1] + "/" : "";
+    try {
+      const script = new URL(workshopStaticScriptURL, window.location.href);
+      const cdn = script.href.match(/^https:\/\/cdn\.jsdelivr\.net\/gh\/statground\/web-r_CDN2@([0-9a-f]{40})\//);
+      if (cdn) return "/_webr/assets/" + cdn[1] + "/";
+      const installed = script.pathname.match(/^\/_webr\/assets\/([0-9a-f]{40})\//);
+      if (script.origin === window.location.origin && installed) return "/_webr/assets/" + installed[1] + "/";
+    } catch (_) { /* A missing immutable script identity cannot select assets. */ }
+    return "";
   }
-  function svgDataURI(svg) {
-    return "data:image/svg+xml;charset=UTF-8," + encodeURIComponent(svg);
+  const workshopStaticBase = currentCDN2Base();
+  const conferenceFallbackImage = workshopStaticBase ? workshopStaticBase + "images/banner/r_conference_external_20261010.webp" : "";
+  const workshopFallbackImage = workshopStaticBase ? workshopStaticBase + "images/banner/r_workshop_external_20261010.webp" : "";
+  function workshopGenericCoverKind(value) {
+    try {
+      const raw = String(value || "").trim(), asset = new URL(raw, window.location.href);
+      if (asset.username || asset.password) return "";
+      const path = asset.pathname;
+      const ownedCDN = asset.protocol === "https:" && asset.host === "cdn.jsdelivr.net" && /^\/gh\/statground\/web-r_CDN2@[0-9a-f]{40}\/images\/banner\/[^/]+$/.test(path);
+      const installed = asset.origin === window.location.origin && /^\/_webr\/assets\/[0-9a-f]{40}\/images\/banner\/[^/]+$/.test(path);
+      const legacy = /^\/?images\/banner\/[^/?#]+(?:[?#].*)?$/.test(raw);
+      if (!ownedCDN && !installed && !legacy) return "";
+      if (/\/images\/banner\/(?:r_conference_fallback_20260526\.svg|r_conference_external_20261010\.webp)$/.test(path)) return "conference";
+      if (/\/images\/banner\/(?:r_workshop_fallback_20260526\.svg|r_workshop_external_20261010\.webp)$/.test(path)) return "workshop";
+    } catch (_) { /* Preserve arbitrary organizer URLs without rewriting them. */ }
+    return "";
   }
-  const conferenceFallbackImage = svgDataURI('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 360" role="img"><rect width="640" height="360" fill="#eff6ff"/><path d="M0 278C92 236 174 246 260 284c104 46 214 40 380-28v104H0Z" fill="#bfdbfe"/><circle cx="500" cy="108" r="74" fill="#fff" opacity=".95"/><circle cx="500" cy="108" r="49" fill="#2563eb"/><text x="500" y="130" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="56" font-weight="800" fill="#fff">R</text><text x="44" y="76" font-family="Arial,Helvetica,sans-serif" font-size="36" font-weight="800" fill="#0f172a">R Conference</text><text x="44" y="120" font-family="Arial,Helvetica,sans-serif" font-size="23" font-weight="700" fill="#2563eb">useR! and R community events</text><text x="44" y="164" font-family="Arial,Helvetica,sans-serif" font-size="18" font-weight="600" fill="#475569">Conference schedules, talks, and community updates</text><g transform="translate(48 216)" fill="none" stroke-linecap="round" stroke-linejoin="round"><rect width="132" height="86" rx="14" fill="#fff" stroke="#bfdbfe" stroke-width="3"/><path d="M28 58V34M60 58V24M92 58V40" stroke="#2563eb" stroke-width="8"/><path d="M24 66h84" stroke="#94a3b8" stroke-width="4"/></g><g transform="translate(220 216)" fill="none" stroke-linecap="round" stroke-linejoin="round"><rect width="132" height="86" rx="14" fill="#fff" stroke="#c7d2fe" stroke-width="3"/><path d="M28 50c18-24 58-24 76 0" stroke="#4f46e5" stroke-width="7"/><path d="M40 64c12-12 40-12 52 0" stroke="#60a5fa" stroke-width="7"/><circle cx="66" cy="30" r="8" fill="#4f46e5" stroke="none"/></g></svg>');
-  const workshopFallbackImage = svgDataURI('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 360" role="img"><rect width="640" height="360" fill="#f8fafc"/><rect width="640" height="92" fill="#1d4ed8"/><rect x="448" width="192" height="360" fill="#dbeafe"/><circle cx="512" cy="112" r="72" fill="#fff" opacity=".95"/><circle cx="512" cy="112" r="50" fill="#2563eb"/><text x="512" y="134" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="56" font-weight="800" fill="#fff">R</text><text x="44" y="58" font-family="Arial,Helvetica,sans-serif" font-size="31" font-weight="800" fill="#fff">Web-R Workshop</text><text x="44" y="142" font-family="Arial,Helvetica,sans-serif" font-size="34" font-weight="800" fill="#0f172a">R learning event</text><text x="44" y="180" font-family="Arial,Helvetica,sans-serif" font-size="20" font-weight="700" fill="#475569">Talks, practice sessions, and seminars</text><g transform="translate(48 230)" fill="none" stroke-linecap="round" stroke-linejoin="round"><rect width="112" height="72" rx="12" fill="#fff" stroke="#bfdbfe" stroke-width="3"/><path d="M24 48V30M52 48V20M80 48V36" stroke="#2563eb" stroke-width="8"/><path d="M20 54h72" stroke="#94a3b8" stroke-width="4"/></g><g transform="translate(192 230)" fill="none" stroke-linecap="round" stroke-linejoin="round"><rect width="112" height="72" rx="12" fill="#fff" stroke="#bbf7d0" stroke-width="3"/><path d="M26 46l18-18 18 10 24-26" stroke="#16a34a" stroke-width="7"/></g></svg>');
   function normalizeFallbackImageURL(value) {
     const raw = String(value || "").trim();
-    if (!raw)
-      return "";
-    if (raw.indexOf("r_conference_fallback_20260526.svg") >= 0)
-      return conferenceFallbackImage;
-    if (raw.indexOf("r_workshop_fallback_20260526.svg") >= 0)
-      return workshopFallbackImage;
-    return raw;
+    const kind = workshopGenericCoverKind(raw);
+    return kind === "conference" ? conferenceFallbackImage : kind === "workshop" ? workshopFallbackImage : raw;
   }
   function fallbackImageForItem(item) {
-    if (!item || !item.external)
-      return workshopFallbackImage;
+    if (!item || !item.external) return workshopFallbackImage;
     const text = String([item.source_id, item.source_name, item.title].join(" ")).toLowerCase();
     return text.indexOf("posit") >= 0 ? workshopFallbackImage : conferenceFallbackImage;
+  }
+  function recoverWorkshopCover(event, item) {
+    const node = event.currentTarget;
+    if (node.dataset.webrFallbackApplied === "1") { node.style.display = "none"; return; }
+    node.dataset.webrFallbackApplied = "1";
+    const fallback = fallbackImageForItem(item);
+    const installed = fallback && typeof window.__webrCDNFallbackURL === "function" ? window.__webrCDNFallbackURL(fallback) : "";
+    const next = installed || fallback;
+    if (!next || new URL(next, window.location.href).href === node.src) { node.style.display = "none"; return; }
+    node.style.aspectRatio = "1672 / 941";
+    node.style.objectFit = "cover";
+    node.style.objectPosition = "center";
+    node.src = next;
   }
   const inputClass = () => "w-full rounded border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500";
   const buttonClass = (kind) => {
@@ -678,29 +703,19 @@ const WorkshopCatalogPage = (() => {
   }
   function WorkshopVisual({ item }) {
     const imageURL = workshopCoverImageURL(item);
-    return /* @__PURE__ */ React.createElement("div", { className: "relative flex h-72 w-full items-center justify-center overflow-hidden bg-gray-100" }, imageURL ? /* @__PURE__ */ React.createElement(
-      "img",
-      {
-        className: "h-full w-full object-cover",
-        src: imageURL,
-        alt: item.title,
-        loading: "lazy",
-        onError: (event) => {
-          const node = event.currentTarget;
-          if (node.dataset.webrFallbackApplied !== "1") {
-            node.dataset.webrFallbackApplied = "1";
-            node.src = fallbackImageForItem(item);
-            return;
-          }
-          node.style.display = "none";
-        }
-      }
-    ) : /* @__PURE__ */ React.createElement("div", { className: "flex h-full w-full flex-col items-center justify-center bg-gray-50 text-center" }, /* @__PURE__ */ React.createElement("img", { className: "mb-4 h-20 w-20 opacity-80", src: "https://cdn.jsdelivr.net/gh/statground/web-R_CDN@f3e464e95616fa13712baa6adbbb0b6cda7ee821/images/svg/R_logo.svg", alt: "", loading: "lazy" }), /* @__PURE__ */ React.createElement("p", { className: "px-6 text-xl font-extrabold text-gray-900" }, item.external ? "R Conference" : "Web-R Workshop")), /* @__PURE__ */ React.createElement("div", { className: "absolute left-0 top-0 flex flex-row flex-wrap gap-1 p-3" }, item.is_new && h(StatusBadge, { tone: "new", label: "NEW" }), h(StatusBadge, { tone: item.external ? "external" : "status", label: item.external ? "\uC678\uBD80 \uD589\uC0AC" : statusLabel(item.status) }), !item.active && h(StatusBadge, { tone: "hidden", label: "\uC228\uAE40" })));
+    return h("div", { className: "w-full" },
+      h("div", { className: "relative flex w-full items-center justify-center overflow-hidden bg-gray-100", style: { aspectRatio: "1672 / 941" }, "data-workshop-cover-frame": "true" },
+        imageURL ? h("img", { className: "h-full w-full object-cover", style: { objectPosition: "center" }, src: imageURL, alt: item.title, loading: "lazy", onError: event => recoverWorkshopCover(event, item) }) :
+        h("div", { className: "flex h-full w-full items-center justify-center bg-gray-50", "aria-hidden": "true" })),
+      h("div", { className: "flex min-h-[48px] flex-row flex-wrap items-center gap-1 px-5 py-3", style: { minHeight: "48px" }, "data-workshop-cover-badges": "true" },
+        item.is_new && h(StatusBadge, { tone: "new", label: "NEW" }),
+        h(StatusBadge, { tone: item.external ? "external" : "status", label: item.external ? "\uC678\uBD80 \uD589\uC0AC" : statusLabel(item.status) }),
+        !item.active && h(StatusBadge, { tone: "hidden", label: "\uC228\uAE40" })));
   }
   function WorkshopCard({ item }) {
     const deleting = state.deletingUUID === item.uuid;
     const href = readHref(item);
-    return h("article", { className: "group flex min-h-[470px] w-full flex-col border border-gray-200 bg-white transition hover:border-blue-500" }, h("a", { href, className: "block focus:outline-none focus:ring-2 focus:ring-blue-500" }, h(WorkshopVisual, { item })), h("div", { className: "flex flex-1 flex-col px-5 py-5" }, h("a", { href, className: "block focus:outline-none focus:ring-2 focus:ring-blue-500" }, h("h2", { className: "min-h-[3.25rem] text-lg font-normal leading-7 text-gray-900 group-hover:text-blue-700" }, item.title)), item.subtitle && h("p", { className: "mt-2 min-h-[1.25rem] truncate text-sm text-gray-600" }, item.subtitle), !item.subtitle && h("p", { className: "mt-2 min-h-[1.25rem] text-sm text-gray-400" }, item.venue || "Web-R"), h("div", { className: "mt-auto flex flex-row items-end justify-between gap-3 pt-6 text-sm" }, h("span", { className: priceKind(item) === "free" ? "font-semibold text-green-600" : priceKind(item) === "external" ? "font-semibold text-blue-700" : "font-semibold text-red-600" }, priceKindLabel(item)), h("span", { className: "text-right text-gray-500" }, displayDateRange(item))), h("div", { className: "mt-3 flex flex-row items-center justify-between border-t border-gray-100 pt-3 text-xs text-gray-500" }, h("span", null, item.external ? item.source_name || "\uC678\uBD80 \uCD9C\uCC98" : item.paid_count ? `${money(item.paid_count)}\uBA85 \uC2E0\uCCAD` : "\uC2E0\uCCAD \uB300\uAE30"), h("span", null, item.venue || "\uC628\uB77C\uC778/\uBCC4\uB3C4 \uC548\uB0B4")), h("div", { className: "mt-4 flex flex-row items-center justify-between gap-2 border-t border-gray-100 pt-4" }, h("a", { className: buttonClass("ghost"), href }, "\uC790\uC138\uD788 \uBCF4\uAE30"), state.isAdmin && !item.external && h("div", { className: "flex flex-row gap-2" }, h("a", { className: buttonClass("ghost"), href: editHref(item) }, "\uC218\uC815"), h("button", { type: "button", disabled: deleting, className: "rounded border border-red-200 px-4 py-2 text-sm font-semibold text-red-600 hover:bg-red-50 disabled:opacity-50", onClick: () => deleteWorkshop(item) }, deleting ? "\uCC98\uB9AC \uC911..." : "\uC0AD\uC81C")))));
+    return h("article", { className: "group flex min-h-[570px] w-full flex-col border border-gray-200 bg-white transition hover:border-blue-500", style: { minHeight: "570px" } }, h("a", { href, className: "block focus:outline-none focus:ring-2 focus:ring-blue-500" }, h(WorkshopVisual, { item })), h("div", { className: "flex flex-1 flex-col px-5 py-5" }, h("a", { href, className: "block focus:outline-none focus:ring-2 focus:ring-blue-500" }, h("h2", { className: "min-h-[3.25rem] text-lg font-normal leading-7 text-gray-900 group-hover:text-blue-700" }, item.title)), item.subtitle && h("p", { className: "mt-2 min-h-[1.25rem] truncate text-sm text-gray-600" }, item.subtitle), !item.subtitle && h("p", { className: "mt-2 min-h-[1.25rem] text-sm text-gray-400" }, item.venue || "Web-R"), h("div", { className: "mt-auto flex flex-row items-end justify-between gap-3 pt-6 text-sm" }, h("span", { style: { flexShrink: 0, whiteSpace: "nowrap" }, className: priceKind(item) === "free" ? "font-semibold text-green-600" : priceKind(item) === "external" ? "font-semibold text-blue-700" : "font-semibold text-red-600" }, priceKindLabel(item)), h("span", { className: "min-w-0 text-right text-gray-500", style: { minWidth: 0 } }, displayDateRange(item))), h("div", { className: "mt-3 flex flex-row items-center justify-between border-t border-gray-100 pt-3 text-xs text-gray-500" }, h("span", null, item.external ? item.source_name || "\uC678\uBD80 \uCD9C\uCC98" : item.paid_count ? `${money(item.paid_count)}\uBA85 \uC2E0\uCCAD` : "\uC2E0\uCCAD \uB300\uAE30"), h("span", null, item.venue || "\uC628\uB77C\uC778/\uBCC4\uB3C4 \uC548\uB0B4")), h("div", { className: "mt-4 flex flex-row items-center justify-between gap-2 border-t border-gray-100 pt-4" }, h("a", { className: buttonClass("ghost"), href }, "\uC790\uC138\uD788 \uBCF4\uAE30"), state.isAdmin && !item.external && h("div", { className: "flex flex-row gap-2" }, h("a", { className: buttonClass("ghost"), href: editHref(item) }, "\uC218\uC815"), h("button", { type: "button", disabled: deleting, className: "rounded border border-red-200 px-4 py-2 text-sm font-semibold text-red-600 hover:bg-red-50 disabled:opacity-50", onClick: () => deleteWorkshop(item) }, deleting ? "\uCC98\uB9AC \uC911..." : "\uC0AD\uC81C")))));
   }
   function registrationLabel(value) {
     return { admin: "\uAD00\uB9AC\uC790 \uB4F1\uB85D", payment: "\uACB0\uC81C \uC5F0\uB3D9", closed: "\uC2E0\uCCAD \uB9C8\uAC10", external: "\uC678\uBD80 \uB9C1\uD06C \uC548\uB0B4" }[value] || value || "\uBCC4\uB3C4 \uC548\uB0B4";
@@ -736,15 +751,7 @@ const WorkshopCatalogPage = (() => {
     const descriptionLines = textParagraphs(item.description || item.summary);
     const hasMemberPlan = item.member_product_uuid || item.member_product_title || Number(item.member_price) > 0;
     const hasNonmemberPlan = item.nonmember_product_uuid || item.nonmember_product_title || Number(item.nonmember_price) > 0;
-    return h("div", { className: "w-full" }, h("section", { className: "mx-auto grid w-full max-w-screen-xl grid-cols-1 gap-8 px-6 py-10 lg:grid-cols-2" }, h("div", { className: "order-2 lg:order-1" }, h("a", { href: "/workshop/", className: "mb-6 inline-flex items-center text-sm font-semibold text-blue-700 hover:text-blue-900" }, "\uBAA9\uB85D\uC73C\uB85C"), h("div", { className: "mb-4 flex flex-row flex-wrap gap-2" }, item.is_new && h(StatusBadge, { tone: "new", label: "NEW" }), h(StatusBadge, { tone: item.external ? "external" : "status", label: item.external ? "\uC678\uBD80 \uD589\uC0AC" : statusLabel(item.status) }), !item.external && h(StatusBadge, { tone: priceKind(item), label: priceLabel(item) })), h("h1", { className: "text-4xl font-extrabold leading-tight text-gray-900 sm:text-3xl" }, item.title), item.subtitle && h("p", { className: "mt-4 text-xl font-semibold text-gray-700 sm:text-lg" }, item.subtitle), item.summary && h("p", { className: "mt-5 text-base leading-7 text-gray-600" }, item.summary), item.source_note && h("p", { className: "mt-4 border-l-4 border-blue-500 bg-blue-50 px-4 py-3 text-sm leading-6 text-blue-800" }, item.source_note), h("div", { className: "mt-8 grid grid-cols-1 gap-x-6 md:grid-cols-2" }, h(DetailStat, { label: "\uC77C\uC815", value: displayDateRange(item) }), h(DetailStat, { label: "\uC7A5\uC18C", value: item.venue || "\uC628\uB77C\uC778/\uBCC4\uB3C4 \uC548\uB0B4" }), h(DetailStat, { label: item.external ? "\uCD9C\uCC98" : "\uC815\uC6D0", value: item.external ? item.source_name || "\uC678\uBD80 \uCD9C\uCC98" : item.capacity ? `${money(item.capacity)}\uBA85` : "\uBCC4\uB3C4 \uC548\uB0B4" }), h(DetailStat, { label: "\uB4F1\uB85D \uBC29\uC2DD", value: registrationLabel(item.registration_mode) }))), h("div", { className: "order-1 lg:order-2" }, imageURL ? h("img", { className: "aspect-[16/10] w-full border border-gray-200 object-cover", src: imageURL, alt: item.title, loading: "lazy", onError: (event) => {
-      const node = event.currentTarget;
-      if (node.dataset.webrFallbackApplied !== "1") {
-        node.dataset.webrFallbackApplied = "1";
-        node.src = fallbackImageForItem(item);
-        return;
-      }
-      node.style.display = "none";
-    } }) : h("div", { className: "flex aspect-[16/10] w-full flex-col items-center justify-center border border-gray-200 bg-gray-50 text-center" }, h("img", { className: "mb-4 h-20 w-20 opacity-80", src: "https://cdn.jsdelivr.net/gh/statground/web-R_CDN@f3e464e95616fa13712baa6adbbb0b6cda7ee821/images/svg/R_logo.svg", alt: "", loading: "lazy" }), h("p", { className: "px-6 text-xl font-extrabold text-gray-900" }, item.external ? "R Conference" : "Web-R Workshop")))), h("section", { className: "mx-auto grid w-full max-w-screen-xl grid-cols-1 gap-8 px-6 pb-12 lg:grid-cols-[minmax(0,1fr)_360px]" }, h("article", { className: "border-y border-gray-200 py-8" }, h("h2", { className: "text-2xl font-extrabold text-gray-900" }, "\uC0C1\uC138 \uB0B4\uC6A9"), descriptionLines.length ? h("div", { className: "mt-5 space-y-4 text-base leading-8 text-gray-700" }, descriptionLines.map((line, index) => h("p", { key: index }, line))) : h("p", { className: "mt-5 text-base leading-8 text-gray-500" }, "\uC0C1\uC138 \uB0B4\uC6A9\uC740 \uC900\uBE44 \uC911\uC785\uB2C8\uB2E4.")), h("aside", { className: "border-y border-gray-200 py-8" }, h("h2", { className: "text-xl font-extrabold text-gray-900" }, item.external ? "\uC678\uBD80 \uD589\uC0AC \uC815\uBCF4" : "\uC2E0\uCCAD \uC815\uBCF4"), h("p", { className: "mt-3 text-sm leading-6 text-gray-600" }, registrationLabel(item.registration_mode)), item.external && item.canonical_url && h("a", { className: "mt-5 inline-flex w-full justify-center rounded bg-blue-700 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-800", href: item.canonical_url, target: "_blank", rel: "noopener noreferrer" }, "\uC6D0\uBB38 \uBCF4\uAE30"), item.external && item.source_url && h("a", { className: "mt-3 inline-flex w-full justify-center rounded border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50", href: item.source_url, target: "_blank", rel: "noopener noreferrer" }, "\uCD9C\uCC98 \uD648"), !item.external && h("div", { className: "mt-5 space-y-3" }, hasMemberPlan && h(ProductPlan, { label: "\uD68C\uC6D0", title: item.member_product_title, price: item.member_price }), hasNonmemberPlan && h(ProductPlan, { label: "\uBE44\uD68C\uC6D0", title: item.nonmember_product_title, price: item.nonmember_price }), !hasMemberPlan && !hasNonmemberPlan && h(ProductPlan, { label: "\uCC38\uAC00\uBE44", title: priceLabel(item), price: priceKind(item) === "free" ? 0 : item.member_price || item.nonmember_price })), !item.external && h("div", { className: "mt-6 border-t border-gray-100 pt-4 text-sm text-gray-500" }, item.paid_count ? `${money(item.paid_count)}\uBA85\uC774 \uC2E0\uCCAD\uD588\uC2B5\uB2C8\uB2E4.` : "\uC2E0\uCCAD \uD604\uD669\uC740 \uC900\uBE44 \uC911\uC785\uB2C8\uB2E4."), state.isAdmin && !item.external && h("a", { className: "mt-5 inline-flex w-full justify-center rounded border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50", href: editHref(item) }, "\uC6CC\uD06C\uC0F5 \uC218\uC815"))), h(WorkshopBoard, { item }));
+    return h("div", { className: "w-full" }, h("section", { className: "mx-auto grid w-full max-w-screen-xl grid-cols-1 gap-8 px-6 py-10 lg:grid-cols-2" }, h("div", { className: "order-2 lg:order-1" }, h("a", { href: "/workshop/", className: "mb-6 inline-flex items-center text-sm font-semibold text-blue-700 hover:text-blue-900" }, "\uBAA9\uB85D\uC73C\uB85C"), h("div", { className: "mb-4 flex flex-row flex-wrap gap-2" }, item.is_new && h(StatusBadge, { tone: "new", label: "NEW" }), h(StatusBadge, { tone: item.external ? "external" : "status", label: item.external ? "\uC678\uBD80 \uD589\uC0AC" : statusLabel(item.status) }), !item.external && h(StatusBadge, { tone: priceKind(item), label: priceLabel(item) })), h("h1", { className: "text-4xl font-extrabold leading-tight text-gray-900 sm:text-3xl" }, item.title), item.subtitle && h("p", { className: "mt-4 text-xl font-semibold text-gray-700 sm:text-lg" }, item.subtitle), item.summary && h("p", { className: "mt-5 text-base leading-7 text-gray-600" }, item.summary), item.source_note && h("p", { className: "mt-4 border-l-4 border-blue-500 bg-blue-50 px-4 py-3 text-sm leading-6 text-blue-800" }, item.source_note), h("div", { className: "mt-8 grid grid-cols-1 gap-x-6 md:grid-cols-2" }, h(DetailStat, { label: "\uC77C\uC815", value: displayDateRange(item) }), h(DetailStat, { label: "\uC7A5\uC18C", value: item.venue || "\uC628\uB77C\uC778/\uBCC4\uB3C4 \uC548\uB0B4" }), h(DetailStat, { label: item.external ? "\uCD9C\uCC98" : "\uC815\uC6D0", value: item.external ? item.source_name || "\uC678\uBD80 \uCD9C\uCC98" : item.capacity ? `${money(item.capacity)}\uBA85` : "\uBCC4\uB3C4 \uC548\uB0B4" }), h(DetailStat, { label: "\uB4F1\uB85D \uBC29\uC2DD", value: registrationLabel(item.registration_mode) }))), h("div", { className: "order-1 lg:order-2" }, imageURL ? h("img", { className: "aspect-[16/10] w-full border border-gray-200 object-cover", style: workshopGenericCoverKind(imageURL) ? { aspectRatio: "1672 / 941", objectPosition: "center" } : undefined, src: imageURL, alt: item.title, loading: "lazy", onError: event => recoverWorkshopCover(event, item) }) : h("div", { className: "flex aspect-[16/10] w-full flex-col items-center justify-center border border-gray-200 bg-gray-50 text-center" }, h("img", { className: "mb-4 h-20 w-20 opacity-80", src: "https://cdn.jsdelivr.net/gh/statground/web-R_CDN@f3e464e95616fa13712baa6adbbb0b6cda7ee821/images/svg/R_logo.svg", alt: "", loading: "lazy" }), h("p", { className: "px-6 text-xl font-extrabold text-gray-900" }, item.external ? "R Conference" : "Web-R Workshop")))), h("section", { className: "mx-auto grid w-full max-w-screen-xl grid-cols-1 gap-8 px-6 pb-12 lg:grid-cols-[minmax(0,1fr)_360px]" }, h("article", { className: "border-y border-gray-200 py-8" }, h("h2", { className: "text-2xl font-extrabold text-gray-900" }, "\uC0C1\uC138 \uB0B4\uC6A9"), descriptionLines.length ? h("div", { className: "mt-5 space-y-4 text-base leading-8 text-gray-700" }, descriptionLines.map((line, index) => h("p", { key: index }, line))) : h("p", { className: "mt-5 text-base leading-8 text-gray-500" }, "\uC0C1\uC138 \uB0B4\uC6A9\uC740 \uC900\uBE44 \uC911\uC785\uB2C8\uB2E4.")), h("aside", { className: "border-y border-gray-200 py-8" }, h("h2", { className: "text-xl font-extrabold text-gray-900" }, item.external ? "\uC678\uBD80 \uD589\uC0AC \uC815\uBCF4" : "\uC2E0\uCCAD \uC815\uBCF4"), h("p", { className: "mt-3 text-sm leading-6 text-gray-600" }, registrationLabel(item.registration_mode)), item.external && item.canonical_url && h("a", { className: "mt-5 inline-flex w-full justify-center rounded bg-blue-700 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-800", href: item.canonical_url, target: "_blank", rel: "noopener noreferrer" }, "\uC6D0\uBB38 \uBCF4\uAE30"), item.external && item.source_url && h("a", { className: "mt-3 inline-flex w-full justify-center rounded border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50", href: item.source_url, target: "_blank", rel: "noopener noreferrer" }, "\uCD9C\uCC98 \uD648"), !item.external && h("div", { className: "mt-5 space-y-3" }, hasMemberPlan && h(ProductPlan, { label: "\uD68C\uC6D0", title: item.member_product_title, price: item.member_price }), hasNonmemberPlan && h(ProductPlan, { label: "\uBE44\uD68C\uC6D0", title: item.nonmember_product_title, price: item.nonmember_price }), !hasMemberPlan && !hasNonmemberPlan && h(ProductPlan, { label: "\uCC38\uAC00\uBE44", title: priceLabel(item), price: priceKind(item) === "free" ? 0 : item.member_price || item.nonmember_price })), !item.external && h("div", { className: "mt-6 border-t border-gray-100 pt-4 text-sm text-gray-500" }, item.paid_count ? `${money(item.paid_count)}\uBA85\uC774 \uC2E0\uCCAD\uD588\uC2B5\uB2C8\uB2E4.` : "\uC2E0\uCCAD \uD604\uD669\uC740 \uC900\uBE44 \uC911\uC785\uB2C8\uB2E4."), state.isAdmin && !item.external && h("a", { className: "mt-5 inline-flex w-full justify-center rounded border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50", href: editHref(item) }, "\uC6CC\uD06C\uC0F5 \uC218\uC815"))), h(WorkshopBoard, { item }));
   }
   function ReadPage() {
     const item = state.selectedWorkshop || findWorkshop(state.workshops, state.readTarget);
@@ -879,6 +886,7 @@ const WorkshopCatalogPage = (() => {
     return h("div", { className: "webr-catalog-placeholders webr-workshop-placeholders", "aria-hidden": "true", "data-workshop-catalog-progress": "" },
       Array.from({length: Math.min(4, workshopPageSize())}, (_, index) => h("div", { key: index, className: "webr-catalog-placeholder-card" },
         h("div", { className: "webr-catalog-placeholder-cover" }),
+        h("div", { className: "webr-workshop-placeholder-badges" }, h("i"), h("i")),
         h("div", { className: "webr-catalog-placeholder-copy" }, h("i"), h("i"), h("i"),
           h("div", { className: "webr-catalog-placeholder-meta" }, h("i"), h("i")), h("div", { className: "webr-catalog-placeholder-action" })))));
   }
