@@ -8,18 +8,34 @@
   const statusNames = { NEW: '신규', COMPLETED: '완료', CREATED: '생성', APPROVED: '승인', PENDING: '대기', REVIEW_REQUIRED: '확인 필요', REFUNDED: '환불', REVERSED: '취소', FAILED: '실패', DENIED: '거절', DECLINED: '거절' };
   let closed = false;
   const active = new Set();
+  const reports = new Set();
+  const bootstrap = window.WEBR_ADMIN_SNAPSHOTS;
+  const owner = bootstrap?.schema === 1 && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(bootstrap.owner || '') ? bootstrap.owner : '';
+  function retire() {
+    if (closed) return;
+    closed = true;
+    active.forEach(controller => controller.abort()); active.clear();
+    reports.forEach(clear => clear()); reports.clear();
+    document.getElementById('paypal-admin-orders')?.remove();
+    if (window.WebRAdminSnapshots?.stop) window.WebRAdminSnapshots.stop();
+    else document.getElementById('div_main')?.replaceChildren();
+  }
+  function authorized() {
+    if (!closed && owner && window.WEBR_ADMIN_SNAPSHOTS === bootstrap && bootstrap.schema === 1 && bootstrap.owner === owner && document.getElementById('webr-admin-read-status')?.getAttribute('data-admin-read-state') !== 'denied') return true;
+    retire(); return false;
+  }
   window.addEventListener('webr:language-change', () => {
+    if (!authorized()) return;
     document.querySelectorAll('#paypal-admin-orders [data-payment-label]').forEach(node => { node.textContent = t(node.dataset.paymentLabel); });
   });
-  window.addEventListener('pagehide', () => {
-    closed = true;
-    active.forEach(controller => controller.abort());
-    document.getElementById('paypal-admin-orders')?.remove();
-  }, { once: true });
+  window.addEventListener('pagehide', retire, { once: true });
+  window.addEventListener('pageshow', event => {
+    if (event.persisted && !window.WebRAdminSnapshots) window.location.reload();
+  });
 
   function mount() {
     const main = document.getElementById('div_main');
-    if (closed || !main || document.getElementById('paypal-admin-orders')) return;
+    if (!authorized() || !main || document.getElementById('paypal-admin-orders')) return;
     const panel = element('section');
     panel.id = 'paypal-admin-orders'; panel.dataset.webrUi = '';
     panel.style.cssText = 'margin:28px 0;padding:20px;border:1px solid #dbeafe;border-radius:12px;background:#fff;max-width:100%;';
@@ -46,11 +62,11 @@
     const state = element('p'); state.setAttribute('role', 'status'); state.setAttribute('aria-live', 'polite');
     const output = element('div'); output.style.overflowX = 'auto';
     panel.append(heading, note, dateNote, form, state, output); main.append(panel);
-    let sequence = 0, currentPage = 1, controller, lastReport = null;
+    let sequence = 0, displayedPage = 1, controller, lastReport = null, displayedScope = '';
+    reports.add(() => { lastReport = null; displayedScope = ''; output.replaceChildren(); });
     window.addEventListener('webr:language-change', () => {
-      if (!closed && panel.isConnected && lastReport) render(lastReport);
+      if (authorized() && panel.isConnected && lastReport) render(lastReport);
     });
-    window.addEventListener('pagehide', () => { lastReport = null; }, { once: true });
 
     function table(headers) {
       const result = element('table'); result.style.cssText = 'width:100%;font:13px system-ui;border-collapse:collapse;margin:12px 0;';
@@ -62,6 +78,7 @@
       values.forEach(value => { const cell = row.insertCell(); cell.textContent = value; cell.dataset.webrUserContent = ''; cell.style.cssText = 'padding:10px;border-bottom:1px solid #e2e8f0;overflow-wrap:anywhere;'; });
     }
     function render(report) {
+      if (!authorized() || !panel.isConnected) return;
       const content = element('div');
       const period = element('p'); period.textContent = report.period.from + ' – ' + report.period.to + ' · ' + t(report.revenue ? '실제 결제' : '테스트 결제'); content.append(period);
       if (!report.revenue) content.append(element('p', '테스트 결제입니다. 실제 매출과 정산액에 포함되지 않습니다.'));
@@ -89,30 +106,38 @@
       }
       const navigation = element('div'); navigation.style.cssText = 'display:flex;gap:12px;align-items:center;';
       const previous = element('button', '이전'), next = element('button', '다음'); previous.type = next.type = 'button';
-      previous.disabled = currentPage <= 1; next.disabled = !report.has_more;
-      previous.addEventListener('click', () => load(currentPage - 1)); next.addEventListener('click', () => load(currentPage + 1));
-      const count = element('span'); count.textContent = report.total.toLocaleString() + ' / ' + currentPage;
+      const renderedPage = displayedPage;
+      previous.disabled = renderedPage <= 1; next.disabled = !report.has_more;
+      previous.addEventListener('click', () => load(renderedPage - 1)); next.addEventListener('click', () => load(renderedPage + 1));
+      const count = element('span'); count.textContent = report.total.toLocaleString() + ' / ' + renderedPage;
       navigation.append(previous, count, next); content.append(navigation); output.replaceChildren(content);
     }
     async function load(page) {
+      if (!authorized() || !panel.isConnected) return;
       controller?.abort(); controller = new AbortController(); active.add(controller);
       const ownController = controller, ownSequence = ++sequence;
-      currentPage = page; submit.disabled = true; panel.setAttribute('aria-busy', 'true'); label(state, 'PayPal 결제 내역을 불러오고 있습니다.');
+      const query = new URLSearchParams({ from: from.value, to: to.value, environment: environment.value, page: String(page) });
+      const scope = JSON.stringify([from.value, to.value, environment.value]);
+      if (lastReport && scope !== displayedScope) { lastReport = null; output.replaceChildren(); }
+      submit.disabled = true; panel.setAttribute('aria-busy', 'true'); label(state, 'PayPal 결제 내역을 불러오고 있습니다.');
       const timer = setTimeout(() => ownController.abort(), 7000);
       try {
-        const query = new URLSearchParams({ from: from.value, to: to.value, environment: environment.value, page: String(page) });
         const response = await fetch('/api/paypal/admin/report/?' + query, { credentials: 'same-origin', cache: 'no-store', signal: ownController.signal });
-        if (response.status === 401 || response.status === 403) { lastReport = null; output.replaceChildren(); throw Error('authorization'); }
+        if (!authorized()) return;
+        if (response.status === 401 || response.status === 403) { retire(); return; }
         const payload = await response.json();
         if (!response.ok || !payload.ok) throw Error();
-        if (closed || ownSequence !== sequence || !panel.isConnected) return;
-        lastReport = payload.data; render(lastReport); label(state, 'PayPal 결제 내역을 확인했습니다.');
+        if (!authorized() || ownSequence !== sequence || ownController.signal.aborted || !panel.isConnected) return;
+        const report = payload.data;
+        if (!report?.period || ['from', 'to', 'environment'].some(key => report.period[key] !== query.get(key)) || report.period.page !== page || report.revenue !== (query.get('environment') === 'live') || !Array.isArray(report.totals) || !Array.isArray(report.products) || !Array.isArray(report.payments) || !Number.isSafeInteger(report.total) || report.total < 0 || typeof report.has_more !== 'boolean') throw Error();
+        displayedPage = page; displayedScope = scope; lastReport = report;
+        render(lastReport); label(state, 'PayPal 결제 내역을 확인했습니다.');
       } catch (error) {
-        if (closed || ownSequence !== sequence || !panel.isConnected) return;
-        label(state, error.message === 'authorization' ? '관리자 권한을 다시 확인해 주세요.' : 'PayPal 결제 내역을 불러오지 못했습니다. 조회 버튼으로 다시 시도해 주세요.');
+        if (!authorized() || ownSequence !== sequence || !panel.isConnected) return;
+        label(state, 'PayPal 결제 내역을 불러오지 못했습니다. 조회 버튼으로 다시 시도해 주세요.');
       } finally {
         clearTimeout(timer); active.delete(ownController);
-        if (ownSequence === sequence) { submit.disabled = false; panel.setAttribute('aria-busy', 'false'); }
+        if (!closed && ownSequence === sequence && panel.isConnected) { submit.disabled = false; panel.setAttribute('aria-busy', 'false'); }
       }
     }
     form.addEventListener('submit', event => { event.preventDefault(); load(1); });
