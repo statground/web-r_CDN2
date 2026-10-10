@@ -62,6 +62,7 @@
   var noticeRequest = null;
   var latestStatistics = null;
   var latestActivity = null;
+  var activityTimeTimer = 0;
   var latestActivityUnavailable = false;
 
   function element(tagName, className, text) {
@@ -782,7 +783,56 @@
     });
   }
 
+  function activityInstant(value) {
+    var raw = cleanText(value, 80);
+    var parts = raw.match(/^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}:\d{2})(\.\d{1,9})?(Z|[+-]\d{2}:\d{2})?$/);
+    if (!parts) return null;
+    var clock = parts[2].split(":").map(Number);
+    if (clock[0] > 23 || clock[1] > 59 || clock[2] > 59) return null;
+    var day = new Date(parts[1] + "T00:00:00Z");
+    if (!Number.isFinite(day.getTime()) || day.toISOString().slice(0, 10) !== parts[1]) return null;
+    var date = new Date(parts[1] + "T" + parts[2] + (parts[3] || "") + (parts[4] || "+09:00"));
+    if (!Number.isFinite(date.getTime()) || date.getTime() > Date.now()) return null;
+    return date;
+  }
+
+  function activityRelativeTime(date) {
+    var seconds = Math.max(0, Math.floor((Date.now() - date.getTime()) / 1000));
+    var unit = seconds >= 86400 ? "day" : seconds >= 3600 ? "hour" : seconds >= 60 ? "minute" : "second";
+    var count = Math.floor(seconds / ({day:86400, hour:3600, minute:60, second:1}[unit]));
+    try {
+      return new Intl.RelativeTimeFormat(activeLanguage(), {numeric:"always"}).format(-count, unit);
+    } catch (error) {
+      return count + ({day:"일", hour:"시간", minute:"분", second:"초"}[unit]) + " 전";
+    }
+  }
+
+  // Update display ages locally; this timer never reads logs or renews a cache.
+  function updateActivityTimes() {
+    if (!refs || document.hidden) return;
+    refs.activityBody.querySelectorAll("time[datetime]").forEach(function update(node) {
+      var date = activityInstant(node.getAttribute("datetime"));
+      if (date) node.textContent = activityRelativeTime(date);
+    });
+  }
+
+  function cancelActivityTimeTimer() {
+    window.clearTimeout(activityTimeTimer);
+    activityTimeTimer = 0;
+  }
+
+  function scheduleActivityTimes() {
+    cancelActivityTimeTimer();
+    if (summaryRecoverySuspended || document.hidden || !refs || !refs.activityBody.querySelector("time")) return;
+    activityTimeTimer = window.setTimeout(function refreshActivityTimes() {
+      activityTimeTimer = 0;
+      updateActivityTimes();
+      scheduleActivityTimes();
+    }, 60000);
+  }
+
   function renderActivity(items, unavailable) {
+    cancelActivityTimeTimer();
     refs.activityBody.replaceChildren();
     var rows = items.slice(0, 5);
     latestActivity = rows;
@@ -804,9 +854,17 @@
         titleNode.setAttribute("data-webr-i18n", title);
       }
       row.appendChild(titleNode);
+      var date = activityInstant(item.published_at);
+      if (date) {
+        var timeNode = element("time", "webr-home-compact__activity-time", activityRelativeTime(date));
+        timeNode.dateTime = date.toISOString();
+        timeNode.lang = activeLanguage();
+        row.appendChild(timeNode);
+      }
       list.appendChild(row);
     });
     refs.activityBody.appendChild(list);
+    scheduleActivityTimes();
   }
 
   function renderSummary(payload) {
@@ -1019,17 +1077,23 @@
 
   document.addEventListener("visibilitychange", function updateSummaryRecoveryVisibility() {
     if (summaryRecoveryVisible()) {
+      updateActivityTimes();
+      scheduleActivityTimes();
       scheduleSummaryRecovery(0);
     } else {
+      cancelActivityTimeTimer();
       cancelSummaryRecoveryWork();
     }
   });
   window.addEventListener("pagehide", function suspendSummaryRecovery() {
     summaryRecoverySuspended = true;
+    cancelActivityTimeTimer();
     cancelSummaryRecoveryWork();
   });
   window.addEventListener("pageshow", function resumeSummaryRecovery() {
     summaryRecoverySuspended = false;
+    updateActivityTimes();
+    scheduleActivityTimes();
     scheduleSummaryRecovery(0);
   });
 
