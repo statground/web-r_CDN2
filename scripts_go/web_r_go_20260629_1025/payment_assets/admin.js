@@ -5,7 +5,14 @@
   const element = (tag, source) => source ? label(document.createElement(tag), source) : document.createElement(tag);
   const money = minor => (minor / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' USD';
   const kinds = { one_time: '단건 결제', subscription: '정기결제' };
-  const statusNames = { NEW: '신규', COMPLETED: '완료', CREATED: '생성', APPROVED: '승인', PENDING: '대기', REVIEW_REQUIRED: '확인 필요', REFUNDED: '환불', REVERSED: '취소', FAILED: '실패', DENIED: '거절', DECLINED: '거절' };
+  const statusNames = { NEW: '신규', COMPLETED: '완료', CREATED: '생성', APPROVED: '승인', PENDING: '대기', REVIEW_REQUIRED: '확인 필요', REFUNDED: '환불', PARTIALLY_REFUNDED: '부분 환불', REVERSED: '취소', 'PAYMENT.SALE.REFUNDED': '환불', 'PAYMENT.SALE.REVERSED': '취소', FAILED: '실패', DENIED: '거절', DECLINED: '거절' };
+  // Keep the stored handler status: one-time capture refunds are sticky
+  // REVIEW_REQUIRED, while recurring webhooks retain PAYMENT.SALE.*.
+  const storedRefund = row => ['REFUNDED', 'PARTIALLY_REFUNDED', 'REVERSED'].includes(row.status)
+    || (row.kind === 'subscription' && ['PAYMENT.SALE.REFUNDED', 'PAYMENT.SALE.REVERSED'].includes(row.status))
+    || (row.kind === 'one_time' && row.status === 'REVIEW_REQUIRED' && row.review_reason === 'refund_or_reversal');
+  const refundLabel = row => row.status === 'REVIEW_REQUIRED'
+    ? t('환불') + ' · ' + t('확인 필요') : t(statusNames[row.status] || row.status);
   let closed = false, retainedPanel = null, retainedFocus = null;
   const active = new Set();
   const reports = new Set();
@@ -147,7 +154,7 @@
         const section = element('section'); section.className = 'webr-paypal-admin-refunds';
         section.append(element('h3', '환불·취소 기록'), element('p', '아래 금액과 날짜는 원래 결제 기준입니다. 실제 환불일과 환불액은 확인할 수 없습니다.'));
         const refunds = table(['일자', '결제 방식', '주문 번호', '상품', 'USD', '결제 상태']);
-        report.refunds.forEach(row => cells(refunds.insertRow(), [new Intl.DateTimeFormat(undefined, {timeZone: 'Asia/Seoul', dateStyle: 'short'}).format(new Date(row.confirmed_at)) + ' · ' + t(row.time_basis === 'membership_applied' ? '권한 반영일' : '결제일'), t(kinds[row.kind]), row.id, row.product_name || row.product_id, money(row.amount_minor), t(statusNames[row.status] || row.status)]));
+        report.refunds.forEach(row => cells(refunds.insertRow(), [new Intl.DateTimeFormat(undefined, {timeZone: 'Asia/Seoul', dateStyle: 'short'}).format(new Date(row.confirmed_at)) + ' · ' + t(row.time_basis === 'membership_applied' ? '권한 반영일' : '결제일'), t(kinds[row.kind]), row.id, row.product_name || row.product_id, money(row.amount_minor), refundLabel(row)]));
         section.append(refunds); const count = element('p'); count.textContent = report.refunds.length + ' / ' + report.refund_total; section.append(count); content.append(section);
       }
       output.replaceChildren(content);
@@ -171,7 +178,7 @@
         const report = payload.data;
         if (!report?.period || ['from', 'to', 'environment'].some(key => report.period[key] !== query.get(key)) || report.period.page !== page || report.revenue !== (query.get('environment') === 'live') || !Array.isArray(report.totals) || !Array.isArray(report.products) || !Array.isArray(report.payments) || !Number.isSafeInteger(report.total) || report.total < 0 || typeof report.has_more !== 'boolean') throw Error();
         const paidDate = row => typeof row.confirmed_at === 'string' && Number.isFinite(Date.parse(row.confirmed_at));
-        if (report.payments.some(row => row.status !== 'COMPLETED' || row.review_required || !paidDate(row) || row.currency !== 'USD') || (report.refunds || []).some(row => !['REFUNDED', 'REVERSED'].includes(row.status) || !paidDate(row) || row.currency !== 'USD')) throw Error();
+        if (report.payments.some(row => row.status !== 'COMPLETED' || row.review_required || !paidDate(row) || row.currency !== 'USD') || (report.refunds || []).some(row => !storedRefund(row) || !paidDate(row) || row.currency !== 'USD')) throw Error();
         displayedPage = page; displayedScope = scope; lastReport = report;
         render(lastReport); label(state, 'PayPal 결제 내역을 확인했습니다.');
       } catch (error) {
