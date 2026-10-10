@@ -6,7 +6,7 @@
   const money = minor => (minor / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' USD';
   const kinds = { one_time: '단건 결제', subscription: '정기결제' };
   const statusNames = { NEW: '신규', COMPLETED: '완료', CREATED: '생성', APPROVED: '승인', PENDING: '대기', REVIEW_REQUIRED: '확인 필요', REFUNDED: '환불', REVERSED: '취소', FAILED: '실패', DENIED: '거절', DECLINED: '거절' };
-  let closed = false;
+  let closed = false, retainedPanel = null, retainedFocus = null;
   const active = new Set();
   const reports = new Set();
   const bootstrap = window.WEBR_ADMIN_SNAPSHOTS;
@@ -16,7 +16,7 @@
     closed = true;
     active.forEach(controller => controller.abort()); active.clear();
     reports.forEach(clear => clear()); reports.clear();
-    document.getElementById('paypal-admin-orders')?.remove();
+    document.getElementById('paypal-admin-orders')?.remove(); retainedPanel = retainedFocus = null;
     if (window.WebRAdminSnapshots?.stop) window.WebRAdminSnapshots.stop();
     else document.getElementById('div_main')?.replaceChildren();
   }
@@ -29,21 +29,36 @@
     document.querySelectorAll('#paypal-admin-orders [data-payment-label]').forEach(node => { node.textContent = t(node.dataset.paymentLabel); });
   });
   window.addEventListener('pagehide', retire, { once: true });
+  document.addEventListener('focusin', event => {
+    retainedFocus = retainedPanel?.contains(event.target) ? event.target : null;
+  });
   window.addEventListener('pageshow', event => {
     if (event.persisted && !window.WebRAdminSnapshots) window.location.reload();
   });
 
   function mount() {
     const main = document.getElementById('div_main');
-    if (!authorized() || !main || document.getElementById('paypal-admin-orders')) return;
+    if (!authorized() || !main) return;
+    const contentRoot = main.querySelector('.webr-admin-firstview-content, .webr-admin-content, [data-admin-read-frame] > main') || main.querySelector(':scope > div > div:nth-child(2)');
+    if (!contentRoot) return;
+    // Mount directly inside the shared content column, including the first SSR
+    // frame. Reuse this owner-scoped controller after a CSR frame replacement;
+    // drafts, accepted page and in-flight reads must not restart on repaint.
+    if (retainedPanel) {
+      if (retainedPanel.parentElement !== contentRoot) {
+        contentRoot.append(retainedPanel);
+        retainedFocus?.focus({preventScroll: true});
+      }
+      return;
+    }
     const panel = element('section');
     panel.id = 'paypal-admin-orders'; panel.dataset.webrUi = '';
-    panel.style.cssText = 'margin:28px 0;padding:20px;border:1px solid #dbeafe;border-radius:12px;background:#fff;max-width:100%;';
+    panel.className = 'webr-paypal-admin'; retainedPanel = panel;
     const heading = element('h2'); heading.textContent = 'PayPal · USD';
     const note = element('p', 'PayPal 단건 결제와 정기결제는 USD로 별도 집계합니다.');
-    const dateNote = element('p', '단건은 회원 권한 반영일, 정기결제는 결제일 기준입니다. 완료일이 없는 내역은 생성일로 표시합니다.');
-    dateNote.style.cssText = 'color:#64748b;font-size:13px;';
-    const form = element('form'); form.style.cssText = 'display:flex;flex-wrap:wrap;align-items:end;gap:12px;margin:16px 0;';
+    const dateNote = element('p', '완료 상태와 완료일이 확인된 결제만 집계합니다.');
+    dateNote.className = 'webr-paypal-admin-note';
+    const form = element('form'); form.className = 'webr-paypal-admin-filter';
     const from = element('input'), to = element('input'), environment = element('select');
     from.type = to.type = 'date'; from.required = to.required = true;
     const dateParts = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Seoul', year: 'numeric', month: '2-digit' }).formatToParts(new Date());
@@ -54,14 +69,13 @@
     to.value = year + '-' + String(month).padStart(2, '0') + '-' + new Date(year, month, 0).getDate();
     [['live', '실제 결제'], ['sandbox', '테스트 결제']].forEach(([value, name]) => { const option = element('option', name); option.value = value; environment.append(option); });
     for (const [name, input] of [['시작일', from], ['종료일', to], ['환경', environment]]) {
-      const wrapper = element('label'); wrapper.style.cssText = 'display:grid;gap:6px;'; wrapper.append(element('span', name), input); form.append(wrapper);
-      input.style.cssText = 'padding:9px;border:1px solid #cbd5e1;border-radius:8px;background:#fff;';
+      const wrapper = element('label'); wrapper.append(element('span', name), input); form.append(wrapper);
     }
     const submit = element('button', '조회'); submit.type = 'submit';
-    submit.style.cssText = 'padding:10px 18px;border:0;border-radius:8px;background:#2563eb;color:white;'; form.append(submit);
+    form.append(submit);
     const state = element('p'); state.setAttribute('role', 'status'); state.setAttribute('aria-live', 'polite');
     const output = element('div'); output.style.overflowX = 'auto';
-    panel.append(heading, note, dateNote, form, state, output); main.append(panel);
+    panel.append(heading, note, dateNote, form, state, output); contentRoot.append(panel);
     let sequence = 0, displayedPage = 1, controller, lastReport = null, displayedScope = '';
     reports.add(() => { lastReport = null; displayedScope = ''; output.replaceChildren(); });
     window.addEventListener('webr:language-change', () => {
@@ -82,23 +96,41 @@
       const content = element('div');
       const period = element('p'); period.textContent = report.period.from + ' – ' + report.period.to + ' · ' + t(report.revenue ? '실제 결제' : '테스트 결제'); content.append(period);
       if (!report.revenue) content.append(element('p', '테스트 결제입니다. 실제 매출과 정산액에 포함되지 않습니다.'));
-      const totals = table(['결제 방식', '완료 금액', '완료 건수', '권한 반영', '권한 확인 필요', '결제 확인 필요']);
-      report.totals.forEach(row => cells(totals.insertRow(), [t(kinds[row.kind] || row.kind), money(row.completed_amount_minor), row.completed_count, row.membership_applied_count, row.membership_pending_count, row.review_count]));
+      const totals = element('div'); totals.className = 'webr-paypal-admin-totals';
+      report.totals.forEach(row => {
+        const card = element('section'); card.className = 'webr-paypal-admin-total';
+        card.append(element('h3', kinds[row.kind] || row.kind));
+        const amount = element('p'); amount.className = 'webr-paypal-admin-amount'; amount.textContent = money(row.completed_amount_minor);
+        const metrics = element('dl');
+        for (const [name, value] of [['완료 건수', row.completed_count], ['권한 반영', row.membership_applied_count], ['권한 확인 필요', row.membership_pending_count]]) {
+          const metric = element('div'), val = element('dd'); val.textContent = value.toLocaleString(); metric.append(element('dt', name), val); metrics.append(metric);
+        }
+        card.append(amount, metrics); totals.append(card);
+      });
       content.append(totals, element('p', 'PayPal 수수료와 실제 입금액은 아직 확인할 수 없습니다. 원화 정산의 수수료율을 적용하지 않습니다.'));
-      const uncertain = report.totals.reduce((count, row) => count + row.unconfirmed_date_count, 0);
-      if (uncertain) { const p = element('p', '완료일을 확인할 수 없는 내역이 있습니다.'); p.append(document.createTextNode(' (' + uncertain + ')')); content.append(p); }
+      const uncertain = report.totals.reduce((count, row) => count + (row.other_count || 0), 0);
+      if (uncertain) {
+        const diagnostic = element('details'); diagnostic.className = 'webr-paypal-admin-diagnostic';
+        const summary = element('summary', '결제 확인 필요'); summary.append(document.createTextNode(' (' + uncertain + ')')); diagnostic.append(summary);
+        report.totals.forEach(row => {
+          const p = element('p'); p.textContent = t(kinds[row.kind]) + ': ' + (row.other_count || 0).toLocaleString();
+          if (row.unconfirmed_date_count) p.append(document.createTextNode(' · ' + t('완료일을 확인할 수 없는 내역이 있습니다.') + ' (' + row.unconfirmed_date_count + ')'));
+          if (row.refund_review_count) p.append(document.createTextNode(' · ' + t('환불') + ' / ' + t('확인 필요') + ' (' + row.refund_review_count + ')'));
+          diagnostic.append(p);
+        }); content.append(diagnostic);
+      }
       if (report.products.length) {
         content.append(element('h3', '상품별 완료 결제'));
         const products = table(['결제 방식', '상품', '완료 금액', '건수']);
         report.products.forEach(row => cells(products.insertRow(), [t(kinds[row.kind]), row.product_name || row.product_id, money(row.amount_minor), row.count])); content.append(products);
       }
       content.append(element('h3', '결제 내역'));
-      if (!report.payments.length) content.append(element('p', '선택한 기간에 기록된 PayPal 결제가 없습니다.'));
+      if (!report.payments.length) content.append(element('p', '선택한 기간에 완료된 PayPal 결제가 없습니다.'));
       else {
         const payments = table(['일자', '결제 방식', '주문 번호', '계정', '상품', 'USD', '결제 상태', '회원 권한 반영']);
         report.payments.forEach(row => {
-          const date = new Intl.DateTimeFormat(undefined, { timeZone: 'Asia/Seoul', dateStyle: 'short', timeStyle: 'short' }).format(new Date(row.confirmed_at || row.created_at));
-          const basis = row.confirmed_at ? t(row.time_basis === 'membership_applied' ? '권한 반영일' : '결제일') : t('생성일');
+          const date = new Intl.DateTimeFormat(undefined, { timeZone: 'Asia/Seoul', dateStyle: 'short', timeStyle: 'short' }).format(new Date(row.confirmed_at));
+          const basis = t(row.time_basis === 'membership_applied' ? '권한 반영일' : '결제일');
           let grant = row.grant_status === 'applied' && row.granted ? t('반영됨') + (row.grant_role ? ' · ' + row.grant_role : '') : row.grant_status === 'canceled' ? t('취소됨') : t('미반영');
           if (row.review_required) grant += ' · ' + t('확인 필요');
           cells(payments.insertRow(), [date + ' · ' + basis, t(kinds[row.kind]) + (row.interval ? ' · ' + t(row.interval === 'month' ? '월간' : '연간') : ''), row.id, row.owner_id || t('확인 필요'), row.product_name || row.product_id, money(row.amount_minor), t(statusNames[row.status] || row.status), grant]);
@@ -109,8 +141,16 @@
       const renderedPage = displayedPage;
       previous.disabled = renderedPage <= 1; next.disabled = !report.has_more;
       previous.addEventListener('click', () => load(renderedPage - 1)); next.addEventListener('click', () => load(renderedPage + 1));
-      const count = element('span'); count.textContent = report.total.toLocaleString() + ' / ' + renderedPage;
-      navigation.append(previous, count, next); content.append(navigation); output.replaceChildren(content);
+      const count = element('span'); count.dataset.paypalPage = '';  count.textContent = report.total.toLocaleString() + ' / ' + renderedPage;
+      navigation.append(previous, count, next); content.append(navigation);
+      if (report.refunds?.length) {
+        const section = element('section'); section.className = 'webr-paypal-admin-refunds';
+        section.append(element('h3', '환불·취소 기록'), element('p', '아래 금액과 날짜는 원래 결제 기준입니다. 실제 환불일과 환불액은 확인할 수 없습니다.'));
+        const refunds = table(['일자', '결제 방식', '주문 번호', '상품', 'USD', '결제 상태']);
+        report.refunds.forEach(row => cells(refunds.insertRow(), [new Intl.DateTimeFormat(undefined, {timeZone: 'Asia/Seoul', dateStyle: 'short'}).format(new Date(row.confirmed_at)) + ' · ' + t(row.time_basis === 'membership_applied' ? '권한 반영일' : '결제일'), t(kinds[row.kind]), row.id, row.product_name || row.product_id, money(row.amount_minor), t(statusNames[row.status] || row.status)]));
+        section.append(refunds); const count = element('p'); count.textContent = report.refunds.length + ' / ' + report.refund_total; section.append(count); content.append(section);
+      }
+      output.replaceChildren(content);
     }
     async function load(page) {
       if (!authorized() || !panel.isConnected) return;
@@ -130,6 +170,8 @@
         if (!authorized() || ownSequence !== sequence || ownController.signal.aborted || !panel.isConnected) return;
         const report = payload.data;
         if (!report?.period || ['from', 'to', 'environment'].some(key => report.period[key] !== query.get(key)) || report.period.page !== page || report.revenue !== (query.get('environment') === 'live') || !Array.isArray(report.totals) || !Array.isArray(report.products) || !Array.isArray(report.payments) || !Number.isSafeInteger(report.total) || report.total < 0 || typeof report.has_more !== 'boolean') throw Error();
+        const paidDate = row => typeof row.confirmed_at === 'string' && Number.isFinite(Date.parse(row.confirmed_at));
+        if (report.payments.some(row => row.status !== 'COMPLETED' || row.review_required || !paidDate(row) || row.currency !== 'USD') || (report.refunds || []).some(row => !['REFUNDED', 'REVERSED'].includes(row.status) || !paidDate(row) || row.currency !== 'USD')) throw Error();
         displayedPage = page; displayedScope = scope; lastReport = report;
         render(lastReport); label(state, 'PayPal 결제 내역을 확인했습니다.');
       } catch (error) {

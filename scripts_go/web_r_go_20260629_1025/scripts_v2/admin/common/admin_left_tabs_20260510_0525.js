@@ -184,8 +184,10 @@
 
   function installNativeMenu() {
     if (!window.React || !window.React.createElement) return false;
-    window.WebRAdminOperationMenu = AdminOperationMenu;
-    window.Div_operation_menu = AdminOperationMenu;
+    // App-derived pending and complete frames share the server menu contract.
+    const Menu = window.WebRAdminReadNavigation || AdminOperationMenu;
+    window.WebRAdminOperationMenu = Menu;
+    window.Div_operation_menu = Menu;
     return true;
   }
 
