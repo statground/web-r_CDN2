@@ -642,16 +642,19 @@
 }
 
 .webr-home-compact__activity-item {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) max-content;
+  align-items: start;
+  gap: 0.75rem;
   min-height: 62px;
-  flex-direction: column;
-  justify-content: center;
   border-radius: 0.68rem;
   background: rgba(255, 255, 255, 0.06);
   padding: 0.65rem;
 }
 
 .webr-home-compact__activity-title {
+  min-width: 0;
+  overflow-wrap: anywhere;
   color: #fff;
   font-size: 0.78rem;
   line-height: 1.4;
@@ -662,6 +665,12 @@
   margin-top: 0.18rem;
   color: #cbd5e1;
   font-size: 0.68rem;
+}
+
+.webr-home-compact__activity-time {
+  margin-top: 0;
+  text-align: end;
+  white-space: nowrap;
 }
 
 .webr-home-compact__pending-card {
