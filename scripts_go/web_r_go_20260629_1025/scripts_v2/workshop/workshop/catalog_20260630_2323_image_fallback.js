@@ -74,6 +74,59 @@ const WorkshopCatalogPage = (() => {
     listPageSize: workshopPageSize()
   };
   let resizePaginationBound = false;
+  // Same 45s content deadline as the native catalog loader, including body read.
+  const listBudget = 45000;
+  const listRoot = document.getElementById("div_main");
+  const listAddress = location.pathname + location.search;
+  let listEpoch = 0, listController = null, listStopped = false;
+  function ownsList(attempt) {
+    return !listStopped && attempt === listEpoch && listRoot && listRoot.isConnected &&
+      document.getElementById("div_main") === listRoot && location.pathname + location.search === listAddress;
+  }
+  async function loadListData(attempt) {
+    const controller = new AbortController();
+    listController = controller;
+    let timer, cancel;
+    const cancelled = new Promise((_, reject) => {
+      cancel = () => reject(new Error("workshop list cancelled"));
+      controller.signal.addEventListener("abort", cancel, { once: true });
+    });
+    const operation = (async () => {
+      const response = await fetch("/workshop/ajax_list/", { method: "POST", signal: controller.signal });
+      if (!ownsList(attempt) || controller.signal.aborted) throw new Error("workshop list cancelled");
+      if (!response.ok) throw new Error("workshop list unavailable");
+      const data = await response.json();
+      if (!ownsList(attempt) || controller.signal.aborted) throw new Error("workshop list cancelled");
+      return data;
+    })();
+    const deadline = new Promise((_, reject) => {
+      timer = window.setTimeout(() => { controller.abort(); reject(new Error("workshop list timeout")); }, listBudget);
+    });
+    try { return await Promise.race([operation, deadline, cancelled]); }
+    finally {
+      window.clearTimeout(timer);
+      controller.signal.removeEventListener("abort", cancel);
+      if (attempt === listEpoch) listController = null;
+    }
+  }
+  let listOwnerObserver = null;
+  function stopList() {
+    listStopped = true; ++listEpoch;
+    if (listController) listController.abort();
+    listController = null;
+    if (listOwnerObserver) listOwnerObserver.disconnect();
+  }
+  if (state.mode === "list") {
+    window.addEventListener("pagehide", stopList);
+    window.addEventListener("popstate", () => { if (location.pathname + location.search !== listAddress) stopList(); });
+    window.addEventListener("pageshow", event => { if (event.persisted) location.reload(); });
+    if (listRoot && listRoot.parentNode) {
+      listOwnerObserver = new MutationObserver(() => {
+        if (!listRoot.isConnected || document.getElementById("div_main") !== listRoot) stopList();
+      });
+      listOwnerObserver.observe(listRoot.parentNode, { childList: true, subtree: true });
+    }
+  }
   const h = React.createElement;
   const money = (value) => (Number(value) || 0).toLocaleString("ko-KR");
   function currentCDN2Base() {
@@ -205,18 +258,20 @@ const WorkshopCatalogPage = (() => {
   }
   async function load() {
     setupResponsivePagination();
-    if (state.mode === "list" && state.listLoading)
+    if (state.mode === "list" && (state.listLoading || listStopped))
       return;
+    const listAttempt = state.mode === "list" ? ++listEpoch : 0;
     setState({ loading: state.mode !== "list" || (!state.listReady && !state.error), listLoading: state.mode === "list", error: "", listNotice: "" });
     if (state.mode === "read" && state.readTarget) {
       await loadRead();
       return;
     }
     try {
-      const response = await fetch("/workshop/ajax_list/", { method: "POST" });
-      if (!response.ok)
-        throw new Error("workshop list unavailable");
-      const data = await response.json();
+      const data = listAttempt ? await loadListData(listAttempt) : await fetch("/workshop/ajax_list/", { method: "POST" }).then(response => {
+        if (!response.ok) throw new Error("workshop list unavailable");
+        return response.json();
+      });
+      if (listAttempt && !ownsList(listAttempt)) return;
       if (!data || data.ok !== true || !Array.isArray(data.workshops)) {
         if (state.mode !== "list") {
           setState({ loading: false, error: data && data.error || "워크샵 목록을 불러올 수 없습니다.", workshops: [], isAdmin: !!(data && data.is_admin) });
@@ -258,6 +313,7 @@ const WorkshopCatalogPage = (() => {
         loadBoard(selectedForBoard);
       }
     } catch (error) {
+      if (listAttempt && !ownsList(listAttempt)) return;
       if (state.mode === "list")
         setState({ loading: false, listLoading: false, error: "워크샵 목록을 잠시 불러오지 못했습니다." });
       else
@@ -807,17 +863,24 @@ const WorkshopCatalogPage = (() => {
     const endIndex = Math.min(items.length, startIndex + pageItems.length);
     const countReady = state.listReady && state.listComplete && !state.error && !state.listLoading;
     return h("div", { className: "w-full" }, h(PageHeader, null),
-      h("section", { className: "mx-auto flex w-full max-w-screen-xl flex-col items-start gap-4 px-6 pt-8 md:flex-row md:items-center md:justify-between" },
+      h("section", { className: "mx-auto flex min-h-[84px] w-full max-w-screen-xl flex-col items-start gap-4 px-6 pt-8 md:flex-row md:items-center md:justify-between", style: { minHeight: "84px" } },
         h("div", null, countReady && h("p", { className: "text-xl font-normal text-gray-900", "data-workshop-count": "complete" }, items.length, "개의 워크샵이 검색되었습니다."),
           countReady && pageCount > 1 && h("p", { className: "mt-1 text-sm text-gray-500" }, currentPage, " / ", pageCount, " 페이지")), h(AdminToolbar, null)),
       h(SearchFilters, null), h("section", { className: "mx-auto w-full max-w-screen-xl px-6 py-8" },
         state.listNotice && h("p", { role: "status", "data-workshop-list-status": "partial", className: "mb-5 border-l-4 border-blue-500 bg-blue-50 px-4 py-3 text-sm leading-6 text-blue-800" }, state.listNotice),
-        state.listLoading && h("p", { role: "status", className: "mb-5 text-sm text-gray-500" }, "워크샵 목록을 다시 확인하고 있습니다."),
+        state.listLoading && h("p", { role: "status", className: "webr-catalog-assistive-status" }, "워크샵 목록을 불러오고 있습니다."),
         state.error && h("div", { role: "alert", className: "mb-5 border-y border-red-100 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700" },
           h("p", null, state.error), h("button", { type: "button", className: buttonClass("ghost") + " mt-3", disabled: state.listLoading, onClick: load }, "다시 시도")),
-        items.length === 0 ? countReady && h("div", { "data-workshop-empty": "complete", className: "border-y border-gray-200 py-12 text-center text-gray-500" }, "등록된 워크샵이 없습니다.") :
+        items.length === 0 ? state.listLoading ? h(WorkshopLoadingCards, null) : countReady && h("div", { "data-workshop-empty": "complete", className: "border-y border-gray-200 py-12 text-center text-gray-500" }, "등록된 워크샵이 없습니다.") :
           h(React.Fragment, null, h("div", { className: "grid grid-cols-1 gap-x-6 gap-y-8 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4" }, pageItems.map((item) => h(WorkshopCard, { key: item.uuid, item }))),
             h(WorkshopPagination, { page: currentPage, pageCount, startIndex, endIndex, total: items.length, showCount: countReady }))));
+  }
+  function WorkshopLoadingCards() {
+    return h("div", { className: "webr-catalog-placeholders webr-workshop-placeholders", "aria-hidden": "true", "data-workshop-catalog-progress": "" },
+      Array.from({length: Math.min(4, workshopPageSize())}, (_, index) => h("div", { key: index, className: "webr-catalog-placeholder-card" },
+        h("div", { className: "webr-catalog-placeholder-cover" }),
+        h("div", { className: "webr-catalog-placeholder-copy" }, h("i"), h("i"), h("i"),
+          h("div", { className: "webr-catalog-placeholder-meta" }, h("i"), h("i")), h("div", { className: "webr-catalog-placeholder-action" })))));
   }
   function FormPage() {
     const missingEditTarget = state.mode === "edit" && !state.editTarget;
@@ -825,6 +888,10 @@ const WorkshopCatalogPage = (() => {
     return /* @__PURE__ */ React.createElement("div", { className: "w-full" }, /* @__PURE__ */ React.createElement(PageHeader, null), missingEditTarget || failedEditTarget ? /* @__PURE__ */ React.createElement(EditChooser, null) : /* @__PURE__ */ React.createElement(WorkshopForm, null));
   }
   function Main() {
+    // The real filters are usable as soon as the renderer arrives. Data remains
+    // pending inside its own card grid, without replacing the catalog layout.
+    if (state.mode === "list")
+      return h(ListPage, null);
     if (state.loading) {
       return /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(PageHeader, null), /* @__PURE__ */ React.createElement("div", { className: "mx-auto flex w-full max-w-screen-lg justify-center px-6 py-16 text-gray-500" }, "\uBD88\uB7EC\uC624\uB294 \uC911\uC785\uB2C8\uB2E4."));
     }
