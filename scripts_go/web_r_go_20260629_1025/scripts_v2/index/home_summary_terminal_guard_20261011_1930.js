@@ -1,0 +1,462 @@
+(function installWebRHomeSummaryTerminalGuard202610111930(window, document) {
+  "use strict";
+
+  if (window.__webrHomeSummaryTerminalGuard202610111930Installed) {
+    return;
+  }
+  window.__webrHomeSummaryTerminalGuard202610111930Installed = true;
+
+  var summaryEndpointPath = "/homepage/content-summary/";
+  var summaryCacheKey = "webr.home.public-summary.v1";
+  var summaryCacheSchema = 1;
+  var summaryCacheTTL = 6 * 60 * 60 * 1000;
+  var summaryCacheMaxBytes = 96 * 1024;
+  var summarySectionKeys = [
+    "rcommunity",
+    "community",
+    "books",
+    "packages",
+    "ecosystem",
+    "workshops",
+    "notices",
+    "lectures",
+    "youtube",
+    "activity"
+  ];
+  var summaryItemKeys = ["kind", "title", "summary", "published_at", "href", "image"];
+  var noticeVisibleCharacterLimit = 28;
+  var noticeObserver = null;
+  var cachedSummary = readCachedSummary();
+  var servedCachedSummary = false;
+  var completeLiveSummarySeen = false;
+  var originalFetch = null;
+  var wrappedFetch = null;
+
+  function cleanBoundedText(value, limit) {
+    var text = typeof value === "string" ? value.replace(/\s+/g, " ").trim() : "";
+    return text.slice(0, limit);
+  }
+
+  function normalizeSummaryItem(item) {
+    if (!item || typeof item !== "object") {
+      return null;
+    }
+    var title = cleanBoundedText(item.title, 200);
+    if (!title) {
+      return null;
+    }
+    var normalized = { title: title, is_new: item.is_new === true };
+    summaryItemKeys.forEach(function copyAllowedItemField(key) {
+      if (key === "title") {
+        return;
+      }
+      var limit = key === "summary" ? 1000 : 2048;
+      var value = cleanBoundedText(item[key], limit);
+      if (value) {
+        normalized[key] = value;
+      }
+    });
+    return normalized;
+  }
+
+  function normalizeUsableStatistics(statistics) {
+    if (!statistics || typeof statistics !== "object") {
+      return null;
+    }
+    var member = Number(statistics.cnt_member);
+    var visitor = Number(statistics.cnt_visitor);
+    var pageview = Number(statistics.cnt_pageview);
+    var trafficStatus = cleanBoundedText(statistics.traffic_status, 32).toLowerCase();
+    if (
+      !Number.isFinite(member) ||
+      !Number.isFinite(visitor) ||
+      !Number.isFinite(pageview) ||
+      member <= 0
+    ) {
+      return null;
+    }
+
+    var normalized = {
+      cnt_member: Math.floor(member),
+      cnt_visitor: Math.floor(visitor),
+      cnt_pageview: Math.floor(pageview)
+    };
+
+    if (!trafficStatus || trafficStatus === "available") {
+      if (visitor < 0 || pageview < 0) {
+        return null;
+      }
+      if (trafficStatus) {
+        normalized.traffic_status = trafficStatus;
+      }
+    } else if (trafficStatus === "stale" || trafficStatus === "unavailable") {
+      var hasLastKnownVisitor =
+        statistics.last_known_visitor !== undefined &&
+        statistics.last_known_visitor !== null &&
+        statistics.last_known_visitor !== "";
+      var hasLastKnownPageview =
+        statistics.last_known_pageview !== undefined &&
+        statistics.last_known_pageview !== null &&
+        statistics.last_known_pageview !== "";
+      var lastKnownVisitor = Number(statistics.last_known_visitor);
+      var lastKnownPageview = Number(statistics.last_known_pageview);
+      if (
+        visitor !== -1 ||
+        pageview !== -1 ||
+        !hasLastKnownVisitor ||
+        !hasLastKnownPageview ||
+        !Number.isFinite(lastKnownVisitor) ||
+        !Number.isFinite(lastKnownPageview) ||
+        lastKnownVisitor < 0 ||
+        lastKnownPageview < 0
+      ) {
+        return null;
+      }
+      normalized.traffic_status = trafficStatus;
+      normalized.last_known_visitor = Math.floor(lastKnownVisitor);
+      normalized.last_known_pageview = Math.floor(lastKnownPageview);
+    } else {
+      return null;
+    }
+
+    ["last_successful_at", "traffic_date", "traffic_generation"].forEach(
+      function copyTrafficMetadata(key) {
+        var value = cleanBoundedText(statistics[key], 160);
+        if (value) {
+          normalized[key] = value;
+        }
+      }
+    );
+    return normalized;
+  }
+
+  function normalizeSectionMetadata(keys) {
+    if (keys === undefined) { return []; }
+    if (!Array.isArray(keys) || keys.length > summarySectionKeys.length + 1) { return null; }
+    var seen = Object.create(null);
+    for (var index = 0; index < keys.length; index += 1) {
+      var key = keys[index];
+      if ((summarySectionKeys.indexOf(key) < 0 && key !== "statistics") || seen[key]) { return null; }
+      seen[key] = true;
+    }
+    return keys.slice();
+  }
+
+  function normalizeSummary(payload, requireComplete) {
+    var statistics = payload && normalizeUsableStatistics(payload.statistics);
+    if (
+      !payload ||
+      payload.ok !== true ||
+      !payload.sections ||
+      typeof payload.sections !== "object" ||
+      !payload.statistics ||
+      typeof payload.statistics !== "object" ||
+      (requireComplete && (payload.complete !== true || !statistics))
+    ) {
+      return null;
+    }
+    var unavailable = normalizeSectionMetadata(payload.unavailable_sections);
+    var stale = normalizeSectionMetadata(payload.stale_sections);
+    var revision = cleanBoundedText(payload.book_visibility_revision, 256);
+    if (!unavailable || !stale || stale.some(function invalidStale(key) {
+      return key === "books" || unavailable.indexOf(key) < 0;
+    })) { return null; }
+    var sectionStates = {};
+    if (payload.section_states !== undefined) {
+      if (!payload.section_states || typeof payload.section_states !== "object" || Array.isArray(payload.section_states)) return null;
+      var stateKeys = Object.keys(payload.section_states);
+      if (stateKeys.length > summarySectionKeys.length) return null;
+      for (var stateIndex = 0; stateIndex < stateKeys.length; stateIndex += 1) {
+        var stateKey = stateKeys[stateIndex];
+        if (summarySectionKeys.indexOf(stateKey) < 0 || payload.section_states[stateKey] !== "closed" ||
+            unavailable.indexOf(stateKey) < 0 || stale.indexOf(stateKey) >= 0 ||
+            !Array.isArray(payload.sections[stateKey]) || payload.sections[stateKey].length !== 0) return null;
+        sectionStates[stateKey] = "closed";
+      }
+    }
+    var normalized = {
+      section_states: sectionStates,
+      unavailable_sections: unavailable,
+      stale_sections: stale,
+      book_visibility_revision: revision,
+      ok: true,
+      complete: payload.complete === true && !!statistics,
+      statistics: statistics || {
+        cnt_member: -1,
+        cnt_visitor: -1,
+        cnt_pageview: -1
+      },
+      sections: {}
+    };
+    for (var sectionIndex = 0; sectionIndex < summarySectionKeys.length; sectionIndex += 1) {
+      var sectionKey = summarySectionKeys[sectionIndex];
+      if (!Array.isArray(payload.sections[sectionKey])) {
+        return null;
+      }
+      normalized.sections[sectionKey] = payload.sections[sectionKey]
+        .slice(0, 6)
+        .filter(function validVideoMetadata(item) {
+          if (sectionKey !== "youtube") { return true; }
+          var title = cleanBoundedText(item && item.title, 200);
+          var availability = cleanBoundedText(item && (item.availability || item.status), 32).toLowerCase();
+          return !!item && !/^youtube video\s+#?[a-z0-9_-]{11}$/i.test(title) &&
+            !/^(private|deleted|unavailable) video$/i.test(title) &&
+            item.active !== false && item.active !== 0 && item.active !== "0" &&
+            ["inactive", "private", "deleted", "unavailable"].indexOf(availability) < 0;
+        })
+        .map(normalizeSummaryItem)
+        .filter(Boolean);
+    }
+    // A cached row is not a visibility check. Legacy responses and explicit
+    // unavailable books cannot repopulate this lane through browser storage.
+    if (!revision || unavailable.indexOf("books") >= 0) {
+      normalized.sections.books = [];
+      if (unavailable.indexOf("books") < 0) { unavailable.push("books"); }
+    }
+    if (unavailable.length) { normalized.complete = false; }
+    if (requireComplete && !normalized.complete) { return null; }
+    return normalized;
+  }
+
+  function readCachedSummary() {
+    try {
+      var raw = window.localStorage.getItem(summaryCacheKey);
+      if (!raw || raw.length > summaryCacheMaxBytes) {
+        return null;
+      }
+      var entry = JSON.parse(raw);
+      var now = Date.now();
+      if (
+        !entry ||
+        entry.schema !== summaryCacheSchema ||
+        !Number.isFinite(entry.stored_at) ||
+        entry.stored_at > now + 5 * 60 * 1000 ||
+        now - entry.stored_at > summaryCacheTTL
+      ) {
+        window.localStorage.removeItem(summaryCacheKey);
+        return null;
+      }
+      var normalized = normalizeSummary(entry.payload, true);
+      if (!normalized) {
+        window.localStorage.removeItem(summaryCacheKey);
+        return null;
+      }
+      // Video visibility can change after a saved summary. Only a current
+      // server read may authorize the YouTube lane; retain other sections.
+      normalized.sections.youtube = [];
+      return normalized;
+    } catch (error) {
+      return null;
+    }
+  }
+
+  function writeCachedSummary(payload) {
+    var normalized = normalizeSummary(payload, true);
+    if (!normalized) {
+      return;
+    }
+    normalized.sections.youtube = [];
+    try {
+      var raw = JSON.stringify({
+        schema: summaryCacheSchema,
+        stored_at: Date.now(),
+        payload: normalized
+      });
+      if (raw.length <= summaryCacheMaxBytes) {
+        window.localStorage.setItem(summaryCacheKey, raw);
+        cachedSummary = normalized;
+      }
+    } catch (error) {
+      // Storage is an optional continuity aid. A blocked or full store must not
+      // stop the public homepage.
+    }
+  }
+
+  function mergeWithCachedSummary(livePayload) {
+    var liveStatistics = normalizeUsableStatistics(livePayload && livePayload.statistics);
+    var live = normalizeSummary(livePayload, false);
+    if (!live || !cachedSummary || live.complete === true) {
+      return live;
+    }
+    // The server owns per-lane provenance in the current contract.
+    if (Array.isArray(livePayload.unavailable_sections)) { return live; }
+    summarySectionKeys.forEach(function retainLastGoodSection(key) {
+      if (key === "books" || key === "youtube" || live.unavailable_sections.indexOf(key) >= 0) { return; }
+      if ((key === "lectures" || key === "youtube") &&
+          (live.sections.lectures.length || live.sections.youtube.length)) { return; }
+      if (!live.sections[key].length && cachedSummary.sections[key].length) {
+        live.sections[key] = cachedSummary.sections[key];
+      }
+    });
+    if (!liveStatistics && live.unavailable_sections.indexOf("statistics") < 0) {
+      live.statistics = cachedSummary.statistics;
+    }
+    return live;
+  }
+
+  function isSummaryRequest(input, init) {
+    try {
+      var requestURL = new URL(
+        input && typeof input === "object" && input.url ? input.url : String(input),
+        window.location.origin
+      );
+      var method = cleanBoundedText(
+        init && init.method
+          ? init.method
+          : input && typeof input === "object" && input.method
+            ? input.method
+            : "GET",
+        16
+      ).toUpperCase();
+      return (
+        requestURL.origin === window.location.origin &&
+        requestURL.pathname === summaryEndpointPath &&
+        method === "GET"
+      );
+    } catch (error) {
+      return false;
+    }
+  }
+
+  function cachedSummaryResponse() {
+    var preview = normalizeSummary(cachedSummary, true);
+    preview.complete = false;
+    preview.sections.books = [];
+    preview.sections.youtube = [];
+    preview.book_visibility_revision = "";
+    preview.unavailable_sections.push("books");
+    servedCachedSummary = true;
+    return {
+      ok: true,
+      status: 200,
+      json: function cachedSummaryJSON() {
+        return Promise.resolve(preview).then(function markCachedSummaryVisible(payload) {
+          window.setTimeout(markCachedPresentation, 0);
+          return payload;
+        });
+      }
+    };
+  }
+
+  function wrappedSummaryResponse(response) {
+    return {
+      ok: response.ok,
+      status: response.status,
+      statusText: response.statusText,
+      headers: response.headers,
+      json: function normalizedSummaryJSON() {
+        return response.json().then(function inspectPublicSummary(payload) {
+          var normalized = mergeWithCachedSummary(payload);
+          if (!normalized) {
+            return {ok: false, complete: false};
+          }
+          if (normalized.complete === true) {
+            completeLiveSummarySeen = true;
+            writeCachedSummary(normalized);
+          }
+          return normalized;
+        });
+      }
+    };
+  }
+
+  function installSummaryFetchCache() {
+    if (wrappedFetch || typeof window.fetch !== "function") {
+      return;
+    }
+    originalFetch = window.fetch.bind(window);
+    wrappedFetch = function fetchWithPublicSummaryCache(input, init) {
+      if (!isSummaryRequest(input, init)) {
+        return originalFetch(input, init);
+      }
+      if (cachedSummary && !servedCachedSummary) {
+        return Promise.resolve(cachedSummaryResponse());
+      }
+      return originalFetch(input, init).then(wrappedSummaryResponse);
+    };
+    window.fetch = wrappedFetch;
+  }
+
+  function restoreOriginalFetch() {
+    if (originalFetch && window.fetch === wrappedFetch) {
+      window.fetch = originalFetch;
+    }
+  }
+
+  function ensureNoticeTitleEllipsis(portal) {
+    portal.querySelectorAll(".webr-home-compact__notice-title").forEach(function boundTitle(node) {
+      var fullTitle = cleanBoundedText(
+        node.dataset.fullTitle || node.title || node.textContent,
+        200
+      );
+      if (!fullTitle) {
+        return;
+      }
+      node.dataset.fullTitle = fullTitle;
+      node.title = fullTitle;
+      var visibleTitle = fullTitle.length > noticeVisibleCharacterLimit
+        ? fullTitle.slice(0, noticeVisibleCharacterLimit - 1).trimEnd() + "…"
+        : fullTitle;
+      if (node.textContent !== visibleTitle) {
+        node.textContent = visibleTitle;
+      }
+    });
+  }
+
+  function markCachedPresentation() {
+    var portal = document.getElementById("webr-home-portal");
+    if (!portal || !servedCachedSummary || completeLiveSummarySeen) {
+      return;
+    }
+    portal.dataset.homeSummarySource = "cache";
+    portal.setAttribute("aria-busy", "true");
+    var status = portal.querySelector(".webr-home-compact__status");
+    if (status) {
+      status.textContent = "최근 저장 자료를 먼저 표시하고 최신 자료를 확인하고 있습니다.";
+    }
+    ensureNoticeTitleEllipsis(portal);
+  }
+
+  function observeNoticeTitles() {
+    var portal = document.getElementById("webr-home-portal");
+    if (!portal || typeof MutationObserver !== "function") {
+      return;
+    }
+    if (noticeObserver) {
+      noticeObserver.disconnect();
+    }
+    noticeObserver = new MutationObserver(function noticeContentChanged() {
+      ensureNoticeTitleEllipsis(portal);
+    });
+    noticeObserver.observe(portal, { childList: true, subtree: true });
+    ensureNoticeTitleEllipsis(portal);
+  }
+
+  document.addEventListener("webr:home-summary-ready", function summaryReady() {
+    var portal = document.getElementById("webr-home-portal");
+    if (portal) {
+      ensureNoticeTitleEllipsis(portal);
+      if (servedCachedSummary && !completeLiveSummarySeen) {
+        portal.dataset.homeSummarySource = "cache";
+        portal.setAttribute("aria-busy", "false");
+        var status = portal.querySelector(".webr-home-compact__status");
+        if (status) {
+          status.textContent = "최근 저장 자료를 표시하고 있습니다. 최신화가 지연되고 있습니다.";
+        }
+      } else {
+        delete portal.dataset.homeSummarySource;
+      }
+    }
+    restoreOriginalFetch();
+  });
+
+  var originalSetMain = window.set_main;
+  if (typeof originalSetMain === "function") {
+    window.set_main = function setMainWithTerminalSummaryGuard() {
+      installSummaryFetchCache();
+      var result = originalSetMain.apply(this, arguments);
+      observeNoticeTitles();
+      return result;
+    };
+  }
+})(window, document);
