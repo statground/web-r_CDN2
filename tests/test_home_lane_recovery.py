@@ -38,7 +38,7 @@ class HomeLaneRecoveryTests(unittest.TestCase):
         self.assertEqual(page.locator(".webr-home-compact__status, .webr-home-compact__summary-retry").count(), 0)
         self.assertEqual(page.get_by_role("button", name="최신 자료 다시 확인", exact=True).count(), 0)
 
-    def render(self, live, *, cached=None, hold=False, hold_notices=False, notices=None, deadline=None, grace_ms=None, status=200, real_retry=False, manual_only=True):
+    def render(self, live, *, cached=None, hold=False, hold_notices=False, notices=None, deadline=None, grace_ms=None, status=200, real_retry=False, manual_only=True, portal="set_main_compact_portal_20260930_lane_recovery.js", guard="home_summary_terminal_guard_20260828_2306.js"):
         page = self.browser.new_page()
         self.addCleanup(page.close)
         errors = []
@@ -89,8 +89,8 @@ class HomeLaneRecoveryTests(unittest.TestCase):
         page.route("**/*", lambda route: route.fulfill(status=200, content_type="text/html", body='<div id="div_main"></div>') if route.request.url == "https://home.test/" else route.abort())
         page.goto("https://home.test/")
         page.add_style_tag(path=str(ROOT / "scripts_go/web_r_go_20260629_1025/styles_v2/index/home_compact_portal_20260729_1530.css"))
-        page.add_script_tag(path=str(SCRIPTS / "set_main_compact_portal_20260930_lane_recovery.js"))
-        page.add_script_tag(path=str(SCRIPTS / "home_summary_terminal_guard_20260828_2306.js"))
+        page.add_script_tag(path=str(SCRIPTS / portal))
+        page.add_script_tag(path=str(SCRIPTS / guard))
         page.evaluate("window.set_main()")
         self.assert_global_controls_absent(page)
         return page, errors
