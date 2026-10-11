@@ -831,6 +831,47 @@
     }, 60000);
   }
 
+  // Recognize only finite presentation templates. Cached copy keeps the
+  // real action, href, source instant, ordering and original cache age.
+  var activityCopyTemplates = [{"locale":"ko","visit":["{name}님이 Web-R에 방문했습니다.","한 이용자가 Web-R에 방문했습니다.","{name}님이 방문했습니다.","한 이용자가 방문했습니다."],"login":["{name}님이 로그인했습니다.","한 이용자가 로그인했습니다."]},{"locale":"en","visit":["{name} visited Web-R.","A user visited Web-R.","{name} visited.","A user visited."],"login":["{name} signed in.","A user signed in."]},{"locale":"ja","visit":["{name}さんがWeb-Rに訪れました。","ユーザーがWeb-Rに訪れました。","{name}さんが訪れました。","ユーザーが訪れました。"],"login":["{name}さんがログインしました。","ユーザーがログインしました。"]},{"locale":"zh-Hans","visit":["{name}访问了Web-R。","用户访问了Web-R。","{name}访问了网站。","一位用户访问了网站。"],"login":["{name}登录了。","一位用户登录了。"]},{"locale":"zh-Hant","visit":["{name}造訪了Web-R。","一位用戶造訪了Web-R。","{name}造訪了網站。","一位用戶造訪了網站。"],"login":["{name}登入了。","一位用戶登入了。"]},{"locale":"es","visit":["{name} visitó Web-R.","Un usuario visitó Web-R.","{name} realizó una visita.","Un usuario realizó una visita."],"login":["{name} inició sesión.","Un usuario inició sesión."]},{"locale":"fr","visit":["{name} a visité Web-R.","Un utilisateur a visité Web-R.","{name} a effectué une visite.","Un utilisateur a effectué une visite."],"login":["{name} s’est connecté.","Un utilisateur s’est connecté."]},{"locale":"de","visit":["{name} hat Web-R besucht.","Ein Benutzer hat Web-R besucht.","{name} hat einen Besuch gemacht.","Ein Benutzer hat einen Besuch gemacht."],"login":["{name} hat sich angemeldet.","Ein Benutzer hat sich angemeldet."]},{"locale":"pt-BR","visit":["{name} visitou o Web-R.","Um usuário visitou o Web-R.","{name} fez uma visita.","Um usuário fez uma visita."],"login":["{name} entrou na conta.","Um usuário entrou na conta."]},{"locale":"ru","visit":["{name} посетил Web-R.","Пользователь посетил Web-R.","{name} посетил сайт.","Пользователь посетил сайт."],"login":["{name} вошёл в аккаунт.","Пользователь вошёл в аккаунт."]},{"locale":"id","visit":["{name} mengunjungi Web-R.","Seorang pengguna mengunjungi Web-R.","{name} berkunjung.","Seorang pengguna berkunjung."],"login":["{name} masuk.","Seorang pengguna masuk."]},{"locale":"vi","visit":["{name} đã ghé thăm Web-R.","Một người dùng đã ghé thăm Web-R.","{name} đã ghé thăm.","Một người dùng đã ghé thăm."],"login":["{name} đã đăng nhập.","Một người dùng đã đăng nhập."]},{"locale":"th","visit":["{name} ได้เยี่ยมชม Web-R.","ผู้ใช้คนหนึ่งได้เยี่ยมชม Web-R.","{name} ได้เยี่ยมชมเว็บไซต์","ผู้ใช้คนหนึ่งได้เยี่ยมชมเว็บไซต์"],"login":["{name} เข้าสู่ระบบแล้ว","ผู้ใช้คนหนึ่งเข้าสู่ระบบแล้ว"]},{"locale":"ms","visit":["{name} melawat Web-R.","Seorang pengguna melawat Web-R.","{name} membuat lawatan.","Seorang pengguna membuat lawatan."],"login":["{name} telah log masuk.","Seorang pengguna telah log masuk."]},{"locale":"fil","visit":["{name} ay bumisita sa Web-R.","Isang gumagamit ang bumisita sa Web-R.","{name} ay bumisita.","Isang gumagamit ang bumisita."],"login":["{name} ay nag-sign in.","Isang gumagamit ang nag-sign in."]},{"locale":"hi","visit":["{name} ने Web-R का दौरा किया।","एक उपयोगकर्ता ने Web-R का दौरा किया।","{name} ने साइट का दौरा किया।","एक उपयोगकर्ता ने साइट का दौरा किया।"],"login":["{name} ने लॉग इन किया।","एक उपयोगकर्ता ने लॉग इन किया।"]},{"locale":"ar","visit":["{name} زار Web-R.","قام مستخدم بزيارة Web-R.","{name} زار الموقع.","قام مستخدم بزيارة الموقع."],"login":["{name} سجّل الدخول.","سجّل مستخدم الدخول."]},{"locale":"it","visit":["{name} ha visitato Web-R.","Un utente ha visitato Web-R.","{name} ha effettuato una visita.","Un utente ha effettuato una visita."],"login":["{name} ha effettuato l’accesso.","Un utente ha effettuato l’accesso."]},{"locale":"nl","visit":["{name} heeft Web-R bezocht.","Een gebruiker heeft Web-R bezocht.","{name} heeft een bezoek gebracht.","Een gebruiker heeft een bezoek gebracht."],"login":["{name} heeft zich aangemeld.","Een gebruiker heeft zich aangemeld."]},{"locale":"pl","visit":["{name} odwiedził Web-R.","Użytkownik odwiedził Web-R.","{name} odwiedził stronę.","Użytkownik odwiedził stronę."],"login":["{name} zalogował się.","Użytkownik zalogował się."]},{"locale":"sv","visit":["{name} besökte Web-R.","En användare besökte Web-R.","{name} gjorde ett besök.","En användare gjorde ett besök."],"login":["{name} loggade in.","En användare loggade in."]},{"locale":"tr","visit":["{name} Web-R'yi ziyaret etti.","Bir kullanıcı Web-R'yi ziyaret etti.","{name} ziyaret etti.","Bir kullanıcı ziyaret etti."],"login":["{name} oturum açtı.","Bir kullanıcı oturum açtı."]},{"locale":"uk","visit":["{name} відвідав Web-R.","Користувач відвідав Web-R.","{name} відвідав сайт.","Користувач відвідав сайт."],"login":["{name} увійшов в обліковий запис.","Користувач увійшов в обліковий запис."]}];
+
+  function activityMaskedName(name) {
+    var characters = Array.from(name);
+    return characters.length === 5 && characters.slice(1, 4).join("") === "***";
+  }
+
+  function activityPresentation(raw) {
+    var title = cleanText(raw, 100);
+    var named = title.match(/^(.{1,70})님이 (?:(?:Web-R|Statground|MirType)에 )?(로그인|방문)했습니다\.$/);
+    var anonymous = title.match(/^한 이용자가 (?:(?:Web-R|Statground|MirType)에 )?(로그인|방문)했습니다\.$/);
+    if (anonymous) return {key:"한 이용자가 " + anonymous[1] + "했습니다.", vars:{}};
+    if (named && activityMaskedName(named[1])) return {key:"{name}님이 " + named[2] + "했습니다.", vars:{name:named[1]}};
+    // Anonymous templates can share a named template's suffix ("A user ...").
+    // Resolve exact anonymous copy first; never turn it into a made-up name.
+    for (var copy of activityCopyTemplates) {
+      for (var verb of ["visit", "login"]) {
+        if (copy[verb].some(function isAnonymous(template) {
+          return template.indexOf("{name}") < 0 && template === title;
+        })) return {key:"한 이용자가 " + (verb === "visit" ? "방문" : "로그인") + "했습니다.", vars:{}};
+      }
+    }
+    for (var i = 0; i < activityCopyTemplates.length; i += 1) {
+      var row = activityCopyTemplates[i];
+      for (var action of ["visit", "login"]) {
+        for (var template of row[action]) {
+          var parts = template.split("{name}");
+          var key = action === "visit" ? "방문" : "로그인";
+          if (parts.length === 1 && title === template) return {key:"한 이용자가 " + key + "했습니다.", vars:{}};
+          if (parts.length === 2 && title.startsWith(parts[0]) && title.endsWith(parts[1])) {
+            var name = title.slice(parts[0].length, title.length - parts[1].length);
+            if (activityMaskedName(name)) return {key:"{name}님이 " + key + "했습니다.", vars:{name:name}};
+          }
+        }
+      }
+    }
+    return {title:title};
+  }
+
   function renderActivity(items, unavailable) {
     cancelActivityTimeTimer();
     refs.activityBody.replaceChildren();
@@ -844,14 +885,14 @@
     var list = element("div", "webr-home-compact__activity-list");
     rows.forEach(function appendActivity(item) {
       var row = element("div", "webr-home-compact__activity-item");
-      var title = cleanText(item.title, 100);
+      var presentation = activityPresentation(item.title);
+      var title = presentation.title || (window.WebRI18n && window.WebRI18n.t
+        ? window.WebRI18n.t(presentation.key, presentation.vars)
+        : presentation.key.replace("{name}", presentation.vars.name || ""));
       var titleNode = element("strong", "webr-home-compact__activity-title", title);
-      var namedVisit = title.match(/^(.{1,70})님이 Web-R에 방문했습니다\.$/);
-      if (namedVisit) {
-        titleNode.setAttribute("data-webr-i18n", "{name}님이 Web-R에 방문했습니다.");
-        titleNode.setAttribute("data-webr-i18n-vars", JSON.stringify({ name: namedVisit[1] }));
-      } else if (title === "한 이용자가 Web-R에 방문했습니다.") {
-        titleNode.setAttribute("data-webr-i18n", title);
+      if (presentation.key) {
+        titleNode.setAttribute("data-webr-i18n", presentation.key);
+        titleNode.setAttribute("data-webr-i18n-vars", JSON.stringify(presentation.vars));
       }
       row.appendChild(titleNode);
       var date = activityInstant(item.published_at);
