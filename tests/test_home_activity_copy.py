@@ -62,8 +62,12 @@ class HomeActivityCopyTests(unittest.TestCase):
         self.assertEqual(errors,[])
 
     def test_every_existing_localized_cache_template_and_new_locale_copy(self):
-        app=Path(os.environ['WEBR_ACTIVITY_COPY_APP_ROOT'])
-        catalog=json.loads((app/'internal/web/webr_i18n/public-home.json').read_text())
+        catalog=json.loads((Path(__file__).parent/'fixtures/home_activity_copy_catalog.json').read_text())
+        app_root=os.environ.get('WEBR_ACTIVITY_COPY_APP_ROOT')
+        if app_root:
+            import hashlib
+            raw=(Path(app_root)/catalog['source_path']).read_bytes()
+            self.assertEqual(hashlib.sha256(raw).hexdigest(),catalog['source_sha256'])
         portal=(fixture.SCRIPTS/'set_main_compact_portal_20260930_lane_recovery.js').read_text()
         start=portal.index('  var activityCopyTemplates = ')
         end=portal.index('  function renderActivity(',start)
@@ -82,7 +86,10 @@ class HomeActivityCopyTests(unittest.TestCase):
         self.assertEqual(errors,[])
 
     def test_actual_locale_runtime_repaints_action_copy_without_fetching_activity(self):
-        app=Path(os.environ['WEBR_ACTIVITY_COPY_APP_ROOT'])
+        app_root=os.environ.get('WEBR_ACTIVITY_COPY_APP_ROOT')
+        if not app_root:
+            self.skipTest('cross-repo actual locale runtime requires explicit App fixture root')
+        app=Path(app_root)
         catalog=json.loads((app/'internal/web/webr_i18n/public-home.json').read_text())
         payload=fixture.summary()
         payload['sections']['activity']=[{'title':'첫***원님이 MirType에 로그인했습니다.','published_at':'2026-10-10T09:00:00Z'}, {'title':'둘***원님이 Web-R에 방문했습니다.','published_at':'2026-10-09T07:00:00Z'}]
