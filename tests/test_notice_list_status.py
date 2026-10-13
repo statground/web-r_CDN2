@@ -14,7 +14,7 @@ ASSETS = ROOT / "scripts_go/web_r_go_20260629_1025"
 VENDOR = ASSETS / "vendor/common/react_stack_jquery_react_htmx_alpine_20260510.js"
 NOTICE_JS = ASSETS / "scripts_v2/intro/notice/set_main_solid_edit_comment_mini_20260822_1548.js"
 EMPTY_TEXT = "표시할 공지사항이 없습니다."
-UNAVAILABLE_TEXT = "공지 목록을 불러오지 못했습니다. 잠시 후 다시 시도해 주세요."
+UNAVAILABLE_TEXT = "공지 목록을 불러오지 못했습니다."
 
 
 class NoticeListStatusTests(unittest.TestCase):
@@ -63,7 +63,7 @@ class NoticeListStatusTests(unittest.TestCase):
         page.evaluate("window.set_main()")
         return page, calls, errors
 
-    def test_pending_and_failed_payloads_retry_to_visible_notice(self):
+    def test_pending_and_failed_payloads_explicit_new_document_read_to_visible_notice(self):
         notice = {"uuid": "notice-1", "title": "복구된 공지", "category_url": "notice"}
         for failed in (
             {"ok": False, "pending": True, "count": {"cnt": 0}, "list": {}},
@@ -80,19 +80,21 @@ class NoticeListStatusTests(unittest.TestCase):
                 ])
                 page.get_by_role("alert").get_by_text(UNAVAILABLE_TEXT).wait_for()
                 self.assertEqual(page.get_by_text(EMPTY_TEXT).count(), 0)
-                page.get_by_role("button", name="다시 시도").click()
+                self.assertEqual(page.get_by_role("button", name="다시 시도").count(), 0)
+                page.evaluate("set_main()")
                 page.get_by_role("heading", name="복구된 공지").wait_for()
                 self.assertEqual(page.locator("article a").get_attribute("href"), "/intro/notice/read/notice-1/")
                 self.assertEqual(len(calls), 2)
                 self.assertEqual(errors, [])
 
-    def test_fetch_failure_has_retry_and_true_empty_stays_empty(self):
+    def test_fetch_failure_has_no_retry_action_and_true_empty_stays_empty(self):
         page, calls, errors = self.render([
             "abort",
             {"body": {"count": {"cnt": 0}, "list": {}}},
         ])
         page.get_by_role("alert").get_by_text(UNAVAILABLE_TEXT).wait_for()
-        page.get_by_role("button", name="다시 시도").click()
+        self.assertEqual(page.get_by_role("button", name="다시 시도").count(), 0)
+        page.evaluate("set_main()")
         page.get_by_text(EMPTY_TEXT).wait_for()
         self.assertEqual(page.get_by_role("alert").count(), 0)
         self.assertEqual(len(calls), 2)

@@ -669,7 +669,7 @@
       if (noticeSummaryUnavailable(payload)) {
         var unavailable = element("div", "webr-home-compact__notice-unavailable");
         unavailable.setAttribute("role", "status");
-        unavailable.appendChild(uiElement("p", "", "공지사항을 확인하지 못했습니다."));
+        unavailable.appendChild(uiElement("p", "", "공지사항을 확인하지 못했습니다. 잠시 후 다시 시도해 주세요."));
         var actions = element("div", "webr-home-compact__notice-actions");
         actions.appendChild(uiLink("/intro/notice/", "webr-home-compact__notice-visit", "공지사항으로 이동"));
         unavailable.appendChild(actions);

@@ -518,6 +518,54 @@ async function get_new_comment_list() {
     "div_new_comment_list"
   );
 }
+// Public Notice reads keep one original 45s deadline across fetch and body.
+// Rights remain server-owned; stale documents and terminal denials cannot paint.
+const noticePublicOwners = new Map();
+function noticePublicOwner(kind, root) {
+  const previous = noticePublicOwners.get(kind);
+  if (previous) previous.controller.abort();
+  const owner = {kind, root, address: location.pathname+location.search,
+    identity: String(typeof orderID === "undefined" ? "" : orderID || ""),
+    viewer: [window.gv_username||"", window.gv_role||""].join("\u0000"),
+    language: document.documentElement.lang, controller: new AbortController()};
+  owner.timer = setTimeout(() => owner.controller.abort(), 45000);
+  noticePublicOwners.set(kind, owner);
+  return owner;
+}
+function mountedNoticeOwner(owner) {
+  return noticePublicOwners.get(owner.kind) === owner &&
+    owner.root && owner.root.isConnected && document.getElementById(owner.root.id) === owner.root &&
+    owner.address === location.pathname+location.search &&
+    owner.identity === String(typeof orderID === "undefined" ? "" : orderID || "") &&
+    owner.viewer === [window.gv_username||"", window.gv_role||""].join("\u0000") &&
+    owner.language === document.documentElement.lang;
+}
+function currentNoticeOwner(owner) { return mountedNoticeOwner(owner) && !owner.controller.signal.aborted; }
+function finishNoticeOwner(owner) {
+  clearTimeout(owner.timer);
+  if (noticePublicOwners.get(owner.kind) === owner) noticePublicOwners.delete(owner.kind);
+}
+async function noticePublicJSON(path, options, owner) {
+  let cancel;
+  const aborted = new Promise((_, reject) => {
+    cancel=()=>reject(new Error("notice read stopped"));
+    owner.controller.signal.addEventListener("abort",cancel,{once:true});
+    if(owner.controller.signal.aborted)cancel();
+  });
+  try {
+    return await Promise.race([aborted, (async()=>{
+      if(!currentNoticeOwner(owner))throw new Error("obsolete notice read");
+      const response=await fetch(path,{...options,signal:owner.controller.signal});
+      if(!currentNoticeOwner(owner))throw new Error("obsolete notice read");
+      if(!response.ok){const error=new Error("notice read unavailable");error.status=response.status;throw error;}
+      const data=await response.json();
+      if(!currentNoticeOwner(owner))throw new Error("obsolete notice read");
+      return data;
+    })()]);
+  } finally {owner.controller.signal.removeEventListener("abort",cancel);}
+}
+window.addEventListener("pagehide",()=>{for(const owner of noticePublicOwners.values()){clearTimeout(owner.timer);owner.controller.abort();}noticePublicOwners.clear();});
+window.addEventListener("pageshow",event=>{if(event.persisted)location.reload();});
 const IntroNoticeList = /* @__PURE__ */ (() => {
   let header_title = "\uACF5\uC9C0\uC0AC\uD56D";
   let header_subtitle = "Web-R \uC18C\uAC1C";
@@ -561,7 +609,8 @@ const IntroNoticeList = /* @__PURE__ */ (() => {
     return Number.isSafeInteger(total) && total >= 0 && (total === 0 || Object.keys(data.list).length > 0);
   }
   function NoticeListUnavailable(props) {
-    return /* @__PURE__ */ React.createElement("div", { role: "alert", class: "rounded-lg border border-amber-200 bg-amber-50 px-4 py-4 text-sm text-amber-800" }, /* @__PURE__ */ React.createElement("p", null, "\uACF5\uC9C0 \uBAA9\uB85D\uC744 \uBD88\uB7EC\uC624\uC9C0 \uBABB\uD588\uC2B5\uB2C8\uB2E4. \uC7A0\uC2DC \uD6C4 \uB2E4\uC2DC \uC2DC\uB3C4\uD574 \uC8FC\uC138\uC694."), /* @__PURE__ */ React.createElement("button", { type: "button", onClick: props.retry, class: "mt-3 inline-flex rounded-lg border border-amber-300 bg-white px-3 py-2 font-semibold text-amber-900 hover:bg-amber-100" }, "\uB2E4\uC2DC \uC2DC\uB3C4"));
+    return React.createElement("div", { role: "alert", class: "rounded-lg border border-amber-200 bg-amber-50 px-4 py-4 text-sm text-amber-800" },
+      React.createElement("p", null, "공지 목록을 불러오지 못했습니다."));
   }
   function NoticePaginationButton(props) {
     const baseClass = "inline-flex h-9 min-w-9 items-center justify-center rounded-lg border px-3 text-sm font-semibold transition";
@@ -626,6 +675,7 @@ const IntroNoticeList = /* @__PURE__ */ (() => {
       return;
     }
     toggle_page = true;
+    const owner = noticePublicOwner("list", document.getElementById("div_article_list"));
     const request_data = new FormData();
     request_data.append("tag", url);
     request_data.append("tag_sub", sub);
@@ -646,15 +696,13 @@ const IntroNoticeList = /* @__PURE__ */ (() => {
       let data = noticeBackendCache[backendPage];
       if (!data) {
         request_data.append("page", backendPage);
-        const response = await fetch("/blank/ajax_board/get_article_list/", {
+        data = await noticePublicJSON("/blank/ajax_board/get_article_list/", {
           method: "post",
           headers: { "X-CSRFToken": getCookie("csrftoken") },
           body: request_data
-        });
-        if (!response.ok)
-          throw new Error("notice list request failed");
-        data = await response.json();
+        }, owner);
       }
+      if (!currentNoticeOwner(owner)) return;
       if (!noticeListPayloadReady(data)) {
         delete noticeBackendCache[backendPage];
         throw new Error("notice list is unavailable");
@@ -676,8 +724,10 @@ const IntroNoticeList = /* @__PURE__ */ (() => {
       );
     } catch (err) {
       console.error("[notice list] load failed:", err);
-      ReactDOM.render(/* @__PURE__ */ React.createElement(NoticeListUnavailable, { retry: () => get_article_list(mode2, requestedPage) }), document.getElementById("div_article_list"));
+      if (mountedNoticeOwner(owner))
+        ReactDOM.render(React.createElement(NoticeListUnavailable), owner.root);
     } finally {
+      finishNoticeOwner(owner);
       toggle_page = false;
     }
   }
@@ -701,16 +751,20 @@ const IntroNoticeRead = /* @__PURE__ */ (() => {
   let class_txt_file_delete = "size-4 min-size-4 max-size-4 rounded-lg hover:bg-red-100 cursor-pointer";
   let editor = {};
   let data_file = [];
-  function noticeDelay(ms) {
-    return new Promise((resolve) => setTimeout(resolve, ms));
+  function noticeDelay(ms, signal) {
+    return new Promise(resolve => {
+      const cancel=()=>{clearTimeout(timer);signal.removeEventListener("abort",cancel);resolve();};
+      const timer=setTimeout(()=>{signal.removeEventListener("abort",cancel);resolve();},ms);
+      signal.addEventListener("abort",cancel,{once:true});if(signal.aborted)cancel();
+    });
   }
   function noticeArticleReady(payload) {
-    if (!payload || payload.pending || payload.ok === false)
+    if (!payload || payload.pending || payload.partial || payload.complete === false || payload.error || payload.not_found || payload.access_denied || payload.ok === false)
       return false;
     const uuid = noticeSafeText(payload.uuid).trim();
     const title = noticeSafeText(payload.title).trim();
     const content = noticeSafeText(payload.content).trim();
-    return uuid !== "" && (title !== "" || content !== "");
+    return uuid.toLowerCase() === String(orderID || "").toLowerCase() && uuid !== "" && (title !== "" || content !== "");
   }
   function renderNoticeArticleLoadState(payload) {
     const message = noticeSafeText(payload && payload.message, "\uACF5\uC9C0\uC0AC\uD56D\uC744 \uBD88\uB7EC\uC624\uC9C0 \uBABB\uD588\uC2B5\uB2C8\uB2E4. \uC7A0\uC2DC \uD6C4 \uB2E4\uC2DC \uC2DC\uB3C4\uD574 \uC8FC\uC138\uC694.");
@@ -718,11 +772,13 @@ const IntroNoticeRead = /* @__PURE__ */ (() => {
     const buttons = document.getElementById("div_article_read_buttons");
     const file = document.getElementById("div_community_read_file");
     const content = document.getElementById("div_community_read_content");
+    const comments = document.getElementById("div_community_read_comment");
+    if (comments) comments.innerHTML = "";
     if (header) {
       ReactDOM.render(
         React.createElement(
           "section",
-          { className: "w-full rounded-lg border border-amber-200 bg-amber-50 px-5 py-5 text-amber-900 md:px-6" },
+          { role: "alert", className: "w-full rounded-lg border border-amber-200 bg-amber-50 px-5 py-5 text-amber-900 md:px-6" },
           React.createElement("h1", { className: "text-lg font-bold" }, "\uACF5\uC9C0\uC0AC\uD56D\uC744 \uBD88\uB7EC\uC624\uC9C0 \uBABB\uD588\uC2B5\uB2C8\uB2E4"),
           React.createElement("p", { className: "mt-2 text-sm leading-6" }, message)
         ),
@@ -759,23 +815,21 @@ const IntroNoticeRead = /* @__PURE__ */ (() => {
     ), canManage && /* @__PURE__ */ React.createElement("button", { type: "button", onClick: () => location.href = init_url + "edit/" + orderID + "/", class: editBtn }, "\uC218\uC815"), canManage && /* @__PURE__ */ React.createElement("button", { type: "button", onClick: click_btn_delete, class: deleteBtn }, "\uC0AD\uC81C"));
   }
   async function get_read_article(mode2) {
+    const owner = noticePublicOwner("detail", document.getElementById("div_community_read_header"));
+    data_article = null;
     const request_data = new FormData();
     request_data.append("orderID", orderID);
     request_data.append("tag", "notice");
     let lastPayload = null;
     let lastError = null;
     try {
-      for (let attempt = 0; attempt < 4; attempt += 1) {
+      for (let attempt = 0; attempt < 4 && currentNoticeOwner(owner); attempt += 1) {
         try {
-          const res = await fetch("/blank/ajax_board/get_read_article/", {
+          lastPayload = await noticePublicJSON("/blank/ajax_board/get_read_article/", {
             method: "post",
             headers: { "X-CSRFToken": getCookie("csrftoken") },
             body: request_data
-          });
-          if (!res.ok) {
-            throw new Error(`get_read_article HTTP error: ${res.status}`);
-          }
-          lastPayload = await res.json();
+          }, owner);
           if (noticeArticleReady(lastPayload)) {
             data_article = lastPayload;
             lastError = null;
@@ -783,11 +837,13 @@ const IntroNoticeRead = /* @__PURE__ */ (() => {
           }
         } catch (err) {
           lastError = err;
+          if ([401,403,404].includes(err.status) || owner.controller.signal.aborted || !currentNoticeOwner(owner)) break;
         }
         if (attempt < 3) {
-          await noticeDelay(350 * (attempt + 1));
+          await noticeDelay(350 * (attempt + 1), owner.controller.signal);
         }
       }
+      if (!mountedNoticeOwner(owner)) return;
       if (!noticeArticleReady(data_article)) {
         if (lastError) {
           console.error("[get_read_article] fetch or JSON error:", lastError);
@@ -814,7 +870,7 @@ const IntroNoticeRead = /* @__PURE__ */ (() => {
       }
     } catch (err) {
       console.error("[get_read_article] fetch or JSON error:", err);
-    }
+    } finally { finishNoticeOwner(owner); }
   }
   async function click_btn_delete() {
     if (confirm("\uC815\uB9D0\uB85C \uC0AD\uC81C\uD560\uAE4C\uC694?")) {
