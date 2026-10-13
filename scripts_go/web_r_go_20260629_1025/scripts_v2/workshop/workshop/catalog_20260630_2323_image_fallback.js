@@ -56,10 +56,12 @@ const WorkshopCatalogPage = (() => {
     currentUserUUID: "",
     workshops: [],
     selectedWorkshop: null,
+    readCanRetry: false,
     draft: emptyDraft(),
     boardLoading: false,
     boardPosts: [],
     boardError: "",
+    boardCanRetry: false,
     boardDraft: emptyBoardDraft(""),
     boardSaving: false,
     boardDeletingUUID: "",
@@ -139,6 +141,90 @@ const WorkshopCatalogPage = (() => {
       });
       listOwnerObserver.observe(listRoot.parentNode, { childList: true, subtree: true });
     }
+  }
+  // Detail and its secondary board have separate bounded owners. A late body
+  // from an old document, identity or locale must never update the new page.
+  const readBudget = 45000;
+  let readOwner = null, boardOwner = null, readStopped = false;
+  const readRoot = document.getElementById("div_main");
+  const readAddress = location.pathname + location.search;
+  const viewerKey = () => [window.gv_username || "", window.gv_role || ""].join("\u0000");
+  const readLanguage = () => document.documentElement.lang || "ko";
+  function readText(key) {
+    const en = readLanguage().toLowerCase().split("-")[0] === "en";
+    return {
+      pending: en ? "Loading workshop details." : "워크샵 상세 내용을 불러오고 있습니다.",
+      unavailable: en ? "Workshop details are temporarily unavailable." : "워크샵 상세 내용을 잠시 불러오지 못했습니다.",
+      missing: en ? "Workshop not found." : "워크샵을 찾을 수 없습니다.",
+      denied: en ? "You do not have permission to view this workshop." : "이 워크샵을 볼 권한이 없습니다.",
+      board: en ? "Workshop posts are temporarily unavailable." : "워크샵 게시글을 잠시 불러오지 못했습니다.",
+      retry: en ? "Try again" : "다시 시도"
+    }[key];
+  }
+  function ownsRead(owner) {
+    return !readStopped && owner && readRoot && readRoot.isConnected &&
+      document.getElementById("div_main") === readRoot &&
+      location.pathname + location.search === readAddress &&
+      owner.target === state.readTarget && owner.viewer === viewerKey() && owner.language === readLanguage();
+  }
+  function newReadOwner() {
+    return { target: state.readTarget, viewer: viewerKey(), language: readLanguage(), controller: new AbortController() };
+  }
+  function cancelBoardRead() {
+    if (boardOwner) boardOwner.controller.abort();
+    boardOwner = null;
+  }
+  function stopRead() {
+    readStopped = true;
+    if (readOwner) readOwner.controller.abort();
+    readOwner = null;
+    cancelBoardRead();
+    if (readOwnerObserver) readOwnerObserver.disconnect();
+  }
+  let readOwnerObserver = null;
+  if (state.mode === "read") {
+    window.addEventListener("pagehide", stopRead);
+    window.addEventListener("popstate", () => { if (location.pathname + location.search !== readAddress) stopRead(); });
+    window.addEventListener("pageshow", event => { if (event.persisted) location.reload(); });
+    if (readRoot && readRoot.parentNode) {
+      readOwnerObserver = new MutationObserver(() => {
+        if (!readRoot.isConnected || document.getElementById("div_main") !== readRoot) stopRead();
+      });
+      readOwnerObserver.observe(readRoot.parentNode, { childList: true, subtree: true });
+    }
+  }
+  async function readJSON(path, form, owner) {
+    let timer, cancel;
+    const cancelled = new Promise((_, reject) => {
+      cancel = () => reject(new Error("workshop read cancelled"));
+      owner.controller.signal.addEventListener("abort", cancel, { once: true });
+    });
+    const operation = (async () => {
+      if (!ownsRead(owner)) throw new Error("workshop read cancelled");
+      const response = await fetch(path, {
+        method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8" },
+        body: form.toString(), signal: owner.controller.signal
+      });
+      if (!ownsRead(owner) || owner.controller.signal.aborted) throw new Error("workshop read cancelled");
+      if (!response.ok) {
+        const error = new Error("workshop read unavailable");
+        error.status = response.status;
+        throw error;
+      }
+      const data = await response.json();
+      if (!ownsRead(owner) || owner.controller.signal.aborted) throw new Error("workshop read cancelled");
+      return data;
+    })();
+    const deadline = new Promise((_, reject) => {
+      timer = window.setTimeout(() => { owner.controller.abort(); reject(new Error("workshop read timeout")); }, readBudget);
+    });
+    try { return await Promise.race([operation, deadline, cancelled]); }
+    finally { window.clearTimeout(timer); owner.controller.signal.removeEventListener("abort", cancel); }
+  }
+  function matchesReadTarget(item, target) {
+    const normalize = value => String(value || "").trim().replace(/^\/+|\/+$/g, "").toLowerCase();
+    return item && !Array.isArray(item) && typeof item === "object" && typeof item.title === "string" &&
+      [item.uuid, item.slug, item.board_key, item.external_id].some(value => normalize(value) && normalize(value) === normalize(target));
   }
   const h = React.createElement;
   const money = (value) => (Number(value) || 0).toLocaleString("ko-KR");
@@ -297,6 +383,7 @@ const WorkshopCatalogPage = (() => {
     setupResponsivePagination();
     if (state.mode === "list" && (state.listLoading || listStopped))
       return;
+    if (state.mode === "read" && (readOwner || readStopped)) return;
     const listAttempt = state.mode === "list" ? ++listEpoch : 0;
     setState({ loading: state.mode !== "list" || (!state.listReady && !state.error), listLoading: state.mode === "list", error: "", listNotice: "" });
     if (state.mode === "read" && state.readTarget) {
@@ -358,18 +445,22 @@ const WorkshopCatalogPage = (() => {
     }
   }
   async function loadRead() {
+    if (readOwner || readStopped) return;
+    const owner = newReadOwner();
+    readOwner = owner;
+    cancelBoardRead();
+    setState({ readCanRetry: false, selectedWorkshop: null, workshops: [], boardPosts: [], boardError: "", boardCanRetry: false,
+      isAdmin: false, isLoggedIn: false, currentUserUUID: "" });
     try {
       const form = new URLSearchParams();
-      form.append("uuid", state.readTarget);
-      const data = await fetch("/workshop/ajax_read/", {
-        method: "POST",
-        headers: { "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8" },
-        body: form.toString()
-      }).then((res) => res.json());
-      if (!data.ok || !data.workshop) {
-        setState({ loading: false, error: data.error || "\uC6CC\uD06C\uC0F5\uC744 \uCC3E\uC744 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4.", workshops: [], selectedWorkshop: null, isAdmin: !!data.is_admin, isLoggedIn: !!data.is_logged_in, currentUserUUID: data.current_user_uuid || "" });
+      form.append("uuid", owner.target);
+      const data = await readJSON("/workshop/ajax_read/", form, owner);
+      if (!ownsRead(owner) || readOwner !== owner) return;
+      if (data && data.ok === false && data.error === "워크샵을 찾을 수 없습니다.") {
+        setState({ loading: false, error: readText("missing"), readCanRetry: false });
         return;
       }
+      if (!data || data.ok !== true || !matchesReadTarget(data.workshop, owner.target)) throw new Error("workshop read unavailable");
       const item = data.workshop;
       const hasInitialPosts = Array.isArray(data.posts);
       setState({
@@ -389,7 +480,12 @@ const WorkshopCatalogPage = (() => {
         loadBoard(item);
       }
     } catch (error) {
-      setState({ loading: false, error: error.message || "\uC6CC\uD06C\uC0F5\uC744 \uBD88\uB7EC\uC62C \uC218 \uC5C6\uC2B5\uB2C8\uB2E4.", workshops: [], selectedWorkshop: null });
+      if (!ownsRead(owner) || readOwner !== owner) return;
+      const terminal = error.status === 401 || error.status === 403 || error.status === 404;
+      setState({ loading: false, error: readText(error.status === 404 ? "missing" : terminal ? "denied" : "unavailable"),
+        readCanRetry: !terminal, workshops: [], selectedWorkshop: null });
+    } finally {
+      if (readOwner === owner) readOwner = null;
     }
   }
   async function saveWorkshop() {
@@ -448,25 +544,27 @@ const WorkshopCatalogPage = (() => {
   }
   async function loadBoard(item) {
     const key = workshopKey(item);
-    if (!key)
+    if (!key || readStopped || boardOwner)
       return;
-    setState({ boardLoading: true, boardError: "", boardDraft: Object.assign({}, state.boardDraft, { workshop_key: key }) });
+    const owner = newReadOwner();
+    boardOwner = owner;
+    setState({ boardLoading: true, boardError: "", boardCanRetry: false, boardDraft: Object.assign({}, state.boardDraft, { workshop_key: key }) });
     try {
       const form = new URLSearchParams();
       form.append("workshop_key", key);
       form.append("limit", "80");
-      const data = await fetch("/workshop/ajax_board/list/", {
-        method: "POST",
-        headers: { "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8" },
-        body: form.toString()
-      }).then((res) => res.json());
-      if (!data.ok) {
-        setState({ boardLoading: false, boardError: data.error || "게시글을 불러올 수 없습니다.", boardPosts: [] });
-        return;
-      }
-      setState({ boardLoading: false, boardPosts: data.posts || [], boardError: "", isLoggedIn: !!data.is_logged_in || state.isLoggedIn, currentUserUUID: data.current_user_uuid || state.currentUserUUID });
+      const data = await readJSON("/workshop/ajax_board/list/", form, owner);
+      if (!ownsRead(owner) || boardOwner !== owner || workshopKey(state.selectedWorkshop) !== key) return;
+      if (!data || data.ok !== true || !Array.isArray(data.posts)) throw new Error("workshop board unavailable");
+      setState({ boardLoading: false, boardPosts: data.posts, boardError: "", boardCanRetry: false,
+        isLoggedIn: !!data.is_logged_in, currentUserUUID: data.current_user_uuid || "" });
     } catch (error) {
-      setState({ boardLoading: false, boardError: error.message || "게시글을 불러올 수 없습니다.", boardPosts: [] });
+      if (!ownsRead(owner) || boardOwner !== owner || workshopKey(state.selectedWorkshop) !== key) return;
+      const terminal = error.status === 401 || error.status === 403 || error.status === 404;
+      setState({ boardLoading: false, boardError: readText("board"), boardCanRetry: !terminal, boardPosts: [],
+        ...(terminal ? { isLoggedIn: false, currentUserUUID: "" } : {}) });
+    } finally {
+      if (boardOwner === owner) boardOwner = null;
     }
   }
   async function saveBoardPost() {
@@ -482,6 +580,7 @@ const WorkshopCatalogPage = (() => {
       setState({ boardError: "제목 또는 내용을 입력해주세요." });
       return;
     }
+    cancelBoardRead();
     setState({ boardSaving: true, boardError: "" });
     try {
       const form = new URLSearchParams();
@@ -496,13 +595,13 @@ const WorkshopCatalogPage = (() => {
         body: form.toString()
       }).then((res) => res.json());
       if (!data.ok) {
-        setState({ boardSaving: false, boardError: data.error || "저장할 수 없습니다." });
+        setState({ boardSaving: false, boardLoading: false, boardCanRetry: true, boardError: data.error || "저장할 수 없습니다." });
         return;
       }
       setState({ boardSaving: false, boardDraft: emptyBoardDraft(key), boardError: "" });
       await loadBoard(item);
     } catch (error) {
-      setState({ boardSaving: false, boardError: error.message || "저장할 수 없습니다." });
+      setState({ boardSaving: false, boardLoading: false, boardCanRetry: true, boardError: error.message || "저장할 수 없습니다." });
     }
   }
   function editBoardPost(post) {
@@ -527,6 +626,7 @@ const WorkshopCatalogPage = (() => {
       return;
     if (!window.confirm("이 게시글을 삭제할까요?"))
       return;
+    cancelBoardRead();
     setState({ boardDeletingUUID: uuid, boardError: "" });
     try {
       const form = new URLSearchParams();
@@ -537,13 +637,13 @@ const WorkshopCatalogPage = (() => {
         body: form.toString()
       }).then((res) => res.json());
       if (!data.ok) {
-        setState({ boardDeletingUUID: "", boardError: data.error || "삭제할 수 없습니다." });
+        setState({ boardDeletingUUID: "", boardLoading: false, boardCanRetry: true, boardError: data.error || "삭제할 수 없습니다." });
         return;
       }
       setState({ boardDeletingUUID: "" });
       await loadBoard(item);
     } catch (error) {
-      setState({ boardDeletingUUID: "", boardError: error.message || "삭제할 수 없습니다." });
+      setState({ boardDeletingUUID: "", boardLoading: false, boardCanRetry: true, boardError: error.message || "삭제할 수 없습니다." });
     }
   }
   function displayImageURL(value) {
@@ -600,7 +700,7 @@ const WorkshopCatalogPage = (() => {
     return `/workshop/edit/${encodeURIComponent(item.uuid || "")}/`;
   }
   function readHref(item) {
-    return `/workshop/read/${encodeURIComponent(item.uuid || item.slug || "")}/`;
+    return `/workshop/read/${encodeURIComponent(item.uuid || item.slug || item.board_key || item.external_id || "")}/`;
   }
   function workshopKey(item) {
     return String(item && (item.board_key || item.uuid || item.slug) || "").trim();
@@ -756,7 +856,7 @@ const WorkshopCatalogPage = (() => {
   }
   function WorkshopBoard({ item }) {
     const editing = !!state.boardDraft.uuid;
-    return h("section", { className: "mx-auto w-full max-w-screen-xl px-6 pb-16" }, h("div", { className: "border-t border-gray-200 pt-8" }, h("div", { className: "flex flex-col gap-2 md:flex-row md:items-end md:justify-between" }, h("div", null, h("h2", { className: "text-2xl font-extrabold text-gray-900" }, "게시판"), h("p", { className: "mt-2 text-sm text-gray-500" }, item.title, " 관련 글")), state.boardLoading && h("span", { className: "text-sm font-semibold text-blue-700" }, "불러오는 중...")), state.boardError && h("p", { className: "mt-4 border-y border-red-100 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700" }, state.boardError), state.isLoggedIn ? h("div", { className: "mt-6 border-y border-gray-200 py-5" }, h("div", { className: "grid grid-cols-1 gap-3" }, h("input", { className: inputClass(), placeholder: "제목", value: state.boardDraft.title || "", onChange: (event) => updateBoardDraft("title", event.target.value) }), h("textarea", { className: inputClass() + " min-h-[120px]", placeholder: "내용", value: state.boardDraft.content || "", onChange: (event) => updateBoardDraft("content", event.target.value) })), h("div", { className: "mt-4 flex flex-row flex-wrap items-center justify-between gap-3" }, h("label", { className: "flex flex-row items-center gap-2 text-sm font-semibold text-gray-600" }, h("input", { type: "checkbox", checked: state.boardDraft.is_secret === "1", onChange: (event) => updateBoardDraft("is_secret", event.target.checked ? "1" : "0") }), "비밀글"), h("div", { className: "flex flex-row gap-2" }, editing && h("button", { type: "button", className: buttonClass("ghost"), onClick: cancelBoardEdit }, "취소"), h("button", { type: "button", disabled: state.boardSaving, className: buttonClass(), onClick: saveBoardPost }, state.boardSaving ? "저장 중..." : editing ? "수정" : "글쓰기")))) : h("div", { className: "mt-6 border-y border-gray-200 py-5 text-sm text-gray-600" }, h("a", { className: "font-semibold text-blue-700 hover:text-blue-900", href: "/account/" }, "로그인"), " 후 게시글을 작성할 수 있습니다."), h("div", { className: "mt-6" }, state.boardPosts.length ? state.boardPosts.map((post) => h(BoardPost, { key: post.uuid, post })) : state.boardLoading ? h("div", { className: "border-y border-gray-200 py-10 text-center text-gray-500" }, "게시글을 불러오는 중입니다.") : h("div", { className: "border-y border-gray-200 py-10 text-center text-gray-500" }, "게시글이 없습니다."))));
+    return h("section", { className: "mx-auto w-full max-w-screen-xl px-6 pb-16" }, h("div", { className: "border-t border-gray-200 pt-8" }, h("div", { className: "flex flex-col gap-2 md:flex-row md:items-end md:justify-between" }, h("div", null, h("h2", { className: "text-2xl font-extrabold text-gray-900" }, "게시판"), h("p", { className: "mt-2 text-sm text-gray-500" }, item.title, " 관련 글")), state.boardLoading && h("span", { role: "status", className: "webr-catalog-assistive-status" }, "게시글을 불러오고 있습니다.")), state.boardError && h("div", { role: "alert", "data-workshop-board-error": "", className: "mt-4 border-y border-red-100 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700" }, h("p", null, state.boardError), state.boardCanRetry && h("button", { type: "button", className: buttonClass("ghost") + " mt-3", onClick: () => loadBoard(item) }, readText("retry"))), state.isLoggedIn ? h("div", { className: "mt-6 border-y border-gray-200 py-5" }, h("div", { className: "grid grid-cols-1 gap-3" }, h("input", { className: inputClass(), placeholder: "제목", value: state.boardDraft.title || "", onChange: (event) => updateBoardDraft("title", event.target.value) }), h("textarea", { className: inputClass() + " min-h-[120px]", placeholder: "내용", value: state.boardDraft.content || "", onChange: (event) => updateBoardDraft("content", event.target.value) })), h("div", { className: "mt-4 flex flex-row flex-wrap items-center justify-between gap-3" }, h("label", { className: "flex flex-row items-center gap-2 text-sm font-semibold text-gray-600" }, h("input", { type: "checkbox", checked: state.boardDraft.is_secret === "1", onChange: (event) => updateBoardDraft("is_secret", event.target.checked ? "1" : "0") }), "비밀글"), h("div", { className: "flex flex-row gap-2" }, editing && h("button", { type: "button", className: buttonClass("ghost"), onClick: cancelBoardEdit }, "취소"), h("button", { type: "button", disabled: state.boardSaving, className: buttonClass(), onClick: saveBoardPost }, state.boardSaving ? "저장 중..." : editing ? "수정" : "글쓰기")))) : h("div", { className: "mt-6 border-y border-gray-200 py-5 text-sm text-gray-600" }, h("a", { className: "font-semibold text-blue-700 hover:text-blue-900", href: "/account/" }, "로그인"), " 후 게시글을 작성할 수 있습니다."), h("div", { className: "mt-6" }, state.boardPosts.length ? state.boardPosts.map((post) => h(BoardPost, { key: post.uuid, post })) : state.boardLoading ? h("div", { "data-workshop-board-progress": "", "aria-hidden": "true", className: "space-y-4 border-y border-gray-200 py-10" }, [0, 1, 2].map(index => h("div", { key: index, className: "h-3 w-3/4 rounded bg-slate-100 animate-pulse motion-reduce:animate-none" }))) : !state.boardError && h("div", { className: "border-y border-gray-200 py-10 text-center text-gray-500" }, "게시글이 없습니다."))));
   }
   function WorkshopDetail({ item }) {
     const imageURL = workshopCoverImageURL(item);
@@ -768,7 +868,7 @@ const WorkshopCatalogPage = (() => {
   function ReadPage() {
     const item = state.selectedWorkshop || findWorkshop(state.workshops, state.readTarget);
     if (!item) {
-      return h("div", { className: "w-full" }, h(PageHeader, null), h("section", { className: "mx-auto w-full max-w-screen-lg px-6 py-16 text-center" }, h("p", { className: "text-base font-semibold text-gray-600" }, state.error || "\uC6CC\uD06C\uC0F5\uC744 \uCC3E\uC744 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4."), h("a", { className: "mt-6 inline-flex rounded bg-blue-700 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-800", href: "/workshop/" }, "\uBAA9\uB85D\uC73C\uB85C")));
+      return h("div", { className: "w-full" }, h(PageHeader, null), h("section", { className: "mx-auto w-full max-w-screen-lg px-6 py-16 text-center" }, h("div", { role: "alert", "data-workshop-read-error": "" }, h("p", { className: "text-base font-semibold text-gray-600" }, state.error || readText("missing")), state.readCanRetry && h("button", { type: "button", className: buttonClass("ghost") + " mt-4", onClick: load }, readText("retry"))), h("a", { className: "mt-6 inline-flex rounded bg-blue-700 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-800", href: "/workshop/" }, "\uBAA9\uB85D\uC73C\uB85C")));
     }
     return h(WorkshopDetail, { item });
   }
@@ -912,6 +1012,8 @@ const WorkshopCatalogPage = (() => {
     // pending inside its own card grid, without replacing the catalog layout.
     if (state.mode === "list")
       return h(ListPage, null);
+    if (state.mode === "read" && state.loading)
+      return h("div", { "aria-busy": "true", "data-workshop-read-progress": "" }, h(PageHeader, null), h("p", { role: "status", className: "webr-catalog-assistive-status" }, readText("pending")), h("section", { "aria-hidden": "true", className: "mx-auto grid w-full max-w-screen-xl gap-8 px-6 py-12 md:grid-cols-2" }, h("div", { className: "aspect-[16/10] bg-slate-100 animate-pulse motion-reduce:animate-none" }), h("div", { className: "space-y-6 py-4" }, [0, 1, 2, 3].map(index => h("div", { key: index, className: "h-4 w-3/4 rounded bg-slate-100 animate-pulse motion-reduce:animate-none" })))));
     if (state.loading) {
       return /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(PageHeader, null), /* @__PURE__ */ React.createElement("div", { className: "mx-auto flex w-full max-w-screen-lg justify-center px-6 py-16 text-gray-500" }, "\uBD88\uB7EC\uC624\uB294 \uC911\uC785\uB2C8\uB2E4."));
     }
