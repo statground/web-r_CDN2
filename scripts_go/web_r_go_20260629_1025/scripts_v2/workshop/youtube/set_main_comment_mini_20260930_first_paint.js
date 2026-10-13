@@ -698,8 +698,7 @@ async function loadYoutubeSidebar(targetID, title, endpoint, kind) {
   } catch (error) {
     if (!current()) return;
     render(React.createElement("div", { class: "w-full space-y-2" },
-      React.createElement("p", { role: "alert" }, "\uBAA9\uB85D\uC744 \uC7A0\uC2DC \uBD88\uB7EC\uC624\uC9C0 \uBABB\uD588\uC2B5\uB2C8\uB2E4."),
-      React.createElement("button", { type: "button", class: "text-blue-600", onClick: () => loadYoutubeSidebar(targetID, title, endpoint, kind) }, "\uB2E4\uC2DC \uC2DC\uB3C4")));
+      React.createElement("p", { role: "alert" }, "\uBAA9\uB85D\uC744 \uC7A0\uC2DC \uBD88\uB7EC\uC624\uC9C0 \uBABB\uD588\uC2B5\uB2C8\uB2E4.")));
   } finally {
     window.clearTimeout(state.timer);
     if (youtubeSidebarReads.get(targetID) === state) {

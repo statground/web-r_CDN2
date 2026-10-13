@@ -1,4 +1,5 @@
 import json
+import os
 import unittest
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -20,7 +21,8 @@ class YouTubeSidebarRecoveryTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.playwright = sync_playwright().start()
-        cls.browser = cls.playwright.chromium.launch(headless=True)
+        cls.browser = cls.playwright.chromium.launch(
+            headless=True, executable_path=os.environ.get("CHROMIUM_EXECUTABLE_PATH") or None)
 
     @classmethod
     def tearDownClass(cls):
@@ -73,16 +75,21 @@ class YouTubeSidebarRecoveryTests(unittest.TestCase):
         box = page.locator("#" + target)
         self.assertEqual(box.locator("a").count(), 0)
         self.assertEqual(box.get_by_role("alert").count(), 1)
-        self.assertEqual(box.get_by_role("button", name="다시 시도", exact=True).count(), 1)
+        self.assertEqual(box.get_by_role("button", name="다시 시도", exact=True).count(), 0)
         self.assertNotIn("0개", box.inner_text())
         self.assertEqual(box.get_attribute("aria-busy"), "false")
 
-    def test_pending_is_not_rows_and_retry_uses_current_server_response(self):
+    def test_pending_is_terminal_without_manual_retry_or_error_polling(self):
         payloads = [{"ok": False, "pending": True}, {"0": ARTICLE}]
         page, requests, errors, _ = self.render(lambda route, *_: self.fulfill(route, payloads.pop(0)))
         page.evaluate("get_article_famous_list()")
         self.assert_unavailable(page, TARGETS[0])
-        page.locator("#" + TARGETS[0]).get_by_role("button", name="다시 시도", exact=True).click()
+        page.wait_for_timeout(100)
+        self.assertEqual(len(requests), 1)
+        self.assert_unavailable(page, TARGETS[0])
+        # A later normal initialization must use fresh server data. No product
+        # Retry control or automatic error loop is introduced by this fix.
+        page.evaluate("get_article_famous_list()")
         page.locator("#" + TARGETS[0]).get_by_role("link", name=ARTICLE["title"], exact=False).wait_for()
         self.assertEqual(page.locator("#" + TARGETS[0] + " a").get_attribute("href"), "/workshop/youtube/read/" + ARTICLE_ID + "/")
         self.assertEqual(len(requests), 2)
@@ -132,7 +139,7 @@ class YouTubeSidebarRecoveryTests(unittest.TestCase):
                          ["/workshop/youtube/read/" + COMMENT_ID + "/", "/workshop/youtube/read/" + ARTICLE_ID + "/"])
         self.assertEqual(errors, [])
 
-    def test_http_and_network_failures_are_scoped_and_retryable(self):
+    def test_http_and_network_failures_are_scoped_without_retry_controls(self):
         def responder(route, _, requests, __):
             if len(requests) == 1:
                 self.fulfill(route, {}, status=503)
@@ -146,7 +153,9 @@ class YouTubeSidebarRecoveryTests(unittest.TestCase):
             page.evaluate("get_article_famous_list()")
             self.assert_unavailable(page, TARGETS[0])
             self.assertEqual(page.locator("#" + TARGETS[1]).inner_text(), "")
-        page.locator("#" + TARGETS[0]).get_by_role("button", name="다시 시도", exact=True).click()
+        page.wait_for_timeout(100)
+        self.assertEqual(len(requests), 2)
+        page.evaluate("get_article_famous_list()")
         page.locator("#" + TARGETS[0] + " a").wait_for()
         self.assertEqual(len(requests), 3)
         self.assertEqual(errors, [])
@@ -154,7 +163,7 @@ class YouTubeSidebarRecoveryTests(unittest.TestCase):
     def test_hanging_read_has_bounded_deadline(self):
         page, _, errors, _ = self.render(lambda route, _, __, parked: parked.append(route), short_deadline=True)
         page.evaluate("void get_article_famous_list()")
-        page.locator("#" + TARGETS[0]).get_by_role("button", name="다시 시도", exact=True).wait_for()
+        page.locator("#" + TARGETS[0]).get_by_role("alert").wait_for()
         self.assert_unavailable(page, TARGETS[0])
         self.assertEqual(errors, [])
 
