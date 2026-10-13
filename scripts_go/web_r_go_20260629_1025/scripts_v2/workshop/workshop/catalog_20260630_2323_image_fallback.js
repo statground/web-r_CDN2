@@ -77,6 +77,7 @@ const WorkshopCatalogPage = (() => {
   let resizePaginationBound = false;
   // Same 45s content deadline as the native catalog loader, including body read.
   const listBudget = 45000;
+  const listPendingGap = 1000, listPendingLimit = 32;
   const listRoot = document.getElementById("div_main");
   const listAddress = location.pathname + location.search;
   let listEpoch = 0, listController = null, listStopped = false;
@@ -87,18 +88,28 @@ const WorkshopCatalogPage = (() => {
   async function loadListData(attempt) {
     const controller = new AbortController();
     listController = controller;
-    let timer, cancel;
+    let timer, cancel, pendingTimer;
     const cancelled = new Promise((_, reject) => {
       cancel = () => reject(new Error("workshop list cancelled"));
       controller.signal.addEventListener("abort", cancel, { once: true });
     });
     const operation = (async () => {
-      const response = await fetch("/workshop/ajax_list/", { method: "POST", signal: controller.signal });
-      if (!ownsList(attempt) || controller.signal.aborted) throw new Error("workshop list cancelled");
-      if (!response.ok) throw new Error("workshop list unavailable");
-      const data = await response.json();
-      if (!ownsList(attempt) || controller.signal.aborted) throw new Error("workshop list cancelled");
-      return data;
+      for (let followup = 0; ; followup++) {
+        if (!ownsList(attempt) || controller.signal.aborted) throw new Error("workshop list cancelled");
+        const response = await fetch("/workshop/ajax_list/", { method: "POST", signal: controller.signal });
+        if (!ownsList(attempt) || controller.signal.aborted) throw new Error("workshop list cancelled");
+        if (!response.ok) throw new Error("workshop list unavailable");
+        const data = await response.json();
+        if (!ownsList(attempt) || controller.signal.aborted) throw new Error("workshop list cancelled");
+        // Only the exact empty backend pending shape may follow the same
+        // bounded fill. Real errors, partials and terminal denials never retry.
+        const pending = data && !Array.isArray(data) && data.ok === false &&
+          data.complete === false && data.pending === true && Array.isArray(data.workshops) &&
+          data.workshops.length === 0 && Object.keys(data).sort().join(",") === "complete,ok,pending,workshops";
+        if (!pending) return data;
+        if (followup >= listPendingLimit) throw new Error("workshop list pending");
+        await new Promise(resolve => { pendingTimer = window.setTimeout(resolve, listPendingGap); });
+      }
     })();
     const deadline = new Promise((_, reject) => {
       timer = window.setTimeout(() => { controller.abort(); reject(new Error("workshop list timeout")); }, listBudget);
@@ -106,6 +117,7 @@ const WorkshopCatalogPage = (() => {
     try { return await Promise.race([operation, deadline, cancelled]); }
     finally {
       window.clearTimeout(timer);
+      window.clearTimeout(pendingTimer);
       controller.signal.removeEventListener("abort", cancel);
       if (attempt === listEpoch) listController = null;
     }

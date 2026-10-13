@@ -6,6 +6,8 @@ const COMMUNITY_CARD_FETCH_ATTEMPTS = 3;
 const COMMUNITY_CARD_RETRY_BASE_MS = 180;
 const COMMUNITY_PARTIAL_RETRY_MS = 16e3;
 const COMMUNITY_PARTIAL_RECOVERY_MS = 45e3;
+const COMMUNITY_CACHE_PENDING_GAP_MS = 1e3;
+const COMMUNITY_CACHE_PENDING_FOLLOWUPS = 32;
 const COMMUNITY_CARD_MAX_CONCURRENCY = 2;
 const COMMUNITY_PAGE_CACHE_TTL_MS = 9e4;
 const COMMUNITY_COMMENT_DELETE_TOMBSTONE_MS = 3e5;
@@ -165,6 +167,13 @@ function isCommunityArticleListRetryablePartial(data) {
     Array.isArray(data.unavailable_sections) && data.unavailable_sections.length === 1 &&
     data.unavailable_sections[0] === "article-feed" && data.list && typeof data.list === "object" &&
     !Array.isArray(data.list) && data.count && Number.isSafeInteger(data.count.cnt) && data.count.cnt >= 0);
+}
+function isCommunityArticleListCachePending(data) {
+  return !!(data && !Array.isArray(data) && data.ok === false && data.pending === true &&
+    data.message === "게시글 목록을 일시적으로 불러오지 못했습니다. 잠시 후 다시 시도해 주세요." &&
+    Object.keys(data).sort().join(",") === "count,list,message,ok,pending" &&
+    data.count && !Array.isArray(data.count) && data.count.cnt === 0 && Object.keys(data.count).join(",") === "cnt" &&
+    data.list && typeof data.list === "object" && !Array.isArray(data.list) && Object.keys(data.list).length === 0);
 }
 function communityArticleListPendingMessage(data) {
   const message = data && typeof data.message === "string" ? data.message.trim() : "";
@@ -1904,6 +1913,9 @@ async function fetchCommunityArticleListResponse(requestData, pendingAttempts, i
   let lastPartial = null;
   let lastPartialResponse = null;
   let response = null;
+  let cachePending = false;
+  let cachePendingRecovery = false;
+  let pendingFollowups = 0;
   let stopped = false;
   let controller = null;
   let timer = null;
@@ -1917,8 +1929,9 @@ async function fetchCommunityArticleListResponse(requestData, pendingAttempts, i
   };
   window.addEventListener("pagehide", stop, { once: true });
   try {
-    for (let attempt = 1; attempt <= COMMUNITY_CARD_FETCH_ATTEMPTS; attempt += 1) {
+    for (let attempt = 1; attempt <= COMMUNITY_CARD_FETCH_ATTEMPTS;) {
       if (stopped || !isCurrent() || performance.now() >= deadline) break;
+      cachePending = false;
       try {
         controller = new AbortController();
         timer = window.setTimeout(() => controller.abort(), deadline - performance.now());
@@ -1935,6 +1948,10 @@ async function fetchCommunityArticleListResponse(requestData, pendingAttempts, i
           return { response, data: { ok: false, pending: true, access_denied: true } };
         }
         const cacheStatus = String(response.headers.get("X-WebR-Cache") || "").toLowerCase();
+        cachePending = !lastPartial && requestData.get("tag") === "rcommunity" &&
+          response.ok && cacheStatus === "pending" && isCommunityArticleListCachePending(data);
+        if (cachePending) cachePendingRecovery = true;
+        else if (cachePendingRecovery && (!response.ok || isCommunityArticleListPending(data))) break;
         if (response.ok && cacheStatus !== "pending" && !isCommunityArticleListPending(data)) {
           if (!isCommunityArticleListRetryablePartial(data)) return { response, data };
           lastPartial = data;
@@ -1943,24 +1960,29 @@ async function fetchCommunityArticleListResponse(requestData, pendingAttempts, i
         }
       } catch (error) {
         if (!stopped) console.error("[fetchCommunityArticleListResponse] failed", error);
+        if (cachePendingRecovery) break;
       } finally {
         if (timer) window.clearTimeout(timer);
         timer = null;
         controller = null;
       }
-      if (stopped || !isCurrent() || attempt >= COMMUNITY_CARD_FETCH_ATTEMPTS ||
-          (!lastPartial && attempt >= pendingAttempts)) break;
-      if (lastPartial) {
-        if (performance.now() + COMMUNITY_PARTIAL_RETRY_MS >= deadline) break;
+      if (stopped || !isCurrent() || (!cachePending && (attempt >= COMMUNITY_CARD_FETCH_ATTEMPTS ||
+          (!lastPartial && attempt >= pendingAttempts)))) break;
+      if (lastPartial || cachePending) {
+        const gap = cachePending ? COMMUNITY_CACHE_PENDING_GAP_MS : COMMUNITY_PARTIAL_RETRY_MS;
+        if (cachePending && pendingFollowups >= COMMUNITY_CACHE_PENDING_FOLLOWUPS) break;
+        if (performance.now() + gap >= deadline) break;
+        if (cachePending) pendingFollowups += 1;
         await new Promise((resolve) => {
           wake = resolve;
-          timer = window.setTimeout(resolve, COMMUNITY_PARTIAL_RETRY_MS);
+          timer = window.setTimeout(resolve, gap);
         });
         wake = null;
         timer = null;
       } else {
         await sleepCommunityCardRetry(attempt);
       }
+      if (!cachePending) attempt += 1;
     }
     return { response: lastPartial ? lastPartialResponse : response, data: lastPartial || {
       ok: false,

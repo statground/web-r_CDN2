@@ -59,7 +59,11 @@ class CommunityPartialRecoveryTests(unittest.TestCase):
           Object.defineProperty(performance,'now',{value:()=>window.__now});
           const timer=window.setTimeout.bind(window);
           window.setTimeout=(fn,ms,...args)=>{
-            if(ms===16000) {
+            if(ms===1000) {
+              window.__sleeps.push(ms);
+              return timer(()=>{window.__now+=ms;fn(...args);},10);
+            }
+            if(ms===16000 && !String(fn).includes("controller.abort")) {
               window.__sleeps.push(ms);
               return timer(()=>{window.__now+=ms;fn(...args);},400);
             }
@@ -75,7 +79,7 @@ class CommunityPartialRecoveryTests(unittest.TestCase):
               const finish=()=>{
                 if(done)return;done=true;--window.__active;
                 if(scenario.network)reject(new TypeError('controlled network failure'));
-                else resolve(new Response(JSON.stringify(scenario.body),{status:scenario.status||200}));
+                else resolve(new Response(JSON.stringify(scenario.body),{status:scenario.status||200,headers:scenario.headers||{}}));
               };
               if(init.signal)init.signal.addEventListener('abort',()=>{
                 if(done)return;done=true;--window.__active;++window.__aborts;
@@ -96,6 +100,84 @@ class CommunityPartialRecoveryTests(unittest.TestCase):
         self.assertEqual(errors, [])
         self.assertEqual(requests, ["https://community.test/"])
         self.assertEqual(page.evaluate("window.__maxActive"), 1)
+
+    def cache_pending(self):
+        return {"ok": False, "pending": True,
+                "message": "게시글 목록을 일시적으로 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.",
+                "count": {"cnt": 0}, "list": {}}
+
+    def pending_scenario(self):
+        return {"body": self.cache_pending(), "headers": {"X-WebR-Cache": "pending"}}
+
+    def test_main_and_card_cache_pending_share_original_recovery_window(self):
+        for generic in (False, True):
+            with self.subTest(generic=generic):
+                page, errors, requests = self.render([self.pending_scenario(),
+                                                     self.pending_scenario(),
+                                                     {"body": payload("Complete after pending")}], generic=generic)
+                self.settled(page, errors, requests)
+                self.assertEqual(page.evaluate("window.__calls.map(call=>call.at)"), [0, 1000, 2000])
+                self.assertEqual(page.evaluate("window.__sleeps"), [1000, 1000])
+                self.assertIn("Complete after pending", page.locator("body").inner_text())
+                self.assertEqual(page.locator("nav").count(), 1)
+
+    def test_cache_pending_header_is_required_and_partial_transfer_keeps_old_gap(self):
+        for generic in (False, True):
+            for headers in ({}, {"X-WebR-Cache": "miss"}):
+                with self.subTest(generic=generic, headers=headers):
+                    page, errors, requests = self.render([{"body": self.cache_pending(), "headers": headers}], generic=generic)
+                    self.settled(page, errors, requests)
+                    self.assertEqual(page.evaluate("window.__sleeps"), [])
+                    self.assertEqual(page.evaluate("window.__calls.length"), 1 if generic else 3)
+                    self.assertEqual(page.locator("nav").count(), 0)
+        page, errors, requests = self.render([self.pending_scenario(),
+                                             {"body": payload("Verified partial", partial=True)},
+                                             {"body": payload("Complete after transfer")}], generic=True)
+        self.settled(page, errors, requests)
+        self.assertEqual(page.evaluate("window.__sleeps"), [1000, 16000])
+        self.assertEqual(page.evaluate("window.__calls.map(call=>call.at)"), [0, 1000, 17000])
+        self.assertIn("Complete after transfer", page.locator("body").inner_text())
+
+    def test_cache_pending_error_denial_and_invalid_followup_stop(self):
+        invalid = {**self.cache_pending(), "error": "source failed"}
+        rows = {**self.cache_pending(), "list": payload()["list"]}
+        for generic in (False, True):
+            for failed in ({"status": 503, "body": self.cache_pending()},
+                           {"status": 403, "body": self.cache_pending()},
+                           {"network": True}, {"body": invalid}, {"body": rows},
+                           {"body": {"ok": False, "pending": True}}):
+                with self.subTest(generic=generic, failed=failed):
+                    page, errors, requests = self.render([self.pending_scenario(), failed,
+                                                         {"body": payload("Must not arrive")}], generic=generic)
+                    self.settled(page, errors, requests)
+                    self.assertEqual(page.evaluate("window.__calls.length"), 2)
+                    self.assertEqual(page.evaluate("window.__sleeps"), [1000])
+                    self.assertNotIn("Must not arrive", page.locator("body").inner_text())
+                    self.assertEqual(page.locator("nav").count(), 0)
+
+    def test_cache_pending_exhaustion_deadline_and_pagehide_are_finite(self):
+        for generic in (False, True):
+            with self.subTest(generic=generic):
+                page, errors, requests = self.render([self.pending_scenario()], generic=generic)
+                self.settled(page, errors, requests)
+                self.assertEqual(page.evaluate("window.__calls.length"), 33)
+                self.assertEqual(page.evaluate("window.__sleeps"), [1000] * 32)
+                self.assertEqual(page.locator("nav").count(), 0)
+                cache = "communityArticlePageCache" if generic else "communityCardLastGood"
+                self.assertEqual(page.evaluate("Object.keys(" + cache + ").length"), 0)
+        page, errors, requests = self.render([self.pending_scenario(), {"hold": True}], generic=True)
+        self.settled(page, errors, requests)
+        self.assertEqual(page.evaluate("window.__calls.length"), 2)
+        self.assertEqual(page.evaluate("window.__aborts"), 1)
+        self.assertLessEqual(page.evaluate("window.__now"), 45000)
+        self.assertEqual(page.locator("nav").count(), 0)
+        page, errors, requests = self.render([self.pending_scenario(), {"body": payload("Obsolete pending owner")}], generic=True)
+        page.wait_for_function("window.__sleeps.length===1")
+        page.evaluate("dispatchEvent(new PageTransitionEvent('pagehide'))")
+        self.settled(page, errors, requests)
+        page.wait_for_timeout(420)
+        self.assertEqual(page.evaluate("window.__calls.length"), 1)
+        self.assertNotIn("Obsolete pending owner", page.locator("body").inner_text())
 
     def test_card_partial_cache_expiry_recovers_complete_and_pagination(self):
         page, errors, requests = self.render([{"body": payload("Partial row", partial=True)}, {"body": payload("Complete row")}])

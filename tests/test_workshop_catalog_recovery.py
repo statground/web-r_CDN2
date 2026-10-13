@@ -29,7 +29,7 @@ class WorkshopCatalogRecoveryTests(unittest.TestCase):
         cls.browser.close()
         cls.playwright.stop()
 
-    def render(self, scenarios, *, width=1440, native_stage=None):
+    def render(self, scenarios, *, width=1440, native_stage=None, clocked=False):
         page = self.browser.new_page(viewport={"width": width, "height": 1000})
         page.set_default_timeout(3000)
         self.addCleanup(page.close)
@@ -58,9 +58,10 @@ class WorkshopCatalogRecoveryTests(unittest.TestCase):
 
         page.route("**/*", respond)
         page.goto("https://workshop.test/workshop/")
-        if native_stage:
+        if native_stage or clocked:
             page.clock.install(time=datetime(2026, 10, 10, tzinfo=timezone.utc))
             page.clock.pause_at(datetime(2026, 10, 10, 0, 0, 1, tzinfo=timezone.utc))
+        if native_stage:
             page.evaluate("""stage => {
                 window.controlledList = {calls: 0, aborted: false, release: null};
                 window.fetch = (_url, options) => {
@@ -78,6 +79,93 @@ class WorkshopCatalogRecoveryTests(unittest.TestCase):
         page.add_script_tag(path=str(SCRIPT))
         page.evaluate("set_main()")
         return page, calls, page_errors
+
+    def test_validated_pending_follows_up_and_renders_complete(self):
+        pending = {"ok": False, "complete": False, "pending": True, "workshops": []}
+        page, calls, errors = self.render([{"body": pending}, {"body": COMPLETE}], clocked=True)
+        page.locator("[data-workshop-catalog-progress]").wait_for(state="attached")
+        page.wait_for_function("document.querySelector('[data-workshop-catalog-progress]') != null")
+        page.wait_for_timeout(20)
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(page.locator("[data-workshop-count], [role=alert]").count(), 0)
+        page.clock.fast_forward(999)
+        self.assertEqual(len(calls), 1)
+        page.clock.fast_forward(1)
+        self.assert_full_list(page)
+        self.assertEqual(len(calls), 2)
+        self.assertEqual(errors, [])
+
+    def test_pending_followups_have_finite_count_within_original_window(self):
+        pending = {"ok": False, "complete": False, "pending": True, "workshops": []}
+        page, calls, errors = self.render([{"body": pending}], clocked=True)
+        page.locator("[data-workshop-catalog-progress]").wait_for(state="attached")
+        page.wait_for_timeout(20)
+        for expected in range(2, 34):
+            page.clock.fast_forward(1000)
+            page.wait_for_timeout(20)
+            self.assertEqual(len(calls), expected)
+        self.assert_failed_without_empty(page)
+        page.clock.fast_forward(45000)
+        self.assertEqual(len(calls), 33)
+        self.assertEqual(errors, [])
+
+    def test_pending_only_schema_and_http_denial_never_retry_errors(self):
+        pending = {"ok": False, "complete": False, "pending": True, "workshops": []}
+        invalid = [{**pending, "error": "source failed"}, {**pending, "complete": True},
+                   {**pending, "workshops": ROWS}, {k: v for k, v in pending.items() if k != "pending"}]
+        for body in invalid:
+            with self.subTest(body=body):
+                page, calls, errors = self.render([{"body": body}, {"body": COMPLETE}], clocked=True)
+                self.assert_failed_without_empty(page)
+                page.clock.fast_forward(45000)
+                self.assertEqual(len(calls), 1)
+                self.assertEqual(errors, [])
+        page, calls, errors = self.render([{"body": pending}, {"status": 403, "body": {}}, {"body": COMPLETE}], clocked=True)
+        page.locator("[data-workshop-catalog-progress]").wait_for(state="attached")
+        page.wait_for_timeout(20)
+        page.clock.fast_forward(1000)
+        self.assert_failed_without_empty(page)
+        page.clock.fast_forward(45000)
+        self.assertEqual(len(calls), 2)
+        page.get_by_role("button", name="다시 시도", exact=True).click()
+        self.assert_full_list(page)
+        self.assertEqual(len(calls), 3)
+        self.assertEqual(errors, [])
+
+    def test_pending_wait_shares_original_deadline_and_pagehide_owner(self):
+        pending = {"ok": False, "complete": False, "pending": True, "workshops": []}
+        for stop in ("deadline", "pagehide"):
+            with self.subTest(stop=stop):
+                page, calls, errors = self.render([{"body": pending}], clocked=True)
+                page.locator("[data-workshop-catalog-progress]").wait_for(state="attached")
+                page.wait_for_timeout(20)
+                page.evaluate("""() => {
+                    window.pendingFollowup = {calls:0, aborted:false, release:null};
+                    window.fetch = (_url, options) => {
+                        const owner = window.pendingFollowup;
+                        owner.calls++;
+                        options.signal.addEventListener('abort', () => {owner.aborted=true;});
+                        return Promise.resolve({ok:true,json:()=>new Promise(resolve=>{owner.release=resolve;})});
+                    };
+                }""")
+                if stop == "pagehide":
+                    page.evaluate("dispatchEvent(new PageTransitionEvent('pagehide'))")
+                    page.clock.fast_forward(45000)
+                    self.assertEqual(page.evaluate("pendingFollowup.calls"), 0)
+                    self.assertEqual(page.locator("[data-workshop-count], [role=alert]").count(), 0)
+                else:
+                    page.clock.fast_forward(1000)
+                    self.assertEqual(page.evaluate("pendingFollowup.calls"), 1)
+                    page.clock.fast_forward(43999)
+                    self.assertEqual(page.get_by_role("alert").count(), 0)
+                    page.clock.fast_forward(1)
+                    self.assert_failed_without_empty(page)
+                    self.assertTrue(page.evaluate("pendingFollowup.aborted"))
+                    page.evaluate("data => pendingFollowup.release(data)", COMPLETE)
+                    page.wait_for_timeout(10)
+                    self.assert_failed_without_empty(page)
+                self.assertEqual(len(calls), 1)
+                self.assertEqual(errors, [])
 
     def test_original_deadline_bounds_fetch_and_body_even_when_transport_ignores_abort(self):
         for stage in ("fetch", "body"):
