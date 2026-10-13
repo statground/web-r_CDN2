@@ -245,14 +245,6 @@
     var failure = element("div", "webr-home-compact__lane-error");
     failure.setAttribute("role", "status");
     failure.appendChild(uiElement("p", "webr-home-compact__article-summary", "자료를 불러오지 못했습니다."));
-    var retry = uiElement("button", "webr-home-compact__lane-retry", "다시 확인");
-    retry.type = "button";
-    retry.addEventListener("click", function retryThisSummary() {
-      if (summaryRecoveryInFlight || !summaryRecoveryVisible()) return;
-      retry.disabled = true;
-      retryUnavailableSummary();
-    });
-    failure.appendChild(retry);
     body.appendChild(failure);
   }
 
@@ -677,13 +669,8 @@
       if (noticeSummaryUnavailable(payload)) {
         var unavailable = element("div", "webr-home-compact__notice-unavailable");
         unavailable.setAttribute("role", "status");
-        unavailable.appendChild(uiElement("p", "", "공지사항을 확인하지 못했습니다. 잠시 후 다시 시도해 주세요."));
+        unavailable.appendChild(uiElement("p", "", "공지사항을 확인하지 못했습니다."));
         var actions = element("div", "webr-home-compact__notice-actions");
-        var retry = uiElement("button", "webr-home-compact__notice-retry", noticeRetryInFlight ? "확인 중..." : "다시 시도");
-        retry.type = "button";
-        retry.disabled = noticeRetryInFlight;
-        retry.addEventListener("click", retryUnavailableNotices);
-        actions.appendChild(retry);
         actions.appendChild(uiLink("/intro/notice/", "webr-home-compact__notice-visit", "공지사항으로 이동"));
         unavailable.appendChild(actions);
         refs.noticesBody.appendChild(unavailable);
@@ -880,7 +867,7 @@
     latestActivity = rows;
     latestActivityUnavailable = unavailable === true;
     if (!rows.length) {
-      refs.activityBody.appendChild(uiElement("p", "webr-home-compact__activity-empty", unavailable ? "활동을 확인하지 못했습니다. 잠시 후 다시 시도해 주세요." : "표시할 최근 활동이 없습니다."));
+      refs.activityBody.appendChild(uiElement("p", "webr-home-compact__activity-empty", unavailable ? "활동을 확인하지 못했습니다." : "표시할 최근 활동이 없습니다."));
       return;
     }
     var list = element("div", "webr-home-compact__activity-list");

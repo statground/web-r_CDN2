@@ -1463,9 +1463,7 @@ function SidebarCard(props) {
     return React.createElement("div", { class: SIDEBAR_CARD_CLASS }, React.createElement(Div_box_header, { title: props.title }),
       React.createElement("div", { class: "flex min-h-[120px] flex-col items-center justify-center gap-3 text-center text-sm text-slate-500" },
         React.createElement("p", { role: "alert", "aria-live": "polite" }, denied ? communityT("이 목록을 볼 권한이 없습니다.") :
-          communityT("목록을 일시적으로 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.")),
-        !denied && typeof props.onRetry === "function" && React.createElement("button", { type: "button", onClick: props.onRetry,
-          class: "rounded-lg border px-3 py-2 text-sm" }, communityT("다시 시도"))));
+          communityT("목록을 일시적으로 불러오지 못했습니다."))));
   }
   const items = communitySidebarRows(props.data, props.limit);
   const emptyText = isCommunitySidebarPending(props.data) ? communityT("\uBD88\uB7EC\uC624\uB294 \uC911\uC785\uB2C8\uB2E4.") : props.empty || communityT("\uD45C\uC2DC\uD560 \uB0B4\uC6A9\uC774 \uC5C6\uC2B5\uB2C8\uB2E4.");
@@ -2391,11 +2389,9 @@ function renderCommunityDetailStatus(state, pending, terminal = false) {
   state.target.setAttribute("aria-busy", pending ? "true" : "false");
   const text = pending ? communityT("게시글을 불러오고 있습니다.") : terminal ?
     communityT("게시글을 찾을 수 없거나 읽을 수 없습니다.") :
-    communityT("게시글을 불러오지 못했습니다. 다시 시도해 주세요.");
+    communityT("게시글을 불러오지 못했습니다.");
   ReactDOM.render(React.createElement("div", { class: "w-full py-4 space-y-3" },
-    React.createElement("p", { role: pending ? "status" : "alert", "aria-live": "polite", class: "text-sm text-gray-600" }, text),
-    !pending && !terminal && React.createElement("button", { type: "button", class: "rounded-lg border px-3 py-2 text-sm",
-      onClick: () => { if (currentCommunityDetail(state)) void get_read_article("init"); } }, communityT("다시 시도"))), state.target);
+    React.createElement("p", { role: pending ? "status" : "alert", "aria-live": "polite", class: "text-sm text-gray-600" }, text)), state.target);
   if (pending) {
     const content = document.getElementById("div_community_read_content");
     const motion = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "" : " animate-pulse";

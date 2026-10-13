@@ -77,17 +77,19 @@ class YouTubeFirstPaintBrowserTests(unittest.TestCase):
         self.assertTrue(page.get_by_role("heading", name=VIDEO["title"], exact=True).is_visible())
         self.assertLessEqual(sum("/hqdefault.jpg" in url for url in requests), 1)
 
-    def test_pending_list_keeps_controls_and_explicit_retry_without_empty_claim(self):
+    def test_pending_list_keeps_controls_and_finite_error_without_empty_claim(self):
         page, _, _ = self.render(pending_list=True)
-        page.get_by_role("button", name="다시 시도", exact=True).wait_for(state="visible")
+        page.get_by_text("영상 목록을 잠시 불러오지 못했습니다.", exact=True).wait_for(state="visible")
+        self.assertEqual(page.get_by_role("button", name="다시 시도", exact=True).count(), 0)
         self.assertTrue(page.get_by_role("heading", name="유튜브", exact=True).is_visible())
         self.assertTrue(page.get_by_role("button", name="검색", exact=True).is_visible())
         self.assertIn("영상 목록을 잠시 불러오지 못했습니다.", page.locator("#div_main").inner_text())
         self.assertNotIn("전체 0개", page.locator("#div_main").inner_text())
 
-    def test_hanging_list_has_deadline_and_manual_retry(self):
+    def test_hanging_list_has_deadline_and_finite_error(self):
         page, _, _ = self.render(hanging_list=True)
-        page.get_by_role("button", name="다시 시도", exact=True).wait_for(state="visible")
+        page.get_by_text("영상 목록을 잠시 불러오지 못했습니다.", exact=True).wait_for(state="visible")
+        self.assertEqual(page.get_by_role("button", name="다시 시도", exact=True).count(), 0)
         self.assertTrue(page.get_by_role("heading", name="유튜브", exact=True).is_visible())
         self.assertFalse(page.evaluate("toggle_page"))
 

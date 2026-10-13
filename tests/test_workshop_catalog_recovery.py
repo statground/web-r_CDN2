@@ -127,7 +127,7 @@ class WorkshopCatalogRecoveryTests(unittest.TestCase):
         self.assert_failed_without_empty(page)
         page.clock.fast_forward(45000)
         self.assertEqual(len(calls), 2)
-        page.get_by_role("button", name="다시 시도", exact=True).click()
+        page.evaluate("set_main()")
         self.assert_full_list(page)
         self.assertEqual(len(calls), 3)
         self.assertEqual(errors, [])
@@ -178,7 +178,7 @@ class WorkshopCatalogRecoveryTests(unittest.TestCase):
                 self.assert_failed_without_empty(page)
                 self.assertTrue(page.evaluate("controlledList.aborted"))
                 self.assertEqual(page.evaluate("controlledList.calls"), 1)
-                page.get_by_role("button", name="다시 시도", exact=True).click()
+                page.evaluate("set_main()")
                 self.assert_full_list(page)
                 late = {**COMPLETE, "workshops": [{**ROWS[0], "title": "Obsolete late response"}]}
                 page.evaluate("({stage, data}) => controlledList.release(stage === 'fetch' ? {ok:true,json:()=>Promise.resolve(data)} : data)", {"stage": stage, "data": late})
@@ -237,7 +237,8 @@ class WorkshopCatalogRecoveryTests(unittest.TestCase):
             page.screenshot(path=str(directory / (label + ".png")), full_page=True)
 
     def assert_failed_without_empty(self, page):
-        page.get_by_role("button", name="다시 시도", exact=True).wait_for(state="visible")
+        page.get_by_text("워크샵 목록을 잠시 불러오지 못했습니다.", exact=True).wait_for(state="visible")
+        self.assertEqual(page.get_by_role("button", name="다시 시도", exact=True).count(), 0)
         self.assertEqual(page.locator("[data-workshop-count], [data-workshop-empty]").count(), 0)
         self.assertNotIn("0개의 워크샵", page.locator("#div_main").inner_text())
         self.assertNotIn("등록된 워크샵이 없습니다.", page.locator("#div_main").inner_text())
@@ -251,11 +252,11 @@ class WorkshopCatalogRecoveryTests(unittest.TestCase):
         self.assertEqual(page.get_by_role("alert").count(), 0)
         self.assertEqual(page.locator("[data-workshop-empty]").count(), 0)
 
-    def test_network_failure_keeps_controls_and_manual_retry_recovers_real_count_and_cards(self):
+    def test_network_failure_keeps_controls_and_explicit_new_request_recovers_real_count_and_cards(self):
         page, calls, errors = self.render([{"network": True}, {"body": COMPLETE}])
         self.assert_failed_without_empty(page)
         self.screenshot(page, "network-failure")
-        page.get_by_role("button", name="다시 시도", exact=True).click()
+        page.evaluate("set_main()")
         self.assert_full_list(page)
         self.screenshot(page, "network-recovered")
         self.assertEqual(calls, [{"path": "/workshop/ajax_list/", "method": "POST"}] * 2)
@@ -266,7 +267,7 @@ class WorkshopCatalogRecoveryTests(unittest.TestCase):
         self.assert_failed_without_empty(page)
         self.assertEqual(page.locator(CARDS).count(), 0)
         self.screenshot(page, "503-failure")
-        page.get_by_role("button", name="다시 시도", exact=True).click()
+        page.evaluate("set_main()")
         self.assert_full_list(page)
         self.assertEqual(len(calls), 2)
         self.assertEqual(errors, [])
@@ -278,7 +279,7 @@ class WorkshopCatalogRecoveryTests(unittest.TestCase):
             with self.subTest(payload=payload):
                 page, calls, errors = self.render([{"body": payload}, {"body": COMPLETE}])
                 self.assert_failed_without_empty(page)
-                page.get_by_role("button", name="다시 시도", exact=True).click()
+                page.evaluate("set_main()")
                 self.assert_full_list(page)
                 self.assertEqual(len(calls), 2)
                 self.assertEqual(errors, [])
@@ -309,7 +310,7 @@ class WorkshopCatalogRecoveryTests(unittest.TestCase):
         self.assertEqual(page.locator(CARDS + " h2").inner_text(), "Public R workshop 31")
         self.screenshot(page, "last-good-failure-filtered")
         page.locator("input[placeholder='검색어']").fill("")
-        page.get_by_role("button", name="다시 시도", exact=True).click()
+        page.evaluate("set_main()")
         self.assert_full_list(page)
         self.assertEqual(len(calls), 3)
         self.assertEqual(errors, [])

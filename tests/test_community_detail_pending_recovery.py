@@ -112,7 +112,7 @@ class CommunityDetailRecoveryTests(unittest.TestCase):
         self.assert_no_fake_article(page)
         self.assertEqual(page.locator('#div_community_read_content .animate-pulse').count(), 0)
         self.assertEqual(page.locator('#div_community_read_header').get_attribute('aria-busy'), 'false')
-        self.assertEqual(page.locator('#div_community_read_header button').count(), 0 if terminal else 1)
+        self.assertEqual(page.locator('#div_community_read_header button').count(), 0)
 
     def test_real_twenty_second_pending_then_valid_body_never_renders_control_envelope(self):
         page, calls, held, errors, unexpected = self.render(lambda r, n, h: h.append(r) if n == 1 else self.fulfill(r, ARTICLE))
@@ -134,7 +134,7 @@ class CommunityDetailRecoveryTests(unittest.TestCase):
         self.assertTrue(all(c['headers']['x-csrftoken'] == 'fixture-csrf' for c in calls if c['path'] == READ))
         self.assertEqual((errors, unexpected), ([], []))
 
-    def test_three_pending_attempts_stop_with_explicit_manual_retry(self):
+    def test_three_pending_attempts_stop_without_retry_action_and_new_request_reads_current_body(self):
         page, calls, _, errors, unexpected = self.render(lambda r, n, h: self.fulfill(r, PENDING if n <= 3 else ARTICLE))
         page.wait_for_function('primaryCompleted===1')
         page.clock.run_for(180)
@@ -144,7 +144,8 @@ class CommunityDetailRecoveryTests(unittest.TestCase):
         page.clock.run_for(45000)
         self.assertEqual(self.count(calls), 3)
         self.assertEqual(self.count(calls, COMMENTS), 0)
-        page.locator('#div_community_read_header').get_by_role('button', name='다시 시도', exact=True).click()
+        self.assertEqual(page.locator('#div_community_read_header button').count(), 0)
+        page.evaluate('void get_read_article("init")')
         page.get_by_text(ARTICLE['title'], exact=True).wait_for()
         self.assertEqual(self.count(calls), 4)
         self.assertEqual((errors, unexpected), ([], []))

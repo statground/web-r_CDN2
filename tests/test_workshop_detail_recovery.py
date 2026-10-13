@@ -103,7 +103,7 @@ class WorkshopDetailRecoveryTests(unittest.TestCase):
     def assert_error(self, page, retry=True):
         page.locator("[data-workshop-read-error]").wait_for()
         self.assertEqual(page.locator("[data-workshop-read-progress]").count(), 0)
-        self.assertEqual(page.locator("[data-workshop-read-error] button").count(), 1 if retry else 0)
+        self.assertEqual(page.locator("[data-workshop-read-error] button").count(), 0)
         self.assertNotIn(ITEM["title"], page.locator("#div_main").inner_text())
 
     def test_desktop_and_mobile_list_card_click_reaches_same_detail(self):
@@ -162,11 +162,11 @@ class WorkshopDetailRecoveryTests(unittest.TestCase):
                 self.assert_error(page)
                 self.assertEqual(errors, [])
 
-    def test_http_failure_cannot_render_even_with_valid_looking_body_and_manual_retry_recovers(self):
+    def test_http_failure_cannot_render_even_with_valid_looking_body_and_fresh_navigation_recovers(self):
         page, calls, held, errors = self.render({READ: [{"status": 503, "body": COMPLETE}, {"body": COMPLETE}]})
         self.assert_error(page)
         self.assertNotIn("워크샵을 찾을 수 없습니다.", page.locator("#div_main").inner_text())
-        page.locator("[data-workshop-read-error] button").click()
+        page.reload(); self.install(page)
         self.assert_body(page)
         self.assertEqual(sum(c["path"] == READ for c in calls), 2)
         self.assertEqual(errors, [])
@@ -221,7 +221,7 @@ class WorkshopDetailRecoveryTests(unittest.TestCase):
             self.assertNotIn(ITEM["title"], page.locator("#div_main").inner_text())
             self.assertEqual(errors, [])
 
-    def test_board_failure_keeps_detail_has_no_false_empty_and_manual_retry(self):
+    def test_board_failure_keeps_detail_has_no_false_empty_and_fresh_navigation(self):
         with_board = {**COMPLETE, "board_error": "temporary source error"}
         page, calls, held, errors = self.render({READ: [{"body": with_board}], BOARD: [
             {"status": 503, "body": {"ok": True, "posts": []}},
@@ -229,7 +229,8 @@ class WorkshopDetailRecoveryTests(unittest.TestCase):
         self.assert_body(page)
         page.locator("[data-workshop-board-error]").wait_for()
         self.assertNotIn("게시글이 없습니다.", page.locator("#div_main").inner_text())
-        page.locator("[data-workshop-board-error] button").click()
+        self.assertEqual(page.locator("[data-workshop-board-error] button").count(), 0)
+        page.reload(); self.install(page)
         page.get_by_role("heading", name="Current workshop post", exact=True).wait_for()
         self.assertEqual(page.locator("[data-workshop-board-progress], [data-workshop-board-error]").count(), 0)
         self.assertEqual(errors, [])
@@ -243,7 +244,7 @@ class WorkshopDetailRecoveryTests(unittest.TestCase):
                 page.clock.fast_forward(45001)
             page.locator("[data-workshop-board-error]").wait_for()
             self.assertEqual(page.locator("[data-workshop-board-progress]").count(), 0)
-            self.assertEqual(page.locator("[data-workshop-board-error] button").count(), 1 if scenario.get("hold") else 0)
+            self.assertEqual(page.locator("[data-workshop-board-error] button").count(), 0)
             self.assertNotIn("게시글이 없습니다.", page.locator("#div_main").inner_text())
             self.assertEqual(errors, [])
 

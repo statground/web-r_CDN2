@@ -110,12 +110,12 @@ class YouTubePrimaryRecoveryTests(unittest.TestCase):
         header = page.locator("#div_community_read_header")
         header.get_by_role("alert").wait_for(timeout=1000)
         self.assert_no_fake_article(page)
-        self.assertEqual(header.get_by_role("button").count(), 0 if terminal else 1)
+        self.assertEqual(header.get_by_role("button").count(), 0)
         self.assertEqual(page.locator("#div_community_read_content .animate-pulse").count(), 0)
         self.assertEqual(header.get_attribute("aria-busy"), "false")
         if english:
             self.assertIn("request could not be completed", header.inner_text())
-            self.assertEqual(header.get_by_role("button", name="Try again", exact=True).count(), 1)
+            self.assertEqual(header.get_by_role("button", name="Try again", exact=True).count(), 0)
 
     def test_slow_pending_then_fast_body_never_renders_control_envelope(self):
         def responder(route, number, parked):
@@ -213,7 +213,7 @@ class YouTubePrimaryRecoveryTests(unittest.TestCase):
         self.assertTrue(page.evaluate("data_article===null"))
         self.assertEqual(errors, [])
 
-    def test_retry_exhaustion_is_explicit_and_manual_retry_reads_current_body(self):
+    def test_retry_exhaustion_is_explicit_and_explicit_new_request_reads_current_body(self):
         page, requests, _, errors = self.render(lambda route, number, _: self.fulfill(
             route, {"ok": False, "pending": True} if number < 4 else ARTICLE))
         for delay in (150, 300):
@@ -221,7 +221,8 @@ class YouTubePrimaryRecoveryTests(unittest.TestCase):
             page.clock.run_for(delay)
         self.assert_error(page)
         self.assertEqual(self.primary_count(requests), 3)
-        page.locator("#div_community_read_header").get_by_role("button", name="다시 시도", exact=True).click()
+        self.assertEqual(page.locator("#div_community_read_header button").count(), 0)
+        page.evaluate("void get_read_article('init')")
         page.get_by_role("heading", name=ARTICLE["title"], exact=True).wait_for(timeout=1000)
         self.assertEqual(self.primary_count(requests), 4)
         self.assertEqual(page.evaluate("primaryMax"), 1)

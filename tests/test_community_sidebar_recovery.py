@@ -92,12 +92,12 @@ class CommunitySidebarRecoveryTests(unittest.TestCase):
     def assert_failure(self, page, *, denied=False, target="#div_new_comment_list"):
         panel = page.locator(target)
         self.assertEqual(panel.get_by_role("alert").count(), 1)
-        self.assertEqual(panel.get_by_role("button").count(), 0 if denied else 1)
+        self.assertEqual(panel.get_by_role("button").count(), 0)
         self.assertEqual(panel.locator(".animate-pulse").count(), 0)
         self.assertEqual(panel.get_attribute("aria-busy"), "false")
         self.assertNotIn("불러오는 중", panel.inner_text())
 
-    def test_three_pending_reads_finish_with_scoped_manual_retry(self):
+    def test_three_pending_reads_finish_with_scoped_explicit_new_request(self):
         page, errors, requests = self.render([{"body": PENDING}])
         self.exhausted(page)
         self.settled(page, errors, requests)
@@ -109,7 +109,8 @@ class CommunitySidebarRecoveryTests(unittest.TestCase):
         page.clock.run_for(45000)
         self.assertEqual(page.evaluate("window.__calls.length"), 3)
         page.evaluate("window.__scenarios=[{body:{'0':" + json.dumps(COMMENT) + "}}]")
-        page.locator("#div_new_comment_list").get_by_role("button", name="다시 시도").click()
+        self.assertEqual(page.locator("#div_new_comment_list button").count(), 0)
+        page.evaluate("void get_new_comment_list()")
         page.get_by_text(COMMENT["content"], exact=True).wait_for()
         self.assertEqual(page.evaluate("window.__calls.length"), 4)
         self.assertEqual(page.locator("#div_new_comment_list").get_by_role("alert").count(), 0)

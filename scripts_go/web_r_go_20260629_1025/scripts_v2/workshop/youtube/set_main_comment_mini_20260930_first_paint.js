@@ -755,11 +755,11 @@ function renderYoutubeList() {
       message.textContent = youtubeListError;
       controls.appendChild(message);
     }
-    if (page_num * PAGE_SIZE < article_counter || youtubeListError) {
+    if (!youtubeListError && page_num * PAGE_SIZE < article_counter) {
       const button = document.createElement("button");
       button.type = "button";
       button.className = "rounded-lg border border-blue-200 bg-white px-5 py-2.5 font-semibold text-blue-700 hover:bg-blue-50 disabled:opacity-60";
-      button.textContent = toggle_page ? "영상을 불러오는 중…" : youtubeListError ? "다시 시도" : "영상 더 보기";
+      button.textContent = toggle_page ? "영상을 불러오는 중…" : "영상 더 보기";
       button.disabled = toggle_page;
       button.addEventListener("click", () => get_article_list_youtube("next"));
       controls.appendChild(button);
@@ -779,7 +779,7 @@ function renderYoutubeList() {
     return;
   }
   if (youtubeListError) {
-    ReactDOM.render(/* @__PURE__ */ React.createElement("div", { class: "flex min-h-[280px] flex-col items-center justify-center gap-3 rounded-lg border border-amber-200 bg-amber-50 p-8", role: "status" }, /* @__PURE__ */ React.createElement("p", { class: "text-amber-900" }, youtubeListError), /* @__PURE__ */ React.createElement("button", { type: "button", class: "rounded-lg bg-blue-600 px-5 py-2.5 font-semibold text-white", onClick: () => get_article_list_youtube("init") }, "다시 시도")), target);
+    ReactDOM.render(/* @__PURE__ */ React.createElement("div", { class: "flex min-h-[280px] flex-col items-center justify-center gap-3 rounded-lg border border-amber-200 bg-amber-50 p-8", role: "status" }, /* @__PURE__ */ React.createElement("p", { class: "text-amber-900" }, youtubeListError)), target);
     return;
   }
   if (page_num > 0) {
@@ -894,9 +894,7 @@ function renderYoutubePrimaryFailure(state, terminal) {
   ReactDOM.render(React.createElement("div", { class: "space-y-4 text-white" },
     React.createElement("p", { role: "alert" }, terminal ?
       youtubePrimaryText("게시글을 찾을 수 없습니다.", "This article is unavailable.") :
-      youtubePrimaryText("잠시 요청을 완료하지 못했습니다.", "The request could not be completed. Please try again.")),
-    !terminal && React.createElement("button", { type: "button", class: "text-blue-600", onClick: () => get_read_article("init") },
-      youtubePrimaryText("다시 시도", "Try again"))), state.target);
+      youtubePrimaryText("잠시 요청을 완료하지 못했습니다.", "The request could not be completed."))), state.target);
 }
 async function readYoutubePrimary(state) {
   for (let attempt = 0; attempt < 3 && currentYoutubePrimary(state); attempt++) {
