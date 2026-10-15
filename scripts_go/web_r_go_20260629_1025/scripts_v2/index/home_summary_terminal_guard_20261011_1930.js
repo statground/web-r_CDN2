@@ -311,6 +311,7 @@
       return (
         requestURL.origin === window.location.origin &&
         requestURL.pathname === summaryEndpointPath &&
+        !requestURL.searchParams.has("section") &&
         method === "GET"
       );
     } catch (error) {
