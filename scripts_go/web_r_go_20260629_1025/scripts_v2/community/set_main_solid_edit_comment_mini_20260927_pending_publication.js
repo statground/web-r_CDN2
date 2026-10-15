@@ -2984,22 +2984,88 @@ async function comment_file_action(action, uuid_comment) {
     inputEl.value = "";
   }
 }
+let communityCommentRead = null;
+window.addEventListener("pagehide", () => communityCommentRead?.cancel());
 async function get_read_article_comment(orderID_param) {
   if (!communityState.articleData || communityState.articleData.uuid !== orderID_param) return;
-  const state = beginCommunityAction("comment-read", document.getElementById("div_community_read_comment"));
-  if (!state) return;
-  try {
-    const body = new FormData(); body.append("orderID", orderID_param); body.append("lang", communityDisplayLocale());
-    const data = await communityActionJSON(state, "/blank/ajax_board/get_read_article_comment/", body);
-    if (!data || data.error || data.checker === "ERROR" || data.ok === false || data.pending || data.partial) {
-      communityActionMessage(state, communityT("댓글을 확인하지 못했습니다. 입력 내용은 유지됩니다.")); return;
+  const target = document.getElementById("div_community_read_comment");
+  if (!target) return;
+  const scope = communityDetailOwnerKey(false), username = String(window.gv_username || ""), admin = !!window.gv_is_admin;
+  const role = () => String(window.gv_role || "");
+  const previous = communityCommentRead;
+  if (previous && previous.running && !previous.cancelled && previous.scope === scope && previous.target === target) return previous.promise;
+  if (previous) previous.cancel();
+  const state = { target, scope, running: true, cancelled: false, expired: false, role: role(),
+    controller: null, deadline: performance.now() + COMMUNITY_ACTION_WINDOW_MS, timer: null, ownerTimer: null };
+  communityCommentRead = state;
+  const owns = () => communityCommentRead === state && !state.cancelled && scope === communityDetailOwnerKey(false) &&
+    admin === !!window.gv_is_admin && document.getElementById(target.id) === target &&
+    communityState.articleData?.uuid === orderID_param;
+  const failure = () => {
+    if (!owns() || !target.parentElement) return;
+    const id = target.id + "_action_status";
+    let status = document.getElementById(id);
+    if (!status) {
+      status = document.createElement("p"); status.id = id;
+      status.setAttribute("data-webr-community-action-status", "comment-read");
+      status.setAttribute("role", "alert"); status.setAttribute("aria-live", "polite");
+      status.className = "mt-2 text-sm text-gray-600"; target.insertAdjacentElement("afterend", status);
     }
-    if (!Object.values(data).every((row) => row && typeof row.uuid === "string" && typeof row.content === "string")) return;
-    communityState.commentData = mergeOptimisticComments(data);
-    await set_comment();
-  } catch (_) {
-    if (communityActionStillOwned(state)) communityActionMessage(state, communityT("댓글을 확인하지 못했습니다. 입력 내용은 유지됩니다."));
-  } finally { finishCommunityAction(state); }
+    status.textContent = communityT("댓글을 확인하지 못했습니다. 입력 내용은 유지됩니다.");
+  };
+  const cancelled = new Promise((resolve) => { state.cancel = () => {
+    state.cancelled = true; state.controller?.abort(); resolve();
+  }; });
+  state.ownerTimer = window.setInterval(() => {
+    if (!owns()) {
+      if ((username !== String(window.gv_username || "") || admin !== !!window.gv_is_admin) &&
+          document.getElementById(target.id) === target) retireCommunityActionRights();
+      state.cancel();
+    } else if (state.role !== role()) {
+      // Only this read's prior-role comments retire; mutation owners stay strict.
+      if (!state.roleRetired) { state.roleRetired = true; communityState.commentData = null; ReactDOM.render(null, target); }
+      state.controller?.abort();
+    }
+  }, 100);
+  const read = async () => {
+    for (let attempt = 0; attempt < 2 && owns() && performance.now() < state.deadline; attempt++) {
+      state.role = role(); state.roleRetired = false; state.controller = new AbortController();
+      try {
+        const body = new FormData(); body.append("orderID", orderID_param); body.append("lang", communityDisplayLocale());
+        const response = await fetch("/blank/ajax_board/get_read_article_comment/", { method: "POST",
+          headers: { "X-CSRFToken": getCookie("csrftoken") }, body, signal: state.controller.signal });
+        if (!owns() || state.expired) return;
+        if ([401, 403, 404, 410].includes(response.status)) { retireCommunityActionRights(); return; }
+        if (!response.ok) throw new Error("Comment read unavailable");
+        if (state.role !== role()) {
+          if (response.body) void response.body.cancel().catch(() => {});
+          continue;
+        }
+        const data = await response.json();
+        if (!owns() || state.expired) return;
+        if (state.role !== role()) continue;
+        if (data?.access_denied === true || data?.denied === true || data?.withdrawn === true) { retireCommunityActionRights(); return; }
+        if (!data || data.error || data.checker === "ERROR" || data.ok === false || data.pending || data.partial ||
+            !Object.values(data).every((row) => row && typeof row.uuid === "string" && typeof row.content === "string")) throw new Error("Comment read unavailable");
+        communityState.commentData = mergeOptimisticComments(data);
+        document.getElementById(target.id + "_action_status")?.remove();
+        await set_comment(); return;
+      } catch (_) {
+        if (!owns() || state.expired) return;
+        if (state.role !== role()) continue;
+        failure(); return;
+      }
+    }
+    failure();
+  };
+  state.promise = Promise.race([read(), cancelled, new Promise((resolve) => {
+    state.timer = window.setTimeout(() => { state.expired = true; state.controller?.abort(); failure(); resolve(); }, COMMUNITY_ACTION_WINDOW_MS);
+  })]).finally(() => {
+    state.running = false; state.cancelled = true; state.controller?.abort();
+    window.clearTimeout(state.timer); window.clearInterval(state.ownerTimer);
+    if (communityCommentRead === state) communityCommentRead = null;
+  });
+  return state.promise;
 }
 
 function captureCommunityCommentDrafts() {
