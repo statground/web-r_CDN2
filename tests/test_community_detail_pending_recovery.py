@@ -157,6 +157,87 @@ class CommunityDetailRecoveryTests(unittest.TestCase):
         self.assertEqual(self.count(calls, COMMENTS), 0)
         self.assertEqual((errors, unexpected), ([], []))
 
+    def test_actual_late_header_after_fast_body_hands_off_comments_only(self):
+        for role in ('관리자','정회원',''):
+            for width in (1440,390):
+                with self.subTest(role=role,width=width):
+                    page,calls,held,errors,unexpected=self.render(lambda r,n,h:self.fulfill(r,ARTICLE),hold_comments=True,width=width)
+                    page.get_by_text(ARTICLE['title'],exact=True).wait_for()
+                    page.wait_for_function('window.__done===true && communityCommentRead!==null')
+                    deadline=page.evaluate('communityCommentRead.deadline')
+                    self.resolve_header(page,role)
+                    page.clock.run_for(100)
+                    page.wait_for_function('communityCommentRead!==null && communityCommentRead.role===gv_role')
+                    page.wait_for_timeout(20)
+                    self.assertEqual(self.count(calls,COMMENTS),2)
+                    row={'uuid':'33333333-3333-4333-8333-333333333333','uuid_article':ID,'uuid_upper':'',
+                         'user_uuid':'fixture-user','user_nickname':'Fixture writer','user_role':'user',
+                         'created_at':'2026-10-10 00:00:00','content':'Fresh current comment','active':1,'visible':1,
+                         'is_secret':0,'check_comment_reader':'user'}
+                    self.fulfill(held[0],{'0':{**row,'content':'Discarded prior comment'}})
+                    self.fulfill(held[1],{'0':row})
+                    page.get_by_text('Fresh current comment',exact=True).wait_for()
+                    self.assertEqual(page.locator('#div_community_read_content').inner_text(),ARTICLE['content'])
+                    self.assertNotIn('Discarded prior',page.locator('#div_main').inner_text())
+                    self.assertNotIn('현재 계정으로 처리할 수 없습니다',page.locator('#div_main').inner_text())
+                    self.assertEqual(page.evaluate('communityCommentRead===null || communityCommentRead.deadline==='+str(deadline)),True)
+                    self.assertEqual(self.count(calls),1)
+                    self.assertEqual((errors,unexpected),([],[]))
+
+    def test_comment_handoff_denial_account_change_and_original_deadline(self):
+        for status in (401,403):
+            page,calls,held,errors,unexpected=self.render(lambda r,n,h:self.fulfill(r,ARTICLE),hold_comments=True)
+            page.get_by_text(ARTICLE['title'],exact=True).wait_for()
+            self.resolve_header(page,'관리자')
+            self.fulfill(held[0],{},status)
+            page.get_by_role('alert').filter(has_text='현재 계정').wait_for()
+            self.assertNotIn(ARTICLE['content'],page.locator('#div_main').inner_text())
+            self.assertEqual(self.count(calls,COMMENTS),1)
+            self.assertEqual((errors,unexpected),([],[]))
+        page,calls,held,errors,unexpected=self.render(lambda r,n,h:self.fulfill(r,ARTICLE),hold_comments=True)
+        page.get_by_text(ARTICLE['title'],exact=True).wait_for()
+        page.evaluate('gv_username="other-account"')
+        page.clock.run_for(100)
+        page.get_by_role('alert').filter(has_text='현재 계정').wait_for()
+        self.fulfill(held[0],{'0':{'uuid':'old','content':'Old private comment'}})
+        self.assertNotIn('Old private comment',page.locator('#div_main').inner_text())
+        self.assertEqual(self.count(calls,COMMENTS),1)
+        page,calls,held,errors,unexpected=self.render(lambda r,n,h:self.fulfill(r,ARTICLE),hold_comments=True)
+        page.get_by_text(ARTICLE['title'],exact=True).wait_for()
+        page.clock.run_for(44000)
+        self.resolve_header(page,'정회원')
+        page.clock.run_for(100)
+        page.wait_for_function('communityCommentRead!==null && communityCommentRead.role===gv_role')
+        page.clock.run_for(900)
+        page.locator('[data-webr-community-action-status="comment-read"]').wait_for()
+        self.assertEqual(page.locator('#div_community_read_content').inner_text(),ARTICLE['content'])
+        self.assertEqual(self.count(calls,COMMENTS),2)
+        self.assertEqual(self.count(calls),1)
+        self.assertEqual((errors,unexpected),([],[]))
+
+    def test_pagehide_retires_unabortable_comment_before_same_id_bfcache_restore(self):
+        page,calls,held,errors,unexpected=self.render(lambda r,n,h:h.append(r))
+        page.wait_for_function('primaryActive===1')
+        page.evaluate('''() => {
+          const original=fetch;window.__commentCalls=0;
+          window.fetch=(url,init)=>url==='/blank/ajax_board/get_read_article_comment/'?
+            (++window.__commentCalls===1?new Promise(resolve=>window.__oldComments=resolve):Promise.resolve(new Response('{}'))):original(url,init);
+        }''')
+        self.fulfill(held[0],ARTICLE)
+        page.get_by_text(ARTICLE['title'],exact=True).wait_for()
+        page.wait_for_function('typeof window.__oldComments==="function"')
+        page.evaluate("dispatchEvent(new PageTransitionEvent('pagehide'));dispatchEvent(new PageTransitionEvent('pageshow',{persisted:true}))")
+        page.wait_for_function('primaryActive===1')
+        self.fulfill(held[1],ARTICLE)
+        page.get_by_text(ARTICLE['title'],exact=True).wait_for()
+        page.wait_for_function('window.__commentCalls===2')
+        page.evaluate("window.__oldComments(new Response(JSON.stringify({0:{uuid:'old',content:'Retired private comment'}})))")
+        page.wait_for_timeout(20)
+        self.assertNotIn('Retired private comment',page.locator('#div_main').inner_text())
+        self.assertEqual(page.locator('#div_community_read_content').inner_text(),ARTICLE['content'])
+        self.assertEqual(self.count(calls),2)
+        self.assertEqual((errors,unexpected),([],[]))
+
     @staticmethod
     def count(calls, path=READ):
         return sum(c['path'] == path for c in calls)
