@@ -544,6 +544,7 @@ function mountedNoticeOwner(owner) {
 }
 function handoffNoticeViewer(owner) {
   if (!sameNoticeDocument(owner) || owner.controller.signal.aborted) return false;
+  if (owner.viewer.split("\u0000")[0] !== String(window.gv_username||"")) return false;
   const viewer = [window.gv_username||"", window.gv_role||""].join("\u0000");
   if (viewer === owner.viewer) return false;
   // This discards the previous response. Only a new server-authorized read may
