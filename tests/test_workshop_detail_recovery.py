@@ -106,6 +106,69 @@ class WorkshopDetailRecoveryTests(unittest.TestCase):
         self.assertEqual(page.locator("[data-workshop-read-error] button").count(), 0)
         self.assertNotIn(ITEM["title"], page.locator("#div_main").inner_text())
 
+    def resolve_header(self, page, role):
+        page.evaluate('''role => {
+          document.body.insertAdjacentHTML('afterbegin','<div id="div_menu_sub_header"></div>');
+          const original = window.fetch;
+          window.fetch=(url,init)=>url==='/ajax_get_menu_header/'?
+            Promise.resolve(new Response(JSON.stringify({role,name:'Controlled viewer'}))):original(url,init);
+        }''', role)
+        page.add_script_tag(path=str(ROOT / 'scripts_v2/common/header/header_product_20260927_1610.js'))
+        page.evaluate('void get_menu_header()')
+        page.wait_for_function('role=>window.gv_role===role', arg=role)
+
+    def test_actual_late_header_role_discards_old_detail_and_reads_current_body(self):
+        for role in ('관리자', '정회원', ''):
+            for width in (1440, 390):
+                with self.subTest(role=role, width=width):
+                    page, calls, held, errors = self.render({READ: [{'hold': True}, {'body': COMPLETE}]}, width=width)
+                    page.wait_for_function('primaryActive===1')
+                    self.resolve_header(page, role)
+                    first = {**COMPLETE,'workshop':{**ITEM,'title':'Discarded prior role'}} if role else COMPLETE
+                    held[0].fulfill(status=200,content_type='application/json',body=json.dumps(first))
+                    self.assert_body(page)
+                    self.assertNotIn('Discarded prior role', page.locator('#div_main').inner_text())
+                    self.assertEqual(sum(c['path']==READ for c in calls), 2 if role else 1)
+                    self.assertEqual(page.evaluate('primaryMax'), 1)
+                    self.assertEqual(page.evaluate('String(window.gv_username||"")'), '')
+                    self.assertEqual(errors, [])
+
+    def test_role_handoff_secondary_board_remains_separate_from_ready_detail(self):
+        page, calls, held, errors = self.render({READ: [{'body': {**COMPLETE,'board_error':'pending source'}}],
+            BOARD:[{'hold':True},{'body':{'ok':True,'posts':[{'uuid':'post','title':'Fresh current post','content':'Current board body'}],'is_logged_in':False}}]})
+        self.assert_body(page)
+        page.wait_for_function("document.querySelector('[data-workshop-board-progress]')!==null")
+        self.resolve_header(page, '정회원')
+        held[0].fulfill(status=200,content_type='application/json',body=json.dumps(
+            {'ok':True,'posts':[{'uuid':'old','title':'Discarded prior board','content':'Old body'}]}))
+        page.get_by_role('heading',name='Fresh current post',exact=True).wait_for()
+        self.assert_body(page)
+        self.assertNotIn('Discarded prior board',page.locator('#div_main').inner_text())
+        self.assertEqual(sum(c['path']==READ for c in calls),1)
+        self.assertEqual(sum(c['path']==BOARD for c in calls),2)
+        self.assertEqual(errors,[])
+
+    def test_role_handoff_preserves_terminal_denial_and_single_45_second_deadline(self):
+        for status in (401,403,404):
+            page,calls,held,errors=self.render({READ:[{'hold':True}]})
+            page.wait_for_function('primaryActive===1')
+            self.resolve_header(page,'관리자')
+            held[0].fulfill(status=status,content_type='application/json',body='{}')
+            self.assert_error(page)
+            self.assertEqual(len(calls),1)
+            self.assertEqual(errors,[])
+        page,calls,held,errors=self.render({READ:[{'hold':True},{'hold':True}]})
+        page.wait_for_function('primaryActive===1')
+        page.clock.run_for(44000)
+        self.resolve_header(page,'정회원')
+        held[0].fulfill(status=200,content_type='application/json',body=json.dumps(COMPLETE))
+        page.wait_for_function('primaryActive===1 && primaryAborts===0')
+        page.wait_for_timeout(20)
+        page.clock.run_for(1000)
+        self.assert_error(page)
+        self.assertEqual(len(calls),2)
+        self.assertEqual(errors,[])
+
     def test_desktop_and_mobile_list_card_click_reaches_same_detail(self):
         for width in [1440, 390]:
             with self.subTest(width=width):

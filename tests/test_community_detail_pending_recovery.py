@@ -37,8 +37,8 @@ class CommunityDetailRecoveryTests(unittest.TestCase):
     def fulfill(route, body, status=200):
         route.fulfill(status=status, content_type='application/json', body=json.dumps(body))
 
-    def render(self, responder, *, reduced_motion=False, ignore_abort=False, hold_comments=False):
-        page = self.browser.new_page(reduced_motion='reduce' if reduced_motion else 'no-preference')
+    def render(self, responder, *, reduced_motion=False, ignore_abort=False, hold_comments=False, width=1440):
+        page = self.browser.new_page(viewport={'width': width, 'height': 900}, reduced_motion='reduce' if reduced_motion else 'no-preference')
         self.addCleanup(page.close)
         page.set_default_timeout(2000)
         page.add_init_script('Object.assign(window,' + json.dumps({'url': 'free', 'sub': '', 'mode': 'read',
@@ -97,6 +97,65 @@ class CommunityDetailRecoveryTests(unittest.TestCase):
         page.add_script_tag(path=str(SCRIPT))
         page.evaluate('window.__done=false;void set_main_read().then(()=>window.__done=true)')
         return page, calls, held, errors, unexpected
+
+    def resolve_header(self, page, role):
+        page.evaluate('''role => {
+          document.body.insertAdjacentHTML('afterbegin','<div id="div_menu_sub_header"></div>');
+          const original = window.fetch;
+          window.fetch=(url,init)=>url==='/ajax_get_menu_header/'?
+            Promise.resolve(new Response(JSON.stringify({role,name:'Controlled viewer'}))):original(url,init);
+        }''', role)
+        page.add_script_tag(path=str(ASSETS / 'scripts_v2/common/header/header_product_20260927_1610.js'))
+        page.evaluate('void get_menu_header()')
+        page.wait_for_function('role=>window.gv_role===role', arg=role)
+
+    def test_actual_late_header_role_discards_old_body_and_paints_fresh_before_comments(self):
+        for role in ('관리자', '정회원', ''):
+            for width in (1440, 390):
+                with self.subTest(role=role, width=width):
+                    page, calls, held, errors, unexpected = self.render(
+                        lambda r, n, h: h.append(r) if n == 1 else self.fulfill(r, ARTICLE),
+                        hold_comments=True, width=width)
+                    page.wait_for_function('primaryActive===1')
+                    deadline = page.evaluate('communityDetailRead.deadline')
+                    self.resolve_header(page, role)
+                    page.clock.run_for(100)
+                    old = {**ARTICLE, 'title': 'Discarded prior role', 'content': 'Discarded prior body'}
+                    self.fulfill(held[0], old)
+                    page.get_by_text(ARTICLE['title'], exact=True).wait_for()
+                    page.wait_for_function('window.__done===true')
+                    self.assertEqual(page.locator('#div_community_read_content').inner_text(), ARTICLE['content'])
+                    self.assertNotIn('Discarded prior', page.locator('#div_main').inner_text())
+                    self.assertEqual(page.evaluate('communityDetailRead.deadline'), deadline)
+                    self.assertEqual(page.evaluate('gv_username'), '')
+                    self.assertEqual(self.count(calls), 2)
+                    self.assertEqual(self.count(calls, COMMENTS), 1)
+                    self.assertEqual(page.evaluate('primaryMax'), 1)
+                    self.assertEqual((errors, unexpected), ([], []))
+
+    def test_role_handoff_keeps_terminal_denials_and_original_deadline(self):
+        for status in (401, 403, 404, 410):
+            with self.subTest(status=status):
+                page, calls, held, errors, unexpected = self.render(lambda r, n, h: h.append(r))
+                page.wait_for_function('primaryActive===1')
+                self.resolve_header(page, '관리자')
+                self.fulfill(held[0], {}, status)
+                self.assert_error(page, terminal=True)
+                self.assertEqual(self.count(calls), 1)
+                self.assertEqual(self.count(calls, COMMENTS), 0)
+                self.assertEqual((errors, unexpected), ([], []))
+        page, calls, held, errors, unexpected = self.render(lambda r, n, h: h.append(r))
+        page.wait_for_function('primaryActive===1')
+        page.clock.run_for(44000)
+        self.resolve_header(page, '정회원')
+        self.fulfill(held[0], ARTICLE)
+        page.wait_for_function('primaryCompleted===1 && primaryActive===1')
+        page.clock.run_for(1000)
+        self.assert_error(page)
+        page.wait_for_function('window.__done===true')
+        self.assertEqual(self.count(calls), 2)
+        self.assertEqual(self.count(calls, COMMENTS), 0)
+        self.assertEqual((errors, unexpected), ([], []))
 
     @staticmethod
     def count(calls, path=READ):
@@ -210,7 +269,7 @@ class CommunityDetailRecoveryTests(unittest.TestCase):
 
     def test_changed_uuid_locale_viewer_or_route_cancels_old_owner_before_paint(self):
         for change in [f'orderID={json.dumps(OTHER)}', 'communityLocaleEpoch++;WebRI18n.language="en"',
-                       'gv_username="different viewer"', 'gv_role="different role"', 'history.pushState({},"","/community/free/")']:
+                       'gv_username="different viewer"', 'history.pushState({},"","/community/free/")']:
             with self.subTest(change=change):
                 page, calls, held, errors, unexpected = self.render(lambda r, n, h: h.append(r))
                 page.wait_for_function('primaryActive===1')

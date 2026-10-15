@@ -161,14 +161,24 @@ const WorkshopCatalogPage = (() => {
       retry: en ? "Try again" : "다시 시도"
     }[key];
   }
-  function ownsRead(owner) {
+  function ownsReadDocument(owner) {
     return !readStopped && owner && readRoot && readRoot.isConnected &&
       document.getElementById("div_main") === readRoot &&
       location.pathname + location.search === readAddress &&
-      owner.target === state.readTarget && owner.viewer === viewerKey() && owner.language === readLanguage();
+      owner.target === state.readTarget && owner.username === String(window.gv_username || "") && owner.language === readLanguage();
+  }
+  function ownsRead(owner) {
+    return ownsReadDocument(owner) && owner.viewer === viewerKey();
+  }
+  function handoffReadRole(owner) {
+    if (!ownsReadDocument(owner) || owner.roleHandoff || performance.now() >= owner.deadline) return false;
+    owner.roleHandoff = true;
+    owner.viewer = viewerKey();
+    return true;
   }
   function newReadOwner() {
-    return { target: state.readTarget, viewer: viewerKey(), language: readLanguage(), controller: new AbortController() };
+    return { target: state.readTarget, viewer: viewerKey(), username: String(window.gv_username || ""), language: readLanguage(),
+      deadline: performance.now() + readBudget, roleHandoff: false, controller: new AbortController() };
   }
   function cancelBoardRead() {
     if (boardOwner) boardOwner.controller.abort();
@@ -200,23 +210,35 @@ const WorkshopCatalogPage = (() => {
       owner.controller.signal.addEventListener("abort", cancel, { once: true });
     });
     const operation = (async () => {
+      for (let attempt = 0; attempt < 2; attempt++) {
       if (!ownsRead(owner)) throw new Error("workshop read cancelled");
       const response = await fetch(path, {
         method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8" },
         body: form.toString(), signal: owner.controller.signal
       });
-      if (!ownsRead(owner) || owner.controller.signal.aborted) throw new Error("workshop read cancelled");
+      if (!ownsReadDocument(owner) || owner.controller.signal.aborted) throw new Error("workshop read cancelled");
       if (!response.ok) {
         const error = new Error("workshop read unavailable");
         error.status = response.status;
         throw error;
       }
+      if (!ownsRead(owner)) {
+        if (response.body) void response.body.cancel().catch(() => {});
+        if (handoffReadRole(owner)) continue;
+        throw new Error("workshop read cancelled");
+      }
       const data = await response.json();
-      if (!ownsRead(owner) || owner.controller.signal.aborted) throw new Error("workshop read cancelled");
+      if (!ownsReadDocument(owner) || owner.controller.signal.aborted) throw new Error("workshop read cancelled");
+      if (!ownsRead(owner)) {
+        if (handoffReadRole(owner)) continue;
+        throw new Error("workshop read cancelled");
+      }
       return data;
+      }
+      throw new Error("workshop read cancelled");
     })();
     const deadline = new Promise((_, reject) => {
-      timer = window.setTimeout(() => { owner.controller.abort(); reject(new Error("workshop read timeout")); }, readBudget);
+      timer = window.setTimeout(() => { owner.controller.abort(); reject(new Error("workshop read timeout")); }, Math.max(0, owner.deadline - performance.now()));
     });
     try { return await Promise.race([operation, deadline, cancelled]); }
     finally { window.clearTimeout(timer); owner.controller.signal.removeEventListener("abort", cancel); }
@@ -480,7 +502,7 @@ const WorkshopCatalogPage = (() => {
         loadBoard(item);
       }
     } catch (error) {
-      if (!ownsRead(owner) || readOwner !== owner) return;
+      if (!ownsReadDocument(owner) || readOwner !== owner) return;
       const terminal = error.status === 401 || error.status === 403 || error.status === 404;
       setState({ loading: false, error: readText(error.status === 404 ? "missing" : terminal ? "denied" : "unavailable"),
         readCanRetry: !terminal, workshops: [], selectedWorkshop: null });
@@ -559,7 +581,7 @@ const WorkshopCatalogPage = (() => {
       setState({ boardLoading: false, boardPosts: data.posts, boardError: "", boardCanRetry: false,
         isLoggedIn: !!data.is_logged_in, currentUserUUID: data.current_user_uuid || "" });
     } catch (error) {
-      if (!ownsRead(owner) || boardOwner !== owner || workshopKey(state.selectedWorkshop) !== key) return;
+      if (!ownsReadDocument(owner) || boardOwner !== owner || workshopKey(state.selectedWorkshop) !== key) return;
       const terminal = error.status === 401 || error.status === 403 || error.status === 404;
       setState({ boardLoading: false, boardError: readText("board"), boardCanRetry: !terminal, boardPosts: [],
         ...(terminal ? { isLoggedIn: false, currentUserUUID: "" } : {}) });
