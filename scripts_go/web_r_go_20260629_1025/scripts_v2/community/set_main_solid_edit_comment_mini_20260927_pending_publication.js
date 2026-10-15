@@ -2397,15 +2397,23 @@ function set_article() {
   }
 }
 let communityDetailRead = null;
-function communityDetailOwnerKey() {
+function communityDetailOwnerKey(includeRole = true) {
   return JSON.stringify([String(orderID || "").toLowerCase(), communityLocaleEpoch, communityDisplayLocale(),
     getCommunityMode(), window.location.pathname,
     typeof gv_username === "undefined" || gv_username == null ? "" : String(gv_username),
-    window.gv_role == null ? "" : String(window.gv_role)]);
+    !includeRole || window.gv_role == null ? "" : String(window.gv_role)]);
+}
+function sameCommunityDetailDocument(state) {
+  return communityDetailRead === state && !state.cancelled && state.scope === communityDetailOwnerKey(false) &&
+    document.getElementById("div_community_read_header") === state.target;
 }
 function currentCommunityDetail(state) {
-  return communityDetailRead === state && !state.cancelled && state.key === communityDetailOwnerKey() &&
-    document.getElementById("div_community_read_header") === state.target;
+  return sameCommunityDetailDocument(state) && state.key === communityDetailOwnerKey();
+}
+function handoffCommunityDetailRole(state) {
+  if (!sameCommunityDetailDocument(state) || state.expired || performance.now() >= state.deadline) return false;
+  state.key = communityDetailOwnerKey();
+  return true;
 }
 function clearCommunityDetailBody() {
   communityState.articleData = null;
@@ -2441,7 +2449,10 @@ window.addEventListener("pageshow", (event) => {
       document.getElementById("div_community_read_header")) void get_read_article("init");
 });
 function renderCommunityDetailStatus(state, pending, terminal = false) {
-  if (!currentCommunityDetail(state)) return;
+  if (!currentCommunityDetail(state)) {
+    if (pending || !sameCommunityDetailDocument(state)) return;
+    state.key = communityDetailOwnerKey(); // A role-only timeout may retire the old body, never accept it.
+  }
   clearCommunityDetailBody();
   state.target.setAttribute("aria-busy", pending ? "true" : "false");
   const text = pending ? communityT("게시글을 불러오고 있습니다.") : terminal ?
@@ -2470,8 +2481,9 @@ function validCommunityDetail(data, id) {
     ["user", "writer", "admin"].includes(data.check_reader) && [0, 1].includes(data.is_secret);
 }
 async function readCommunityDetail(state, loadMode) {
-  for (let attempt = 1; attempt <= COMMUNITY_CARD_FETCH_ATTEMPTS && currentCommunityDetail(state); attempt += 1) {
+  for (let attempt = 1; attempt <= COMMUNITY_CARD_FETCH_ATTEMPTS && sameCommunityDetailDocument(state); attempt += 1) {
     if (performance.now() >= state.deadline) break;
+    if (!currentCommunityDetail(state) && !handoffCommunityDetailRole(state)) break;
     try {
       const request_data = new FormData();
       request_data.append("orderID", state.id);
@@ -2479,19 +2491,29 @@ async function readCommunityDetail(state, loadMode) {
       const response = await fetch("/blank/ajax_board/get_read_article/", {
         method: "POST", headers: { "X-CSRFToken": getCookie("csrftoken") }, body: request_data, signal: state.controller.signal
       });
-      if (!currentCommunityDetail(state)) return;
+      if (!sameCommunityDetailDocument(state)) return;
       if (state.expired || performance.now() >= state.deadline) {
         state.expired = true;
         renderCommunityDetailStatus(state, false);
         return;
       }
       if ([401, 403, 404, 410].includes(response.status)) {
+        if (!currentCommunityDetail(state) && !handoffCommunityDetailRole(state)) return;
         renderCommunityDetailStatus(state, false, true);
         return;
       }
       if (!response.ok) break;
+      if (!currentCommunityDetail(state)) {
+        if (response.body) void response.body.cancel().catch(() => {});
+        if (handoffCommunityDetailRole(state)) continue;
+        return;
+      }
       const data = await response.json();
-      if (!currentCommunityDetail(state)) return;
+      if (!sameCommunityDetailDocument(state)) return;
+      if (!currentCommunityDetail(state)) {
+        if (handoffCommunityDetailRole(state)) continue;
+        return;
+      }
       if (state.expired || performance.now() >= state.deadline) {
         state.expired = true;
         renderCommunityDetailStatus(state, false);
@@ -2514,7 +2536,10 @@ async function readCommunityDetail(state, loadMode) {
       if (!data || data.ok !== false || data.pending !== true || data.partial || data.error || data.board_error ||
           data.not_found || data.access_denied || data.denied || data.withdrawn) break;
     } catch (_) {
-      if (!currentCommunityDetail(state)) return;
+      if (!currentCommunityDetail(state)) {
+        if (handoffCommunityDetailRole(state)) continue;
+        return;
+      }
       break;
     }
     const delay = COMMUNITY_CARD_RETRY_BASE_MS * attempt;
@@ -2526,6 +2551,7 @@ async function readCommunityDetail(state, loadMode) {
     state.retryResolve = null;
     state.retryTimer = null;
   }
+  if (!currentCommunityDetail(state)) handoffCommunityDetailRole(state);
   renderCommunityDetailStatus(state, false);
 }
 async function get_read_article(loadMode) {
@@ -2534,12 +2560,12 @@ async function get_read_article(loadMode) {
   const key = communityDetailOwnerKey();
   if (communityDetailRead && communityDetailRead.running && currentCommunityDetail(communityDetailRead)) return communityDetailRead.promise;
   cancelCommunityDetail();
-  const state = { target, key, id: orderID, locale: communityDisplayLocale(), controller: new AbortController(),
+  const state = { target, key, scope: communityDetailOwnerKey(false), id: orderID, locale: communityDisplayLocale(), controller: new AbortController(),
     deadline: performance.now() + COMMUNITY_PARTIAL_RECOVERY_MS, timer: null, ownerTimer: null,
     retryTimer: null, retryResolve: null, cancelResolve: null, cancelled: false, expired: false, running: true };
   communityDetailRead = state;
   renderCommunityDetailStatus(state, true);
-  state.ownerTimer = window.setInterval(() => { if (!currentCommunityDetail(state)) cancelCommunityDetail(state); }, 100);
+  state.ownerTimer = window.setInterval(() => { if (!sameCommunityDetailDocument(state)) cancelCommunityDetail(state); }, 100);
   state.promise = Promise.race([readCommunityDetail(state, loadMode), new Promise((resolve) => { state.cancelResolve = resolve; }),
     new Promise((resolve) => { state.timer = window.setTimeout(() => {
       state.expired = true;
