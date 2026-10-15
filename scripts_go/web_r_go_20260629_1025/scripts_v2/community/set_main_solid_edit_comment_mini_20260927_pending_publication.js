@@ -1963,7 +1963,8 @@ async function fetchCommunityArticleListResponse(requestData, pendingAttempts, i
           headers: { "X-CSRFToken": getCookie("csrftoken") },
           body: requestData,
           signal: controller.signal
-        }).then(async (reply) => ({ response: reply, data: await reply.json().catch(() => ({ ok: false, pending: true })) }));
+        }).then(async (reply) => ({ response: reply, data: [401, 403].includes(reply.status) ? null :
+          await reply.json().catch(() => ({ ok: false, pending: true })) }));
         const result = await Promise.race([read, new Promise((resolve) => {
           settleRead = resolve;
           timer = window.setTimeout(() => { controller.abort(); resolve(null); }, deadline - performance.now());
@@ -2060,6 +2061,7 @@ async function loadCommunityBoardCard(def, page) {
   if (localeEpoch !== communityLocaleEpoch || communityState.cardPages[def.tag] !== cardPage ||
       requestKey !== communityCardRequestKey(def.tag, cardPage)) return;
   if (isCommunityArticleListPending(data)) {
+    if (data.access_denied) delete communityCardLastGood[requestKey];
     const host = document.getElementById("div_community_card_" + def.tag);
     if (host) {
       ReactDOM.render(/* @__PURE__ */ React.createElement(CommunityBoardCard, { def, data: data.access_denied ? data : previousData || data }), host);

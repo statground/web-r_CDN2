@@ -129,6 +129,30 @@ class CommunityViewerHandoffTests(unittest.TestCase):
         page.clock.run_for(45000)
         self.assertLessEqual(max(page.evaluate("Object.values(window.__counts)")), 2)
 
+    def test_denied_headers_retire_previous_card_without_reading_held_body(self):
+        for status in (401, 403):
+            with self.subTest(status=status):
+                page, errors, requests = self.render("관리자")
+                page.wait_for_function("window.__done===true")
+                page.clock.run_for(800)
+                page.get_by_text("Allowed current comment", exact=True).wait_for()
+                self.assertIn("Allowed 관리자 free", page.locator("#div_community_card_free").inner_text())
+                page.evaluate("""(status) => {
+                  window.__deniedCalls=0;window.__deniedBodyReads=0;
+                  window.fetch=()=>{window.__deniedCalls++;return Promise.resolve({status,ok:false,headers:new Headers(),
+                    json:()=>{window.__deniedBodyReads++;return new Promise(()=>{});}});};
+                  window.__deniedDone=false;
+                  void loadCommunityBoardCard(communityCardDefinitions()[0],1).then(()=>window.__deniedDone=true);
+                }""", status)
+                page.wait_for_function("window.__deniedDone===true")
+                self.assertNotIn("Allowed 관리자 free", page.locator("#div_community_card_free").inner_text())
+                self.assertEqual(page.evaluate("window.__deniedBodyReads"), 0)
+                self.assertEqual(page.evaluate("window.__deniedCalls"), 1)
+                self.assertFalse(page.evaluate("Object.hasOwn(communityCardLastGood,communityCardRequestKey('free',1))"))
+                self.assert_scoped(page, errors, requests)
+                page.clock.run_for(45000)
+                self.assertEqual(page.evaluate("window.__deniedCalls"), 1)
+
     def test_handoff_keeps_original_45_second_fetch_and_body_deadline(self):
         for failure in ("hold", "body"):
             with self.subTest(failure=failure):
