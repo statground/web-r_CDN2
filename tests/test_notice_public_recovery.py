@@ -159,6 +159,70 @@ class NoticePublicRecoveryTests(unittest.TestCase):
                 self.assertNotIn(ITEM['title'],page.locator('#div_main').inner_text())
                 self.assertEqual(errors, [])
 
+    def test_late_header_viewer_handoff_uses_fresh_response_and_keeps_body_independent(self):
+        for width in [1440, 390]:
+            for change in ['window.gv_role="관리자"', 'window.gv_username="Current member"']:
+                with self.subTest(width=width, change=change):
+                    page, _, errors = self.render([], held_stage='body', width=width)
+                    page.wait_for_function('held.release!==null')
+                    page.evaluate("""() => {
+                      window.oldHeld=held;window.freshReads=0;window.relatedReads=0;
+                      window.fetch=url=>{
+                        if(url.includes('/get_read_article/')) { freshReads++;return Promise.resolve({ok:true,json:async()=>({
+                          uuid:orderID,title:'Fresh viewer title',content:'Fresh authorized body',category_url:'notice',check_reader:'user',is_secret:0,attachments:[]
+                        })}); }
+                        relatedReads++;return new Promise(()=>{});
+                      };
+                    }""")
+                    page.evaluate(change)
+                    page.evaluate('oldHeld.release('+json.dumps(ITEM)+')')
+                    page.get_by_text('Fresh authorized body', exact=True).wait_for()
+                    self.assertNotIn(ITEM['content'], page.locator('#div_main').inner_text())
+                    self.assertEqual(page.evaluate('freshReads'), 1)
+                    self.assertEqual(page.evaluate('relatedReads'), 1)
+                    self.assertEqual(errors, [])
+
+    def test_viewer_handoff_does_not_extend_deadline_or_four_attempts(self):
+        page, _, errors = self.render([], held_stage='body')
+        page.wait_for_function('held.release!==null')
+        page.clock.fast_forward(20000)
+        page.evaluate('window.oldHeld=held;window.gv_role="관리자";oldHeld.release('+json.dumps(ITEM)+')')
+        page.clock.run_for(20)
+        self.assertEqual(page.evaluate('held.calls'), 2)
+        page.clock.fast_forward(25001)
+        self.assert_failure(page)
+        self.assertEqual(page.evaluate('held.calls'), 2)
+        self.assertEqual(errors, [])
+
+        page, _, errors = self.render([], held_stage='body')
+        page.wait_for_function('held.release!==null')
+        page.evaluate("""() => {
+          window.oldHeld=held;window.churnReads=1;
+          window.fetch=()=>{churnReads++;window.gv_role=String(churnReads);return Promise.resolve({ok:true,json:async()=>({})});};
+          window.gv_role='1';oldHeld.release({});
+        }""")
+        page.clock.run_for(20)
+        self.assert_failure(page)
+        self.assertEqual(page.evaluate('churnReads'), 4)
+        self.assertEqual(errors, [])
+
+    def test_viewer_change_cannot_replay_terminal_denial(self):
+        page, _, errors = self.render([], held_stage='fetch')
+        page.wait_for_function('held.release!==null')
+        page.evaluate('window.gv_role="관리자";held.release({ok:false,status:403})')
+        self.assert_failure(page)
+        self.assertEqual(page.evaluate('held.calls'), 1)
+        self.assertEqual(errors, [])
+
+    def test_body_renderer_failure_is_scoped_and_finite(self):
+        page, _, errors = self.render([], held_stage='body')
+        page.wait_for_function('held.release!==null')
+        page.evaluate('WebRSolidEdit.renderContent=()=>{throw Error("controlled viewer unavailable")};held.release('+json.dumps(ITEM)+')')
+        page.get_by_text('본문을 표시할 수 없습니다. 잠시 후 다시 확인해 주세요.', exact=True).wait_for()
+        self.assertIn(ITEM['title'], page.locator('#div_community_read_header').inner_text())
+        self.assertEqual(page.locator('#div_community_read_content .animate-pulse').count(), 0)
+        self.assertEqual(errors, [])
+
 
 if __name__ == '__main__':
     unittest.main()

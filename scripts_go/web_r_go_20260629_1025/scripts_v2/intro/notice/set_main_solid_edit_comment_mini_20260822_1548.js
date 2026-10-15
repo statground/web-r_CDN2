@@ -532,13 +532,24 @@ function noticePublicOwner(kind, root) {
   noticePublicOwners.set(kind, owner);
   return owner;
 }
-function mountedNoticeOwner(owner) {
+function sameNoticeDocument(owner) {
   return noticePublicOwners.get(owner.kind) === owner &&
     owner.root && owner.root.isConnected && document.getElementById(owner.root.id) === owner.root &&
     owner.address === location.pathname+location.search &&
     owner.identity === String(typeof orderID === "undefined" ? "" : orderID || "") &&
-    owner.viewer === [window.gv_username||"", window.gv_role||""].join("\u0000") &&
     owner.language === document.documentElement.lang;
+}
+function mountedNoticeOwner(owner) {
+  return sameNoticeDocument(owner) && owner.viewer === [window.gv_username||"", window.gv_role||""].join("\u0000");
+}
+function handoffNoticeViewer(owner) {
+  if (!sameNoticeDocument(owner) || owner.controller.signal.aborted) return false;
+  const viewer = [window.gv_username||"", window.gv_role||""].join("\u0000");
+  if (viewer === owner.viewer) return false;
+  // This discards the previous response. Only a new server-authorized read may
+  // paint for the new viewer; neither the four attempts nor 45s clock restart.
+  owner.viewer = viewer;
+  return true;
 }
 function currentNoticeOwner(owner) { return mountedNoticeOwner(owner) && !owner.controller.signal.aborted; }
 function finishNoticeOwner(owner) {
@@ -556,8 +567,8 @@ async function noticePublicJSON(path, options, owner) {
     return await Promise.race([aborted, (async()=>{
       if(!currentNoticeOwner(owner))throw new Error("obsolete notice read");
       const response=await fetch(path,{...options,signal:owner.controller.signal});
-      if(!currentNoticeOwner(owner))throw new Error("obsolete notice read");
       if(!response.ok){const error=new Error("notice read unavailable");error.status=response.status;throw error;}
+      if(!currentNoticeOwner(owner)){if(response.body)await response.body.cancel();throw new Error("obsolete notice read");}
       const data=await response.json();
       if(!currentNoticeOwner(owner))throw new Error("obsolete notice read");
       return data;
@@ -830,6 +841,10 @@ const IntroNoticeRead = /* @__PURE__ */ (() => {
             headers: { "X-CSRFToken": getCookie("csrftoken") },
             body: request_data
           }, owner);
+          if (!currentNoticeOwner(owner)) {
+            if (handoffNoticeViewer(owner)) continue;
+            break;
+          }
           if (noticeArticleReady(lastPayload)) {
             data_article = lastPayload;
             lastError = null;
@@ -837,13 +852,22 @@ const IntroNoticeRead = /* @__PURE__ */ (() => {
           }
         } catch (err) {
           lastError = err;
-          if ([401,403,404].includes(err.status) || owner.controller.signal.aborted || !currentNoticeOwner(owner)) break;
+          if ([401,403,404].includes(err.status) || owner.controller.signal.aborted) break;
+          if (handoffNoticeViewer(owner)) {
+            lastPayload = null;
+            continue;
+          }
+          if (!currentNoticeOwner(owner)) break;
         }
         if (attempt < 3) {
           await noticeDelay(350 * (attempt + 1), owner.controller.signal);
         }
       }
-      if (!mountedNoticeOwner(owner)) return;
+      if (!mountedNoticeOwner(owner)) {
+        if (!handoffNoticeViewer(owner)) return;
+        data_article = null;
+        lastPayload = null;
+      }
       if (!noticeArticleReady(data_article)) {
         if (lastError) {
           console.error("[get_read_article] fetch or JSON error:", lastError);
@@ -855,6 +879,8 @@ const IntroNoticeRead = /* @__PURE__ */ (() => {
         try {
           set_article();
         } catch (e) {
+          const content = document.getElementById("div_community_read_content");
+          if (content) content.textContent = "본문을 표시할 수 없습니다. 잠시 후 다시 확인해 주세요.";
         }
       }
       try {
