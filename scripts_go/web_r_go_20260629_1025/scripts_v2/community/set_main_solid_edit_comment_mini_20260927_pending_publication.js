@@ -197,15 +197,23 @@ function communitySidebarRows(data, limit) {
   const maxItems = Number(limit || 0);
   return maxItems > 0 ? rows.slice(0, maxItems) : rows;
 }
-function communitySidebarOwnerKey() {
-  return JSON.stringify([getSidebarTag(), normalizedCommunityTagSub(), communityLocaleEpoch,
+function communitySidebarOwnerKey(includeViewer = true) {
+  const scope = [getSidebarTag(), normalizedCommunityTagSub(), communityLocaleEpoch,
     communityDisplayLocale(), getCommunityMode(), window.location.pathname, communitySearchText(),
-    communitySearchScope(), communitySourceGroup(), typeof gv_username === "undefined" ? "" : String(gv_username || ""),
-    String(window.gv_role || "")]);
+    communitySearchScope(), communitySourceGroup(), typeof gv_username === "undefined" ? "" : String(gv_username || "")];
+  return JSON.stringify(includeViewer ? [...scope, String(window.gv_role || ""), !!window.gv_is_admin] : scope);
 }
 function currentCommunitySidebar(state) {
   return communitySidebarRequests[state.id] === state && !state.cancelled &&
     state.key === communitySidebarOwnerKey() && document.getElementById(state.id) === state.target;
+}
+function handoffCommunitySidebarViewer(state) {
+  if (communitySidebarRequests[state.id] !== state || state.cancelled || state.expired ||
+      document.getElementById(state.id) !== state.target || state.scope !== communitySidebarOwnerKey(false) ||
+      state.key === communitySidebarOwnerKey()) return false;
+  state.key = communitySidebarOwnerKey();
+  state.controller.abort();
+  return true;
 }
 function cancelCommunitySidebar(state) {
   if (!state) return;
@@ -228,22 +236,26 @@ function completeCommunitySidebarPayload(data) {
 async function fetchCommunitySidebarJSON(endpoint, requestData, state, retryCount = 2) {
   for (let attempt = 0; attempt <= retryCount && currentCommunitySidebar(state) && !state.expired; attempt += 1) {
     try {
+      state.controller = new AbortController();
+      const owner = state.key;
       const response = await fetch(endpoint, {
         method: "POST",
         headers: { "X-CSRFToken": getCookie("csrftoken") },
         body: requestData,
         signal: state.controller.signal
       });
-      if (!currentCommunitySidebar(state) || state.expired) break;
+      if ((!currentCommunitySidebar(state) && !handoffCommunitySidebarViewer(state)) || state.expired) break;
       if (response.status === 401 || response.status === 403) {
         return { ok: false, sidebar_error: true, access_denied: true };
       }
       const data = await response.json().catch(() => null);
-      if (!currentCommunitySidebar(state) || state.expired) break;
+      if ((!currentCommunitySidebar(state) && !handoffCommunitySidebarViewer(state)) || state.expired) break;
+      // The header resolves identity after neutral first paint. Never commit a prior viewer response.
+      if (owner !== state.key) continue;
       const cacheStatus = String(response.headers.get("X-WebR-Cache") || "").toLowerCase();
       if (response.ok && cacheStatus !== "pending" && completeCommunitySidebarPayload(data)) return data;
     } catch (error) {
-      if (!currentCommunitySidebar(state) || state.expired) break;
+      if ((!currentCommunitySidebar(state) && !handoffCommunitySidebarViewer(state)) || state.expired) break;
     }
     if (attempt < retryCount && currentCommunitySidebar(state) && !state.expired) {
       await new Promise((resolve) => {
@@ -262,7 +274,7 @@ async function loadCommunitySidebarWidget(endpoint, id, title, renderItem, empty
   const previous = communitySidebarRequests[id];
   if (previous && previous.running && currentCommunitySidebar(previous)) return previous.promise;
   cancelCommunitySidebar(previous);
-  const state = { id, target, key: communitySidebarOwnerKey(), controller: new AbortController(),
+  const state = { id, target, key: communitySidebarOwnerKey(), scope: communitySidebarOwnerKey(false), controller: new AbortController(),
     timer: null, ownerTimer: null, retryTimer: null, retryResolve: null, cancelResolve: null,
     cancelled: false, expired: false, running: true };
   communitySidebarRequests[id] = state;
@@ -273,7 +285,7 @@ async function loadCommunitySidebarWidget(endpoint, id, title, renderItem, empty
   requestData.append("tag", getSidebarTag());
   requestData.append("url", getSidebarTag());
   state.ownerTimer = window.setInterval(() => {
-    if (!currentCommunitySidebar(state)) cancelCommunitySidebar(state);
+    if (!currentCommunitySidebar(state) && !handoffCommunitySidebarViewer(state)) cancelCommunitySidebar(state);
   }, 100);
   state.promise = Promise.race([
     fetchCommunitySidebarJSON(endpoint, requestData, state),
@@ -1298,10 +1310,10 @@ function communitySearchText() {
   communityState.searchText = value;
   return value;
 }
-function communityArticlePageCacheKey(page, searchText) {
+function communityArticlePageCacheKey(page, searchText, includeViewer = true) {
   const viewer = [
     typeof gv_username === "undefined" || gv_username == null ? "" : String(gv_username),
-    typeof window === "undefined" || window.gv_role == null ? "" : String(window.gv_role)
+    !includeViewer || typeof window === "undefined" || window.gv_role == null ? "" : String(window.gv_role)
   ].join(":");
   return [communityDisplayLocale(), normalizedCommunityTag(), normalizedCommunityTagSub(), String(searchText || "").trim(), communitySearchScope(), communitySourceGroup(), viewer, String(page || 1)].join("|");
 }
@@ -1888,9 +1900,9 @@ function buildCommunityCardForm(tag, page) {
   }
   return requestData;
 }
-function communityCardRequestKey(tag, page) {
+function communityCardRequestKey(tag, page, includeViewer = true) {
   const viewer = [typeof gv_username === "undefined" || gv_username == null ? "" : String(gv_username),
-    window.gv_role == null ? "" : String(window.gv_role)].join(":");
+    !includeViewer || window.gv_role == null ? "" : String(window.gv_role)].join(":");
   return [communityDisplayLocale(), tag, normalizedCommunityTagSub(), String(page || 1), communitySearchText(),
     communitySearchScope(), tag === "rcommunity" ? communitySourceGroup() : "", viewer].join("|");
 }
@@ -1898,15 +1910,22 @@ function sleepCommunityCardRetry(attempt) {
   const jitter = Math.floor(Math.random() * COMMUNITY_CARD_RETRY_BASE_MS);
   return new Promise((resolve) => window.setTimeout(resolve, COMMUNITY_CARD_RETRY_BASE_MS * attempt + jitter));
 }
-async function fetchCommunityCardData(tag, page, attempts = COMMUNITY_CARD_FETCH_ATTEMPTS, onPartial = () => {}) {
-  const requestKey = communityCardRequestKey(tag, page);
+async function fetchCommunityCardData(tag, page, attempts = COMMUNITY_CARD_FETCH_ATTEMPTS, onPartial = () => {}, onViewerChange = () => {}) {
+  let requestKey = communityCardRequestKey(tag, page);
+  const scope = communityCardRequestKey(tag, page, false);
   const localeEpoch = communityLocaleEpoch;
   const result = await fetchCommunityArticleListResponse(buildCommunityCardForm(tag, page), attempts,
     () => localeEpoch === communityLocaleEpoch && communityState.cardPages[tag] === page &&
-      requestKey === communityCardRequestKey(tag, page), onPartial);
+      requestKey === communityCardRequestKey(tag, page), onPartial, () => {
+      if (localeEpoch !== communityLocaleEpoch || communityState.cardPages[tag] !== page ||
+          scope !== communityCardRequestKey(tag, page, false) || requestKey === communityCardRequestKey(tag, page)) return false;
+      if (onViewerChange() === false) return false;
+      requestKey = communityCardRequestKey(tag, page);
+      return true;
+    });
   return result.data;
 }
-async function fetchCommunityArticleListResponse(requestData, pendingAttempts, isCurrent, onPartial = () => {}) {
+async function fetchCommunityArticleListResponse(requestData, pendingAttempts, isCurrent, onPartial = () => {}, handoffViewer = () => false) {
   let lastData = null;
   let lastPartial = null;
   let lastPartialResponse = null;
@@ -1918,33 +1937,53 @@ async function fetchCommunityArticleListResponse(requestData, pendingAttempts, i
   let controller = null;
   let timer = null;
   let wake = null;
+  let settleRead = null;
   const deadline = performance.now() + COMMUNITY_PARTIAL_RECOVERY_MS;
   const stop = () => {
     stopped = true;
     if (controller) controller.abort();
     if (timer) window.clearTimeout(timer);
     if (wake) wake();
+    if (settleRead) settleRead(null);
   };
   window.addEventListener("pagehide", stop, { once: true });
   try {
     for (let attempt = 1; attempt <= COMMUNITY_CARD_FETCH_ATTEMPTS;) {
-      if (stopped || !isCurrent() || performance.now() >= deadline) break;
+      if (stopped || performance.now() >= deadline) break;
+      if (!isCurrent()) {
+        if (!handoffViewer()) break;
+        lastData = lastPartial = lastPartialResponse = null;
+        cachePendingRecovery = false;
+      }
       cachePending = false;
       try {
         controller = new AbortController();
-        timer = window.setTimeout(() => controller.abort(), deadline - performance.now());
-        response = await fetch("/blank/ajax_board/get_article_list/", {
+        const read = fetch("/blank/ajax_board/get_article_list/", {
           method: "POST",
           headers: { "X-CSRFToken": getCookie("csrftoken") },
           body: requestData,
           signal: controller.signal
-        });
-        const data = await response.json().catch(() => ({ ok: false, pending: true }));
-        lastData = data;
-        if (stopped || !isCurrent()) break;
+        }).then(async (reply) => ({ response: reply, data: await reply.json().catch(() => ({ ok: false, pending: true })) }));
+        const result = await Promise.race([read, new Promise((resolve) => {
+          settleRead = resolve;
+          timer = window.setTimeout(() => { controller.abort(); resolve(null); }, deadline - performance.now());
+        })]);
+        settleRead = null;
+        if (!result || stopped || performance.now() >= deadline) break;
+        response = result.response;
+        const changedViewer = !isCurrent();
+        if (changedViewer && !handoffViewer()) break;
         if (response.status === 401 || response.status === 403) {
           return { response, data: { ok: false, pending: true, access_denied: true } };
         }
+        if (changedViewer) {
+          lastData = lastPartial = lastPartialResponse = null;
+          cachePendingRecovery = false;
+          attempt += 1;
+          continue;
+        }
+        const data = result.data;
+        lastData = data;
         const cacheStatus = String(response.headers.get("X-WebR-Cache") || "").toLowerCase();
         cachePending = !lastPartial && requestData.get("tag") === "rcommunity" &&
           response.ok && cacheStatus === "pending" && isCommunityArticleListCachePending(data);
@@ -1998,8 +2037,8 @@ async function loadCommunityBoardCard(def, page) {
   const localeEpoch = communityLocaleEpoch;
   const cardPage = Math.max(1, Number(page || 1));
   communityState.cardPages[def.tag] = cardPage;
-  const requestKey = communityCardRequestKey(def.tag, cardPage);
-  const previousData = communityDisplayLocale() === "ko" ? communityCardLastGood[requestKey] || null : null;
+  let requestKey = communityCardRequestKey(def.tag, cardPage);
+  let previousData = communityDisplayLocale() === "ko" ? communityCardLastGood[requestKey] || null : null;
   const target = document.getElementById("div_community_card_" + def.tag);
   if (target && !previousData) {
     ReactDOM.render(/* @__PURE__ */ React.createElement(CommunityCardSkeletonBody, { tag: def.tag, title: def.title }), target);
@@ -2011,7 +2050,13 @@ async function loadCommunityBoardCard(def, page) {
       ReactDOM.render(/* @__PURE__ */ React.createElement(CommunityBoardCard, { def, data: displayData }), host);
     }
   };
-  const data = await fetchCommunityCardData(def.tag, cardPage, COMMUNITY_CARD_FETCH_ATTEMPTS, renderPartial);
+  const data = await fetchCommunityCardData(def.tag, cardPage, COMMUNITY_CARD_FETCH_ATTEMPTS, renderPartial, () => {
+    if (document.getElementById("div_community_card_" + def.tag) !== target) return false;
+    requestKey = communityCardRequestKey(def.tag, cardPage);
+    previousData = null;
+    if (target) ReactDOM.render(React.createElement(CommunityCardSkeletonBody, { tag: def.tag, title: def.title }), target);
+    return true;
+  });
   if (localeEpoch !== communityLocaleEpoch || communityState.cardPages[def.tag] !== cardPage ||
       requestKey !== communityCardRequestKey(def.tag, cardPage)) return;
   if (isCommunityArticleListPending(data)) {
@@ -2143,7 +2188,9 @@ async function get_article_list(loadMode, requestedPage = 1) {
   let response;
   let data;
   const capturedPage = communityState.page_num;
-  const requestKey = communityArticlePageCacheKey(capturedPage, searchText);
+  let requestKey = communityArticlePageCacheKey(capturedPage, searchText);
+  const requestScope = communityArticlePageCacheKey(capturedPage, searchText, false);
+  const requestTarget = document.getElementById(targetId);
   try {
     ({ response, data } = await fetchCommunityArticleListResponse(request_data, 1,
       () => localeEpoch === communityLocaleEpoch && communityState.page_num === capturedPage &&
@@ -2154,6 +2201,14 @@ async function get_article_list(loadMode, requestedPage = 1) {
           /* @__PURE__ */ React.createElement(ArticleList, { data: partialData.list, isMain: replaceMainList, partialData, paginate: false }),
           document.getElementById(targetId)
         );
+      }, () => {
+        if (document.getElementById(targetId) !== requestTarget || localeEpoch !== communityLocaleEpoch || communityState.page_num !== capturedPage ||
+            requestScope !== communityArticlePageCacheKey(capturedPage, communitySearchText(), false) ||
+            requestKey === communityArticlePageCacheKey(capturedPage, communitySearchText())) return false;
+        requestKey = communityArticlePageCacheKey(capturedPage, communitySearchText());
+        communityState.article_counter = 0;
+        ReactDOM.render(React.createElement(Div_article_list_skeleton, null), document.getElementById(targetId));
+        return true;
       }));
     if (localeEpoch !== communityLocaleEpoch || communityState.page_num !== capturedPage ||
         requestKey !== communityArticlePageCacheKey(capturedPage, communitySearchText())) return;
