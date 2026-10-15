@@ -161,7 +161,7 @@ class NoticePublicRecoveryTests(unittest.TestCase):
 
     def test_late_header_viewer_handoff_uses_fresh_response_and_keeps_body_independent(self):
         for width in [1440, 390]:
-            for change in ['window.gv_role="관리자"', 'window.gv_username="Current member"']:
+            for change in ['window.gv_role="관리자"']:
                 with self.subTest(width=width, change=change):
                     page, _, errors = self.render([], held_stage='body', width=width)
                     page.wait_for_function('held.release!==null')
@@ -181,6 +181,15 @@ class NoticePublicRecoveryTests(unittest.TestCase):
                     self.assertEqual(page.evaluate('freshReads'), 1)
                     self.assertEqual(page.evaluate('relatedReads'), 1)
                     self.assertEqual(errors, [])
+
+    def test_account_switch_does_not_handoff_or_fetch_for_previous_document(self):
+        page, _, errors = self.render([], held_stage='body')
+        page.wait_for_function('held.release!==null')
+        page.evaluate('window.gv_username="different";held.release('+json.dumps(ITEM)+')')
+        page.clock.run_for(20)
+        self.assertEqual(page.evaluate('held.calls'), 1)
+        self.assertNotIn(ITEM['content'], page.locator('#div_main').inner_text())
+        self.assertEqual(errors, [])
 
     def test_viewer_handoff_does_not_extend_deadline_or_four_attempts(self):
         page, _, errors = self.render([], held_stage='body')
