@@ -1,3 +1,4 @@
+"""Controlled Home card/retirement browser fixtures; no live-service evidence."""
 import json
 import os
 import unittest
@@ -29,7 +30,7 @@ class IndependentCards(unittest.TestCase):
  @classmethod
  def setUpClass(cls):
   cls.p=sync_playwright().start()
-  cls.browser=cls.p.chromium.launch(headless=True,executable_path='/home/lv999/.cache/ms-playwright/chromium-1208/chrome-linux64/chrome')
+  cls.browser=cls.p.chromium.launch(headless=True,executable_path=os.environ.get('WEBR_CHROMIUM_EXECUTABLE'))
  @classmethod
  def tearDownClass(cls): cls.browser.close();cls.p.stop()
 
