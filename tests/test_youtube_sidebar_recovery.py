@@ -110,13 +110,12 @@ class YouTubeSidebarRecoveryTests(unittest.TestCase):
         self.assertEqual(errors, [])
 
     def test_comments_require_comment_and_parent_ids_and_string_content(self):
-        payloads = [{"ok": False, "pending": True},
-                    {"0": {**COMMENT, "uuid_article": "undefined"}},
+        payloads = [{"0": {**COMMENT, "uuid_article": "undefined"}},
                     {"0": {**COMMENT, "uuid": "null"}},
                     {"0": {**COMMENT, "content": 5}},
                     {"0": COMMENT}]
         page, _, errors, _ = self.render(lambda route, *_: self.fulfill(route, payloads.pop(0)))
-        for _ in range(4):
+        for _ in range(3):
             page.evaluate("get_new_comment_list()")
             self.assert_unavailable(page, TARGETS[1])
         page.evaluate("get_new_comment_list()")

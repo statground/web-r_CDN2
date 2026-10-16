@@ -21,6 +21,7 @@ let youtubeListError = "";
 let youtubeRetryTimer = null;
 let youtubeListObserver = null;
 const youtubeSidebarReads = new Map();
+const youtubeRecentCommentOwners = new WeakMap();
 let youtubePrimaryRead = null;
 const PAGE_SIZE = 20;
 // Copy authored decorative markup before React replaces the neutral shell.
@@ -643,10 +644,11 @@ async function get_article_famous_list() {
   return loadYoutubeSidebar("div_article_famous_list", "\uCD5C\uC2E0 \uC778\uAE30 \uAE00", ENDPOINTS.articleFamous, "article");
 }
 async function get_new_comment_list() {
-  return loadYoutubeSidebar("div_new_comment_list", "\uCD5C\uC2E0 \uB313\uAE00", ENDPOINTS.newComment, "comment");
+  return loadYoutubeRecentComments();
 }
 function cancelYoutubeSidebarReads() {
   youtubeSidebarReads.forEach((state) => {
+    if (state.cancel) { state.cancel(true); return; }
     window.clearTimeout(state.timer);
     state.controller.abort();
     state.target.setAttribute("aria-busy", "false");
@@ -706,6 +708,121 @@ async function loadYoutubeSidebar(targetID, title, endpoint, kind) {
       youtubeSidebarReads.delete(targetID);
     }
   }
+}
+function youtubeRecentCommentScope() {
+  const i18n = window.WebRI18n;
+  return JSON.stringify([location.pathname, location.search, String(url || ""),
+    typeof orderID === "undefined" ? "" : String(orderID), getCurrentUsername(),
+    i18n && i18n.language || document.documentElement.lang || "ko"]);
+}
+function youtubeRecentCommentRole() {
+  return JSON.stringify([String(window.gv_role || ""), !!window.gv_is_admin]);
+}
+async function loadYoutubeRecentComments() {
+  const id = "div_new_comment_list", target = document.getElementById(id);
+  if (!target) return;
+  const scope = youtubeRecentCommentScope(), role = youtubeRecentCommentRole();
+  const previous = youtubeSidebarReads.get(id);
+  if (previous && previous.scope === scope && previous.role === role && previous.target === target && !previous.done) return previous.promise;
+  if (previous && previous.cancel) previous.cancel(true);
+  Array.from(target.children).forEach(node => { if (node.hasAttribute("data-webr-youtube-recent-status")) node.remove(); });
+  const state = { target, scope, role, controller: new AbortController(), done: false, deadline: performance.now() + 15000,
+    timer: null, ownerTimer: null, retryTimer: null, retryResolve: null, cancelResolve: null };
+  youtubeSidebarReads.set(id, state);
+  const owner = () => JSON.stringify([state.scope, state.role]);
+  let retained = youtubeRecentCommentOwners.get(target) === owner();
+  let status = null;
+  const current = () => youtubeSidebarReads.get(id) === state && !state.done &&
+    document.getElementById(id) === target && state.scope === youtubeRecentCommentScope() && state.role === youtubeRecentCommentRole();
+  const render = body => ReactDOM.render(React.createElement("div", {
+    class: "flex flex-col justify-center items-center border border-gray-300 rounded-xl space-y-4 w-full p-8"
+  }, React.createElement(Div_box_header, { title: "\uCD5C\uC2E0 \uB313\uAE00" }), body), target);
+  const message = (text, alert = false) => {
+    if (status) status.remove();
+    status = document.createElement("p"); status.setAttribute("role", alert ? "alert" : "status");
+    status.setAttribute("data-webr-youtube-recent-status", "1");
+    status.className = "w-full px-8 py-2 text-sm"; status.textContent = text; target.appendChild(status);
+  };
+  const skeleton = () => render(React.createElement("div", { "aria-hidden": "true", class: "flex flex-col w-full space-y-2 animate-pulse" },
+    [0, 1, 2].map(key => React.createElement("div", { key, class: "h-2.5 bg-gray-200 rounded-full w-full" }))));
+  state.cancel = discard => {
+    state.done = true; state.controller.abort(); window.clearTimeout(state.timer);
+    window.clearTimeout(state.retryTimer); window.clearInterval(state.ownerTimer);
+    if (state.retryResolve) state.retryResolve(); if (state.cancelResolve) state.cancelResolve(null);
+    if (status) status.remove(); youtubeRecentCommentOwners.delete(target);
+    if (document.getElementById(id) === target) {
+      target.setAttribute("aria-busy", "false");
+      if (discard) ReactDOM.render(null, target);
+    }
+  };
+  const handoff = () => {
+    if (youtubeSidebarReads.get(id) !== state || state.done || document.getElementById(id) !== target ||
+        state.scope !== youtubeRecentCommentScope() || state.role === youtubeRecentCommentRole()) return false;
+    state.role = youtubeRecentCommentRole(); state.controller.abort();
+    youtubeRecentCommentOwners.delete(target); retained = false; if (status) status.remove(); skeleton(); return true;
+  };
+  target.setAttribute("aria-busy", "true");
+  if (retained) message(youtubePrimaryText("최근 댓글을 불러오고 있습니다.", "Loading recent comments.")); else skeleton();
+  state.ownerTimer = window.setInterval(() => { if (!current() && !handoff()) state.cancel(true); }, 100);
+  const read = async () => {
+    // Only valid 2xx pending is a follow-up. One original 15s deadline, at most three sequential requests.
+    for (let attempt = 0; attempt < 3 && current(); attempt++) {
+      if (performance.now() >= state.deadline) throw new Error("sidebar deadline");
+      const requestRole = state.role; state.controller = new AbortController();
+      try {
+        const form = new FormData(); form.append("tag", url);
+        const response = await fetch(ENDPOINTS.newComment, { method: "post", headers: { "X-CSRFToken": getCsrfToken() }, body: form, signal: state.controller.signal });
+        if (performance.now() >= state.deadline) throw new Error("sidebar deadline");
+        if (response.status === 401 || response.status === 403) { const error = new Error("sidebar denied"); error.denied = true; throw error; }
+        if (!current() && !handoff()) return null;
+        if (requestRole !== state.role) continue;
+        if (!response.ok) throw new Error("sidebar unavailable");
+        const data = await response.json();
+        if (performance.now() >= state.deadline) throw new Error("sidebar deadline");
+        if (!current() && !handoff()) return null;
+        if (requestRole !== state.role) continue;
+        const pending = data && typeof data === "object" && !Array.isArray(data) &&
+          Object.keys(data).sort().join(",") === "ok,pending" && data.ok === false && data.pending === true;
+        const cachePending = String(response.headers.get("X-WebR-Cache") || "").toLowerCase() === "pending";
+        const rows = youtubeSidebarRows(data, "comment");
+        if (rows !== null && (rows.length > 0 || !cachePending)) return rows;
+        if (pending) {
+          if (attempt === 2) throw new Error("sidebar pending bound");
+          // Give the existing detached five-second producer a useful turn.
+          await new Promise(resolve => { state.retryResolve = resolve; state.retryTimer = window.setTimeout(resolve, 2000 * (attempt + 1)); });
+          state.retryResolve = null; state.retryTimer = null; continue;
+        }
+        throw new Error("sidebar malformed");
+      } catch (error) {
+        if (!error.denied && current() && requestRole !== state.role) continue;
+        throw error;
+      }
+    }
+    throw new Error("sidebar no current owner");
+  };
+  state.promise = Promise.race([read(), new Promise(resolve => { state.cancelResolve = resolve; }),
+    new Promise((_, reject) => { state.timer = window.setTimeout(() => { state.controller.abort(); reject(new Error("sidebar deadline")); }, Math.max(0, state.deadline - performance.now())); })
+  ]).then(rows => {
+    if (!current() || rows === null) return;
+    if (status) status.remove();
+    render(React.createElement("div", { class: "flex flex-col justify-center items-start w-full space-y-2" },
+      rows.map(row => React.createElement(Div_new_comment, { key: row.uuid, data: row }))));
+    youtubeRecentCommentOwners.set(target, owner());
+  }).catch(error => {
+    if (!current()) {
+      if (youtubeSidebarReads.get(id) === state && document.getElementById(id) === target) {
+        youtubeRecentCommentOwners.delete(target); ReactDOM.render(null, target);
+      }
+      return;
+    }
+    if (error.denied || !retained) { youtubeRecentCommentOwners.delete(target); if (status) status.remove(); render(null); }
+    message(youtubePrimaryText("목록을 잠시 불러오지 못했습니다.", "The list is temporarily unavailable."), true);
+  }).finally(() => {
+    state.done = true; window.clearTimeout(state.timer); window.clearTimeout(state.retryTimer); window.clearInterval(state.ownerTimer);
+    if (state.retryResolve) state.retryResolve();
+    if (youtubeSidebarReads.get(id) === state) { target.setAttribute("aria-busy", "false"); youtubeSidebarReads.delete(id); }
+  });
+  return state.promise;
 }
 async function get_my_article_list() {
   const target = document.getElementById("div_my_article_list");
