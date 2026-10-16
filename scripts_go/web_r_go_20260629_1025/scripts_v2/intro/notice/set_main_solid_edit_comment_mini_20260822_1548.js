@@ -295,6 +295,22 @@ async function mountSolidNoticeCommentEditor(commentId, initialHTML = "", hostID
   const host = document.getElementById(hostID || defaultHostID);
   if (!host)
     return null;
+  const mountDeadline = Date.now() + 15000;
+  const mountScope = () => JSON.stringify([location.pathname, location.search,
+    String(typeof orderID === "undefined" ? "" : orderID), document.documentElement.lang,
+    window.gv_username || "", window.gv_role || "", noticeIsAdmin()]);
+  const originalScope = mountScope();
+  const mountToken = {};
+  host.__webrNoticeCommentMount = mountToken;
+  const fallback = createNoticeCommentFallbackInHost(host, key, initialHTML || "");
+  const fallbackTextarea = host.querySelector("textarea");
+  fallbackTextarea.id += "_fallback";
+  const owns = () => host.isConnected && document.getElementById(host.id) === host &&
+    host.__webrNoticeCommentMount === mountToken && mountScope() === originalScope;
+  const retire = () => {
+    if (host.__webrNoticeCommentMount === mountToken) host.replaceChildren();
+    return null;
+  };
   const textareaID = "txt_content_comment_" + key;
   const options = {
     placeholder: "\uB313\uAE00\uC744 \uC785\uB825\uD574\uC8FC\uC138\uC694.",
@@ -307,10 +323,38 @@ async function mountSolidNoticeCommentEditor(commentId, initialHTML = "", hostID
   };
   if (typeof initialHTML === "string")
     options.html = initialHTML;
-  if (window.WebRSolidEditor && typeof window.WebRSolidEditor.mountHost === "function") {
-    return await window.WebRSolidEditor.mountHost(host, options);
+  if (window.WebRSolidEdit && typeof window.WebRSolidEdit.ensureEditorAssets === "function") {
+    let ready = false;
+    try { ready = await window.WebRSolidEdit.ensureEditorAssets({ deadline: mountDeadline }); } catch (_) {}
+    if (!owns()) return retire();
+    if (!ready || Date.now() >= mountDeadline) return fallback;
   }
-  return createNoticeCommentFallbackInHost(host, key, initialHTML || "");
+  if (!owns()) return retire();
+  if (window.WebRSolidEditor && typeof window.WebRSolidEditor.mountHost === "function") {
+    const remaining = mountDeadline - Date.now();
+    if (remaining <= 0) return fallback;
+    const solidHost = document.createElement("div");
+    solidHost.hidden = true;
+    host.appendChild(solidHost);
+    try {
+      const mounted = await window.WebRSolidEditor.mountHost(solidHost, { ...options, html: fallbackTextarea.value, timeoutMs: remaining });
+      if (!owns()) {
+        if (mounted && typeof window.WebRSolidEditor.destroy === "function") window.WebRSolidEditor.destroy(mounted);
+        solidHost.remove();
+        return retire();
+      }
+      if (mounted && !mounted.failed && Date.now() < mountDeadline) {
+        // The fallback stays editable through both asset loading and host readiness.
+        setNoticeEditorHTML(mounted, fallbackTextarea.value);
+        fallbackTextarea.remove();
+        solidHost.hidden = false;
+        return mounted;
+      }
+      if (mounted && !mounted.failed && typeof window.WebRSolidEditor.destroy === "function") window.WebRSolidEditor.destroy(mounted);
+    } catch (_) {}
+    solidHost.remove();
+  }
+  return fallback;
 }
 function Div_box_header(props) {
   return /* @__PURE__ */ React.createElement("p", { class: "flex flex-row text-start w-full font-extrabold underline" }, props.title);
@@ -592,6 +636,7 @@ const IntroNoticeList = /* @__PURE__ */ (() => {
   let article_counter = 0;
   let toggle_page = false;
   const noticeBackendCache = {};
+  let noticeBackendCacheOwner = "";
   function noticeBackendPageFor(page) {
     const currentPage = Number.isFinite(Number(page)) && Number(page) > 0 ? Math.floor(Number(page)) : 1;
     return Math.floor((currentPage - 1) * noticeListPageSize / noticeBackendPageSize) + 1;
@@ -688,8 +733,12 @@ const IntroNoticeList = /* @__PURE__ */ (() => {
     }
     toggle_page = true;
     const owner = noticePublicOwner("list", document.getElementById("div_article_list"));
+    const cacheOwner = () => JSON.stringify([owner.address, owner.viewer, owner.language]);
+    if (noticeBackendCacheOwner !== cacheOwner()) resetNoticeBackendCache();
+    noticeBackendCacheOwner = cacheOwner();
     const request_data = new FormData();
     request_data.append("tag", url);
+    request_data.append("list_titles", "1");
     request_data.append("tag_sub", sub);
     if (mode2 === "init" || mode2 === "search") {
       page_num = 1;
@@ -705,16 +754,27 @@ const IntroNoticeList = /* @__PURE__ */ (() => {
     }
     try {
       const backendPage = noticeBackendPageFor(page_num);
-      let data = noticeBackendCache[backendPage];
-      if (!data) {
-        request_data.append("page", backendPage);
-        data = await noticePublicJSON("/blank/ajax_board/get_article_list/", {
-          method: "post",
-          headers: { "X-CSRFToken": getCookie("csrftoken") },
-          body: request_data
-        }, owner);
+      let data = null;
+      request_data.append("page", backendPage);
+      // One role-only handoff may discard the previous response. No error,
+      // malformed or pending retry; both reads share this action's 45s clock.
+      for (let attempt = 0; attempt < 2; attempt++) {
+        try {
+          data = noticeBackendCache[backendPage] || await noticePublicJSON("/blank/ajax_board/get_article_list/", {
+            method: "post",
+            headers: { "X-CSRFToken": getCookie("csrftoken") },
+            body: request_data
+          }, owner);
+          if (!currentNoticeOwner(owner)) throw new Error("obsolete notice read");
+          break;
+        } catch (error) {
+          if (attempt === 0 && error.message === "obsolete notice read" && handoffNoticeViewer(owner)) {
+            resetNoticeBackendCache(); noticeBackendCacheOwner = cacheOwner(); data = null; continue;
+          }
+          throw error;
+        }
       }
-      if (!currentNoticeOwner(owner)) return;
+      if (!currentNoticeOwner(owner)) throw new Error("obsolete notice read");
       if (!noticeListPayloadReady(data)) {
         delete noticeBackendCache[backendPage];
         throw new Error("notice list is unavailable");
@@ -736,9 +796,10 @@ const IntroNoticeList = /* @__PURE__ */ (() => {
       );
     } catch (err) {
       console.error("[notice list] load failed:", err);
-      if (mountedNoticeOwner(owner))
+      if (sameNoticeDocument(owner))
         ReactDOM.render(React.createElement(NoticeListUnavailable), owner.root);
     } finally {
+      if (noticePublicOwners.get("list") === owner && !sameNoticeDocument(owner)) ReactDOM.render(null, owner.root);
       finishNoticeOwner(owner);
       toggle_page = false;
     }
@@ -1328,13 +1389,13 @@ const IntroNoticeRead = /* @__PURE__ */ (() => {
     const target = Object.values(data_comment).find(
       (item) => item.uuid === uuid_comment
     );
-    editor[uuid_comment] = await mountSolidNoticeCommentEditor(uuid_comment, target ? target.content || "" : "", "div_comment_editor_main_" + uuid_comment);
     if (target) {
-      setNoticeEditorHTML(editor[uuid_comment], target.content || "");
       const chkEl = document.getElementById("chk_secret_" + uuid_comment);
       if (chkEl)
         chkEl.checked = target.is_secret == 1;
     }
+    const mountedEditor = await mountSolidNoticeCommentEditor(uuid_comment, target ? target.content || "" : "", "div_comment_editor_main_" + uuid_comment);
+    if (mountedEditor) editor[uuid_comment] = mountedEditor;
   }
   async function comment_action(action, uuid_comment) {
     const isNew = uuid_comment === "new";
@@ -1473,19 +1534,60 @@ const IntroNoticeRead = /* @__PURE__ */ (() => {
     }
   }
   async function get_read_article_comment(orderID_param) {
+    const root = document.getElementById("div_community_read_comment");
+    if (!root || !data_article || String(data_article.uuid).toLowerCase() !== String(orderID_param).toLowerCase()) return;
+    const owner = noticePublicOwner("comments", root);
+    data_comment = null;
+    root.setAttribute("aria-busy", "true");
+    ReactDOM.render(React.createElement("div", { class: "h-16 w-full rounded bg-slate-100 animate-pulse", "aria-hidden": "true" }), root);
     const request_data = new FormData();
     request_data.append("orderID", orderID_param);
-    data_comment = await fetch(
-      "/blank/ajax_board/get_read_article_comment/",
-      {
-        method: "post",
-        headers: { "X-CSRFToken": getCookie("csrftoken") },
-        body: request_data
+    request_data.append("tag", "notice");
+    const uuid = value => typeof value === "string" && /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(value) && !/^0{8}(?:-0{4}){3}-0{12}$/.test(value);
+    const validRows = data => data && typeof data === "object" && !Array.isArray(data) &&
+      Object.keys(data).every(key => /^(0|[1-9]\d*)$/.test(key)) && Object.values(data).every(row =>
+        row && typeof row === "object" && !Array.isArray(row) && uuid(row.uuid) &&
+        uuid(row.uuid_article) && row.uuid_article.toLowerCase() === String(orderID_param).toLowerCase() &&
+        (row.uuid_upper == null || row.uuid_upper === "" || uuid(row.uuid_upper)) && typeof row.content === "string");
+    let cancel;
+    try {
+      for (let attempt = 0; attempt < 2; attempt++) {
+        try {
+          const value = await noticePublicJSON("/blank/ajax_board/get_read_article_comment/", {
+            method: "post", headers: { "X-CSRFToken": getCookie("csrftoken") }, body: request_data
+          }, owner);
+          if (!currentNoticeOwner(owner)) throw new Error("obsolete notice read");
+          if (!validRows(value)) throw new Error("notice comments unavailable");
+          data_comment = value;
+          break;
+        } catch (error) {
+          if (attempt === 0 && error.message === "obsolete notice read" && handoffNoticeViewer(owner)) continue;
+          throw error;
+        }
       }
-    ).then((res) => res.json()).then((res) => res);
-    await set_comment();
+      if (!currentNoticeOwner(owner) || data_comment === null) throw new Error("obsolete notice read");
+      const stopped = new Promise((_, reject) => {
+        cancel = () => reject(new Error("notice comments stopped"));
+        owner.controller.signal.addEventListener("abort", cancel, { once: true });
+      });
+      await Promise.race([set_comment(owner), stopped]);
+      if (!currentNoticeOwner(owner)) throw new Error("obsolete notice read");
+    } catch (error) {
+      if (sameNoticeDocument(owner)) {
+        data_comment = data_comment_upper = null;
+        ReactDOM.render(React.createElement("p", { role: "alert", class: "w-full rounded-lg border border-amber-200 bg-amber-50 px-5 py-5 text-sm text-amber-900" }, "댓글을 불러오지 못했습니다."), root);
+      }
+    } finally {
+      if (cancel) owner.controller.signal.removeEventListener("abort", cancel);
+      if (noticePublicOwners.get("comments") === owner) {
+        root.setAttribute("aria-busy", "false");
+        if (!sameNoticeDocument(owner)) ReactDOM.render(null, root);
+      }
+      finishNoticeOwner(owner);
+    }
   }
-  async function set_comment() {
+  async function set_comment(owner) {
+    if (owner && !currentNoticeOwner(owner)) return;
     if (!data_comment) {
       console.warn("[set_comment] data_comment is null or undefined");
       const container = document.getElementById("div_community_read_comment");
@@ -1544,8 +1646,9 @@ const IntroNoticeRead = /* @__PURE__ */ (() => {
     });
     const newFormEl = document.querySelector("#div_community_read_comment_new_form");
     if (newFormEl) {
-      editor["new"] = await mountSolidNoticeCommentEditor("new", "");
-      setNoticeEditorHTML(editor["new"], "");
+      const mountedEditor = await mountSolidNoticeCommentEditor("new", "");
+      if (owner && !currentNoticeOwner(owner)) return;
+      editor["new"] = mountedEditor;
     } else {
       console.warn("[set_comment] #div_community_read_comment_new_form not found");
     }
@@ -1558,8 +1661,9 @@ const IntroNoticeRead = /* @__PURE__ */ (() => {
       if (!replyEl) {
         continue;
       }
-      editor[comment.uuid] = await mountSolidNoticeCommentEditor(comment.uuid, "");
-      setNoticeEditorHTML(editor[comment.uuid], "");
+      const mountedEditor = await mountSolidNoticeCommentEditor(comment.uuid, "");
+      if (owner && !currentNoticeOwner(owner)) return;
+      editor[comment.uuid] = mountedEditor;
     }
   }
   async function notice_read_set_main() {
