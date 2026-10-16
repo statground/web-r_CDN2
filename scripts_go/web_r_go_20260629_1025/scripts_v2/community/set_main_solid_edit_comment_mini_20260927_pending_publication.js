@@ -942,7 +942,8 @@ async function mountSolidCommentEditor(commentId, initialHTML = "", hostID = nul
   if (typeof initialHTML === "string") {
     editorOptions.html = initialHTML;
   }
-  const fallbackEditor = ensureCommentEditorInput(key, hostID, initialHTML || "");
+  const fallbackEditor = ensureCommentEditorInput(key, hostID, initialHTML || "") || createCommentEditorFallbackInHost(host, key, initialHTML || "");
+  if (fallbackEditor) communityState.commentEditors[key] = fallbackEditor;
   const fallbackInput = findCommentFallbackTextarea(host, key);
   const obsolete = () => {
     if (fallbackInput) { fallbackInput.value = ""; fallbackInput.remove(); }
@@ -3013,23 +3014,43 @@ async function comment_file_action(action, uuid_comment) {
 }
 let communityCommentRead = null;
 window.addEventListener("pagehide", () => communityCommentRead?.cancel());
-async function get_read_article_comment(orderID_param) {
-  if (!communityState.articleData || communityState.articleData.uuid !== orderID_param) return;
+async function get_read_article_comment(orderID_param, primaryPromise = null) {
+  const prefetch = primaryPromise !== null;
+  if (prefetch && (!primaryPromise || typeof primaryPromise.then !== "function" ||
+      typeof orderID_param !== "string" || !/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(orderID_param))) return;
+  if (!prefetch && (!communityState.articleData || communityState.articleData.uuid !== orderID_param)) return;
+  // The original primary callback joins its own first read even if that read
+  // retired early. It must not silently create a fresh deadline or request.
+  if (!prefetch && communityDetailRead?.running && communityDetailRead.commentPrefetch?.articleID === orderID_param)
+    return communityDetailRead.commentPrefetch.promise;
+  const readableParent = () => {
+    const article = communityState.articleData;
+    return validCommunityDetail(article, orderID_param) && (article.is_secret === 0 ||
+      article.is_secret === 1 && ["writer", "admin"].includes(article.check_reader));
+  };
   const target = document.getElementById("div_community_read_comment");
   if (!target) return;
+  const query = location.search, primaryState = prefetch ? communityDetailRead : null;
   const scope = communityDetailOwnerKey(false), username = String(window.gv_username || ""), admin = !!window.gv_is_admin;
   const role = () => String(window.gv_role || "");
   const previous = communityCommentRead;
-  if (previous && previous.running && !previous.cancelled && previous.scope === scope && previous.target === target) return previous.promise;
+  if (previous && previous.running && !previous.cancelled && previous.scope === scope && previous.target === target && (!previous.initialPrefetch || prefetch)) return previous.promise;
   if (previous) previous.cancel();
-  const state = { target, scope, running: true, cancelled: false, expired: false, role: role(),
+  const state = { target, scope, initialPrefetch: prefetch, running: true, cancelled: false, expired: false, role: role(),
     controller: null, deadline: performance.now() + COMMUNITY_ACTION_WINDOW_MS, timer: null, ownerTimer: null };
   communityCommentRead = state;
+  if (prefetch && primaryState) { state.articleID = orderID_param; primaryState.commentPrefetch = state; }
   const owns = () => communityCommentRead === state && !state.cancelled && scope === communityDetailOwnerKey(false) &&
     admin === !!window.gv_is_admin && document.getElementById(target.id) === target &&
-    communityState.articleData?.uuid === orderID_param;
+    (!prefetch || query === location.search) && (prefetch || communityState.articleData?.uuid === orderID_param);
+  const acceptedParent = async () => {
+    if (!prefetch) return true;
+    try { await primaryPromise; } catch (_) { state.cancel(); return false; }
+    if (!owns() || !readableParent()) { state.cancel(); return false; }
+    return true;
+  };
   const failure = () => {
-    if (!owns() || !target.parentElement) return;
+    if (!owns() || !target.parentElement || prefetch && !readableParent()) return;
     const id = target.id + "_action_status";
     let status = document.getElementById(id);
     if (!status) {
@@ -3043,8 +3064,12 @@ async function get_read_article_comment(orderID_param) {
   const cancelled = new Promise((resolve) => { state.cancel = () => {
     state.cancelled = true; state.controller?.abort(); resolve();
   }; });
+  if (prefetch) void primaryPromise.then(() => {
+    if (!readableParent()) state.cancel();
+  }, () => state.cancel());
   state.ownerTimer = window.setInterval(() => {
     if (!owns()) {
+      if (prefetch && query !== location.search && communityDetailRead === primaryState) cancelCommunityDetail(primaryState);
       if ((username !== String(window.gv_username || "") || admin !== !!window.gv_is_admin) &&
           document.getElementById(target.id) === target) retireCommunityActionRights();
       state.cancel();
@@ -3062,7 +3087,10 @@ async function get_read_article_comment(orderID_param) {
         const response = await fetch("/blank/ajax_board/get_read_article_comment/", { method: "POST",
           headers: { "X-CSRFToken": getCookie("csrftoken") }, body, signal: state.controller.signal });
         if (!owns() || state.expired) return;
-        if ([401, 403, 404, 410].includes(response.status)) { retireCommunityActionRights(); return; }
+        if ([401, 403, 404, 410].includes(response.status)) {
+          if ((!prefetch || await acceptedParent()) && owns() && !state.expired) retireCommunityActionRights();
+          return;
+        }
         if (!response.ok) throw new Error("Comment read unavailable");
         if (state.role !== role()) {
           if (response.body) void response.body.cancel().catch(() => {});
@@ -3071,19 +3099,30 @@ async function get_read_article_comment(orderID_param) {
         const data = await response.json();
         if (!owns() || state.expired) return;
         if (state.role !== role()) continue;
-        if (data?.access_denied === true || data?.denied === true || data?.withdrawn === true) { retireCommunityActionRights(); return; }
+        if (data?.access_denied === true || data?.denied === true || data?.withdrawn === true) {
+          if ((!prefetch || await acceptedParent()) && owns() && !state.expired) retireCommunityActionRights();
+          return;
+        }
+        if (prefetch && (typeof data !== "object" || Array.isArray(data))) throw new Error("Comment map unavailable");
         if (!data || data.error || data.checker === "ERROR" || data.ok === false || data.pending || data.partial ||
             !Object.values(data).every((row) => row && typeof row.uuid === "string" && typeof row.content === "string")) throw new Error("Comment read unavailable");
+        if (prefetch && !await acceptedParent() || !owns() || state.expired) return;
+        if (state.role !== role()) continue;
+        if (prefetch && (!readableParent() || !Object.values(data).every(row => typeof row.uuid_article === "string" &&
+            row.uuid_article.toLowerCase() === communityState.articleData.uuid.toLowerCase() &&
+            row.article_category_url === communityState.articleData.category_url &&
+            typeof row.article_category_url_sub === "string" && row.article_category_url_sub === communityState.articleData.category_url_sub &&
+            row.check_article_reader === communityState.articleData.check_reader))) throw new Error("Comment parent changed");
         communityState.commentData = mergeOptimisticComments(data);
         document.getElementById(target.id + "_action_status")?.remove();
         await set_comment(); return;
       } catch (_) {
-        if (!owns() || state.expired) return;
+        if (prefetch && !await acceptedParent() || !owns() || state.expired) return;
         if (state.role !== role()) continue;
         failure(); return;
       }
     }
-    failure();
+    if (!prefetch || await acceptedParent()) failure();
   };
   state.promise = Promise.race([read(), cancelled, new Promise((resolve) => {
     state.timer = window.setTimeout(() => { state.expired = true; state.controller?.abort(); failure(); resolve(); }, COMMUNITY_ACTION_WINDOW_MS);
@@ -3194,7 +3233,12 @@ async function set_comment() {
 async function set_main_read() {
   resetEditorState();
   renderReadPageShell();
-  await get_read_article("init");
+  const primary = get_read_article("init");
+  // Same two reads, overlapped. Comments stay action-local until the accepted
+  // current parent permits rendering; the primary never waits on comments.
+  if (String(typeof url === "undefined" ? "" : url).trim().toLowerCase() === "free")
+    void get_read_article_comment(orderID, primary);
+  await primary;
 }
 function Div_main() {
   return /* @__PURE__ */ React.createElement("div", { class: "max-w-screen-2xl px-4 py-8 mx-auto space-y-4 sm:px-6 lg:px-8" }, /* @__PURE__ */ React.createElement("div", { id: "div_title", class: "w-full" }, /* @__PURE__ */ React.createElement(
