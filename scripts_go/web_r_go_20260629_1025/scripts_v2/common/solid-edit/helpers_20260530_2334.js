@@ -191,7 +191,75 @@
     }
     return String(html || "").replace(/<[^>]*>/g, "").trim() === "";
   }
+  const EDITOR_CORE_URL = "https://cdn.jsdelivr.net/gh/statground/solid-edit@ba2b1a6097fa2c677d9a51499a9a5e332afe4fb5/versions/0.0.4/editor.js";
+  const EDITOR_CORE_SRI = "sha384-o1lxhgutT7T8DymtCkYZMTZogs02eQQ49iziFUhnjFTwe4XR8OWMyrzZAvy9wS7Q";
+  let editorAssetsFlight = null;
+  function exactKeys(value, keys) {
+    return !!value && typeof value === "object" && !Array.isArray(value) &&
+      Object.keys(value).sort().join("|") === keys.slice().sort().join("|");
+  }
+  function readEditorAssets() {
+    const value = window.WEBR_SOLID_EDIT_READ_ASSETS;
+    if (!exactKeys(value, ["version", "commit", "core", "host"]) || value.version !== 1 ||
+        typeof value.commit !== "string" || !/^[0-9a-f]{40}$/.test(value.commit) ||
+        !exactKeys(value.core, ["src", "integrity"]) || !exactKeys(value.host, ["src", "integrity"]) ||
+        value.core.src !== EDITOR_CORE_URL || value.core.integrity !== EDITOR_CORE_SRI ||
+        typeof value.host.integrity !== "string" || !/^sha256-[A-Za-z0-9+/]{43}=$/.test(value.host.integrity)) return null;
+    const path = "scripts_go/web_r_go_20260629_1025/scripts_v2/common/solid-edit/host_20260530_1745.js";
+    if (value.host.src !== "https://cdn.jsdelivr.net/gh/statground/web-r_CDN2@" + value.commit + "/" + path &&
+        value.host.src !== "/_webr/assets/" + value.commit + "/" + path) return null;
+    return {core: {src: value.core.src, integrity: value.core.integrity},
+      host: {src: value.host.src, integrity: value.host.integrity}};
+  }
+  function editorAssetsReady() {
+    return !!window.WebRSolidEditor && typeof window.WebRSolidEditor.mountHost === "function" &&
+      (typeof window.mountContentEditor === "function" || typeof window.mountStatkissContentEditor === "function" ||
+        typeof window.mountEmbeddedContentEditor === "function");
+  }
+  function ensureEditorAssets(options) {
+    if (editorAssetsReady()) return Promise.resolve(true);
+    const assets = readEditorAssets();
+    const deadline = options && options.deadline;
+    if (!assets || !Number.isFinite(deadline) || deadline <= Date.now() || deadline > Date.now() + 15000) return Promise.resolve(false);
+    if (!editorAssetsFlight) {
+      editorAssetsFlight = new Promise(function(resolve) {
+        let done = false;
+        const timer = setTimeout(() => finish(false), Math.max(0, deadline - Date.now()));
+        function finish(result) {
+          if (done) return;
+          done = true;
+          clearTimeout(timer);
+          resolve(result === true);
+        }
+        function load(asset, next) {
+          if (done || Date.now() >= deadline) { finish(false); return; }
+          const script = document.createElement("script");
+          script.src = asset.src;
+          script.integrity = asset.integrity;
+          script.crossOrigin = "anonymous";
+          script.async = true;
+          const context = document.getElementById("webr-legacy-context");
+          if (context && context.nonce) script.nonce = context.nonce;
+          // Existing global CDN fallback retains SRI/CORS/nonce when replacing
+          // a failed pinned CDN2 node with its exact same-origin mirror.
+          script.onload = function() { if (!done) next(); };
+          script.onerror = function() {
+            const fallback = typeof window.__webrCDNFallbackURL === "function" && window.__webrCDNFallbackURL(this.src);
+            if (!fallback) finish(false);
+          };
+          document.head.appendChild(script);
+        }
+        load(assets.core, () => load(assets.host, () => finish(editorAssetsReady())));
+      });
+    }
+    // Coalesced work has one original deadline; a later caller cannot renew it.
+    return new Promise(function(resolve) {
+      const timer = setTimeout(() => resolve(false), Math.max(0, deadline - Date.now()));
+      editorAssetsFlight.then(result => { clearTimeout(timer); resolve(Date.now() < deadline && result); });
+    });
+  }
   window.WebRSolidEdit = {
+    ensureEditorAssets,
     sanitizeHTML,
     renderContent,
     mountEditor,

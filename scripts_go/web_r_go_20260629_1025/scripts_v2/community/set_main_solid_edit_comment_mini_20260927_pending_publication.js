@@ -833,7 +833,7 @@ function promoteSolidCommentEditor(commentId, host, solidHost, mounted) {
   const fallback = findCommentFallbackTextarea(host, key);
   if (fallback && fallback.parentNode) {
     const fallbackHTML = fallback.value || "";
-    if (fallbackHTML && window.WebRSolidEditor && typeof window.WebRSolidEditor.setHTML === "function") {
+    if (window.WebRSolidEditor && typeof window.WebRSolidEditor.setHTML === "function") {
       window.WebRSolidEditor.setHTML(mounted, fallbackHTML);
     }
     fallback.parentNode.removeChild(fallback);
@@ -841,8 +841,8 @@ function promoteSolidCommentEditor(commentId, host, solidHost, mounted) {
   communityState.commentEditors[key] = mounted;
   return true;
 }
-function scheduleSolidCommentEditorPromotion(commentId, host, solidHost, mounted) {
-  const promote = () => promoteSolidCommentEditor(commentId, host, solidHost, mounted);
+function scheduleSolidCommentEditorPromotion(commentId, host, solidHost, mounted, owns = () => true) {
+  const promote = () => owns() && promoteSolidCommentEditor(commentId, host, solidHost, mounted);
   if (typeof requestAnimationFrame === "function") {
     requestAnimationFrame(promote);
   }
@@ -893,10 +893,10 @@ function ensureCommentEditorInput(commentId, hostID = null, initialHTML = "") {
   }
   return fallback;
 }
-function scheduleCommentEditorRecovery(commentId, hostID = null, initialHTML = "") {
+function scheduleCommentEditorRecovery(commentId, hostID = null, initialHTML = "", owns = () => true) {
   const key = commentId == null ? "new" : String(commentId);
   const recover = () => {
-    ensureCommentEditorInput(key, hostID, initialHTML);
+    if (owns()) ensureCommentEditorInput(key, hostID, initialHTML);
   };
   if (typeof requestAnimationFrame === "function") {
     requestAnimationFrame(recover);
@@ -915,6 +915,8 @@ function getCommentStorageKey(commentId) {
   const articleID = typeof orderID === "undefined" || orderID == null || orderID === "" || orderID === "None" ? "new" : orderID;
   return ["web-r", "community", board, "comment", articleID, commentId || "new", communityDraftOwnerKey()].join(":");
 }
+let communityEditorMountEpoch = 0;
+window.addEventListener("pagehide", () => { communityEditorMountEpoch++; });
 async function mountSolidCommentEditor(commentId, initialHTML = "", hostID = null) {
   const key = commentId == null ? "new" : String(commentId);
   const defaultHostID = key === "new" ? "div_community_read_comment_new_form" : "div_community_read_comment_new_" + key + "_form";
@@ -922,6 +924,10 @@ async function mountSolidCommentEditor(commentId, initialHTML = "", hostID = nul
   if (!host) {
     return null;
   }
+  const scope = () => JSON.stringify([communityActionOwnerKey(), location.search, document.documentElement.lang, communityEditorMountEpoch]);
+  const owner = scope();
+  const owns = () => owner === scope() && document.getElementById(host.id) === host && host.isConnected;
+  const deadline = Date.now() + 15000;
   const textareaID = "txt_content_comment_" + key;
   const editorOptions = {
     placeholder: communityT("\uB313\uAE00\uC744 \uC785\uB825\uD574\uC8FC\uC138\uC694."),
@@ -937,16 +943,35 @@ async function mountSolidCommentEditor(commentId, initialHTML = "", hostID = nul
     editorOptions.html = initialHTML;
   }
   const fallbackEditor = ensureCommentEditorInput(key, hostID, initialHTML || "");
+  const fallbackInput = findCommentFallbackTextarea(host, key);
+  const obsolete = () => {
+    if (fallbackInput) { fallbackInput.value = ""; fallbackInput.remove(); }
+    return null;
+  };
+  if (window.WebRSolidEdit && typeof window.WebRSolidEdit.ensureEditorAssets === "function") {
+    const ready = await window.WebRSolidEdit.ensureEditorAssets({deadline});
+    if (!owns()) return obsolete();
+    if (!ready) return fallbackEditor;
+  }
+  if (!owns()) return obsolete();
+  const remaining = deadline - Date.now();
+  if (remaining <= 0) return fallbackEditor;
+  editorOptions.timeoutMs = remaining;
   if (window.WebRSolidEditor && typeof window.WebRSolidEditor.mountHost === "function") {
     const solidHost = getCommentSolidSlot(host, key);
     try {
       const mounted = await window.WebRSolidEditor.mountHost(solidHost, editorOptions);
+      if (!owns()) {
+        if (mounted && window.WebRSolidEditor.destroy) window.WebRSolidEditor.destroy(mounted);
+        solidHost.remove();
+        return obsolete();
+      }
       if (mounted && !mounted.failed && promoteSolidCommentEditor(key, host, solidHost, mounted)) {
-        scheduleCommentEditorRecovery(key, hostID, initialHTML || "");
+        scheduleCommentEditorRecovery(key, hostID, initialHTML || "", owns);
         return mounted;
       }
       if (mounted && !mounted.failed) {
-        scheduleSolidCommentEditorPromotion(key, host, solidHost, mounted);
+        scheduleSolidCommentEditorPromotion(key, host, solidHost, mounted, owns);
       } else if (mounted && mounted.failed && solidHost.parentNode) {
         solidHost.parentNode.removeChild(solidHost);
       }
@@ -957,7 +982,7 @@ async function mountSolidCommentEditor(commentId, initialHTML = "", hostID = nul
       }
     }
   }
-  scheduleCommentEditorRecovery(key, hostID, initialHTML || "");
+  scheduleCommentEditorRecovery(key, hostID, initialHTML || "", owns);
   return fallbackEditor || ensureCommentEditorInput(key, hostID, initialHTML || "") || createCommentEditorFallbackInHost(host, key, initialHTML || "");
 }
 function getCommentEditorHTML(currentEditor) {
@@ -2763,8 +2788,10 @@ async function click_btn_reply_comment(uuid_comment) {
   });
   const replyForm = document.querySelector("#div_community_read_comment_new_" + uuid_comment + "_form");
   if (replyForm && !commentEditorHostHasSolidUI(replyForm)) {
-    communityState.commentEditors[uuid_comment] = await mountSolidCommentEditor(uuid_comment, "");
-    setCommentEditorHTML(communityState.commentEditors[uuid_comment], "");
+    const owner = communityActionOwnerKey();
+    const editor = await mountSolidCommentEditor(uuid_comment, "");
+    if (!editor || owner !== communityActionOwnerKey() || document.getElementById(replyForm.id) !== replyForm) return;
+    communityState.commentEditors[uuid_comment] = editor;
   }
 }
 async function click_btn_edit_comment(uuid_comment) {
@@ -2786,14 +2813,14 @@ async function click_btn_edit_comment(uuid_comment) {
     return;
   }
   ReactDOM.render(/* @__PURE__ */ React.createElement(Div_comment_editor_form, { uuid_comment }), targetEl);
-  communityState.commentEditors[uuid_comment] = await mountSolidCommentEditor(uuid_comment, target ? target.content || "" : "", "div_comment_editor_main_" + uuid_comment);
   if (target) {
-    setCommentEditorHTML(communityState.commentEditors[uuid_comment], target.content || "");
     const secretEl = document.getElementById("chk_secret_" + uuid_comment);
-    if (secretEl) {
-      secretEl.checked = target.is_secret == 1;
-    }
+    if (secretEl) secretEl.checked = target.is_secret == 1;
   }
+  const owner = communityActionOwnerKey();
+  const editor = await mountSolidCommentEditor(uuid_comment, target ? target.content || "" : "", "div_comment_editor_main_" + uuid_comment);
+  if (!editor || owner !== communityActionOwnerKey() || document.getElementById(targetEl.id) !== targetEl) return;
+  communityState.commentEditors[uuid_comment] = editor;
 }
 function restoreCommentActionButtons(uuid_comment, isUpper, target) {
   const footerEl = document.getElementById("div_comment_footer_" + uuid_comment);
@@ -3149,10 +3176,19 @@ async function set_comment() {
   });
   communityState.commentEditors = {};
   const newFormEl = document.querySelector("#div_community_read_comment_new_form");
+  const owner = communityActionOwnerKey();
   if (newFormEl) {
-    communityState.commentEditors["new"] = await mountSolidCommentEditor("new", "");
-    setCommentEditorHTML(communityState.commentEditors["new"], draftSnapshot.drafts.new?.html || "");
+    const secret = document.getElementById("chk_secret_new");
+    if (secret && draftSnapshot.drafts.new) secret.checked = draftSnapshot.drafts.new.secret;
+    const editor = await mountSolidCommentEditor("new", draftSnapshot.drafts.new?.html || "");
+    if (!editor || owner !== communityActionOwnerKey() || document.getElementById(commentContainer.id) !== commentContainer ||
+        document.getElementById(newFormEl.id) !== newFormEl) return;
+    communityState.commentEditors["new"] = editor;
+    // The immediate fallback may have been edited while scripts were loading.
+    // Promotion already copied its current value; do not restore an older draft.
+    delete draftSnapshot.drafts.new;
   }
+  if (owner !== communityActionOwnerKey() || document.getElementById(commentContainer.id) !== commentContainer) return;
   await restoreCommunityCommentDrafts(draftSnapshot);
 }
 async function set_main_read() {
