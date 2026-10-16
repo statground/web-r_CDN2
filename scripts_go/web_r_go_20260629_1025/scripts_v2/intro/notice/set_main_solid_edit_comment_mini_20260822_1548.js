@@ -289,7 +289,7 @@ function createNoticeCommentFallbackInHost(host, commentId, initialHTML = "") {
   host.appendChild(textarea);
   return createNoticeEditorFallback(textarea);
 }
-async function mountSolidNoticeCommentEditor(commentId, initialHTML = "", hostID = null) {
+async function mountSolidNoticeCommentEditor(commentId, initialHTML = "", hostID = null, onFallback = null) {
   const key = commentId == null ? "new" : String(commentId);
   const defaultHostID = key === "new" ? "div_community_read_comment_new_form" : "div_community_read_comment_new_" + key + "_form";
   const host = document.getElementById(hostID || defaultHostID);
@@ -305,6 +305,7 @@ async function mountSolidNoticeCommentEditor(commentId, initialHTML = "", hostID
   const fallback = createNoticeCommentFallbackInHost(host, key, initialHTML || "");
   const fallbackTextarea = host.querySelector("textarea");
   fallbackTextarea.id += "_fallback";
+  if (typeof onFallback === "function") onFallback(fallback);
   const owns = () => host.isConnected && document.getElementById(host.id) === host &&
     host.__webrNoticeCommentMount === mountToken && mountScope() === originalScope;
   const retire = () => {
@@ -821,6 +822,7 @@ const IntroNoticeRead = /* @__PURE__ */ (() => {
   let data_article = null;
   let data_comment = null;
   let data_comment_upper = null;
+  let noticeCommentReadState = null;
   let class_txt_file_delete = "size-4 min-size-4 max-size-4 rounded-lg hover:bg-red-100 cursor-pointer";
   let editor = {};
   let data_file = [];
@@ -1394,8 +1396,10 @@ const IntroNoticeRead = /* @__PURE__ */ (() => {
       if (chkEl)
         chkEl.checked = target.is_secret == 1;
     }
-    const mountedEditor = await mountSolidNoticeCommentEditor(uuid_comment, target ? target.content || "" : "", "div_comment_editor_main_" + uuid_comment);
+    let immediateEditor;
+    const mountedEditor = await mountSolidNoticeCommentEditor(uuid_comment, target ? target.content || "" : "", "div_comment_editor_main_" + uuid_comment, fallback => { immediateEditor = editor[uuid_comment] = fallback; });
     if (mountedEditor) editor[uuid_comment] = mountedEditor;
+    else if (editor[uuid_comment] === immediateEditor) delete editor[uuid_comment];
   }
   async function comment_action(action, uuid_comment) {
     const isNew = uuid_comment === "new";
@@ -1533,13 +1537,31 @@ const IntroNoticeRead = /* @__PURE__ */ (() => {
       inputEl.value = "";
     }
   }
-  async function get_read_article_comment(orderID_param) {
+  async function get_read_article_comment(orderID_param, primaryPromise = null) {
     const root = document.getElementById("div_community_read_comment");
-    if (!root || !data_article || String(data_article.uuid).toLowerCase() !== String(orderID_param).toLowerCase()) return;
+    if (!root) return;
+    const initialPrefetch = primaryPromise !== null;
+    const readablePrimary = () => noticeArticleReady(data_article) && data_article.category_url === "notice" &&
+      String(data_article.uuid).toLowerCase() === String(orderID_param).toLowerCase() &&
+      ["user", "writer", "admin"].includes(data_article.check_reader) &&
+      (data_article.is_secret === 0 || data_article.is_secret === 1 && ["writer", "admin"].includes(data_article.check_reader));
+    const acceptedParent = () => initialPrefetch ? readablePrimary() : !!data_article &&
+      String(data_article.uuid).toLowerCase() === String(orderID_param).toLowerCase();
+    // A completed early outcome remains joined until the primary settles; its
+    // normal success callback must not start a second read, even after an error.
+    const previous = noticeCommentReadState;
+    if (!initialPrefetch && previous && previous.primaryPending &&
+        previous.identity === String(orderID_param).toLowerCase()) return previous.done;
+    if (!initialPrefetch && !acceptedParent()) return;
     const owner = noticePublicOwner("comments", root);
+    let settle;
+    const state = {owner, primaryPending: initialPrefetch, identity: String(orderID_param).toLowerCase(), done: new Promise(resolve => { settle = resolve; })};
+    noticeCommentReadState = state;
+    const parentReady = primaryPromise ? Promise.resolve(primaryPromise).then(readablePrimary, () => false) : Promise.resolve(true);
+    parentReady.then(readable => { state.primaryPending = false; if (!readable) owner.controller.abort(); });
     data_comment = null;
     root.setAttribute("aria-busy", "true");
-    ReactDOM.render(React.createElement("div", { class: "h-16 w-full rounded bg-slate-100 animate-pulse", "aria-hidden": "true" }), root);
+    if (!initialPrefetch) ReactDOM.render(React.createElement("div", { class: "h-16 w-full rounded bg-slate-100 animate-pulse", "aria-hidden": "true" }), root);
     const request_data = new FormData();
     request_data.append("orderID", orderID_param);
     request_data.append("tag", "notice");
@@ -1550,22 +1572,31 @@ const IntroNoticeRead = /* @__PURE__ */ (() => {
         uuid(row.uuid_article) && row.uuid_article.toLowerCase() === String(orderID_param).toLowerCase() &&
         (row.uuid_upper == null || row.uuid_upper === "" || uuid(row.uuid_upper)) && typeof row.content === "string");
     let cancel;
+    let responseRows = null;
     try {
       for (let attempt = 0; attempt < 2; attempt++) {
         try {
           const value = await noticePublicJSON("/blank/ajax_board/get_read_article_comment/", {
             method: "post", headers: { "X-CSRFToken": getCookie("csrftoken") }, body: request_data
           }, owner);
+          if (!await parentReady) return;
           if (!currentNoticeOwner(owner)) throw new Error("obsolete notice read");
           if (!validRows(value)) throw new Error("notice comments unavailable");
-          data_comment = value;
+          responseRows = value;
           break;
         } catch (error) {
           if (attempt === 0 && error.message === "obsolete notice read" && handoffNoticeViewer(owner)) continue;
           throw error;
         }
       }
-      if (!currentNoticeOwner(owner) || data_comment === null) throw new Error("obsolete notice read");
+      if (!await parentReady) return;
+      if (!currentNoticeOwner(owner) || !acceptedParent() || responseRows === null) throw new Error("obsolete notice read");
+      const compatibleRows = !initialPrefetch || Object.values(responseRows).every(row =>
+        row.article_category_url === data_article.category_url &&
+        row.article_category_url_sub === (data_article.category_url_sub || "") &&
+        row.check_article_reader === data_article.check_reader);
+      if (!compatibleRows) throw new Error("notice comments parent changed");
+      data_comment = responseRows;
       const stopped = new Promise((_, reject) => {
         cancel = () => reject(new Error("notice comments stopped"));
         owner.controller.signal.addEventListener("abort", cancel, { once: true });
@@ -1573,7 +1604,8 @@ const IntroNoticeRead = /* @__PURE__ */ (() => {
       await Promise.race([set_comment(owner), stopped]);
       if (!currentNoticeOwner(owner)) throw new Error("obsolete notice read");
     } catch (error) {
-      if (sameNoticeDocument(owner)) {
+      // An early failure is not visible until the original primary is accepted.
+      if (await parentReady && acceptedParent() && sameNoticeDocument(owner)) {
         data_comment = data_comment_upper = null;
         ReactDOM.render(React.createElement("p", { role: "alert", class: "w-full rounded-lg border border-amber-200 bg-amber-50 px-5 py-5 text-sm text-amber-900" }, "댓글을 불러오지 못했습니다."), root);
       }
@@ -1581,9 +1613,12 @@ const IntroNoticeRead = /* @__PURE__ */ (() => {
       if (cancel) owner.controller.signal.removeEventListener("abort", cancel);
       if (noticePublicOwners.get("comments") === owner) {
         root.setAttribute("aria-busy", "false");
-        if (!sameNoticeDocument(owner)) ReactDOM.render(null, root);
+        if (!sameNoticeDocument(owner) || initialPrefetch && !acceptedParent()) ReactDOM.render(null, root);
       }
+      responseRows = null;
       finishNoticeOwner(owner);
+      if (noticeCommentReadState === state) noticeCommentReadState = null;
+      settle();
     }
   }
   async function set_comment(owner) {
@@ -1646,7 +1681,9 @@ const IntroNoticeRead = /* @__PURE__ */ (() => {
     });
     const newFormEl = document.querySelector("#div_community_read_comment_new_form");
     if (newFormEl) {
-      const mountedEditor = await mountSolidNoticeCommentEditor("new", "");
+      const mountedEditor = await mountSolidNoticeCommentEditor("new", "", null, fallback => {
+        if (!owner || currentNoticeOwner(owner)) editor["new"] = fallback;
+      });
       if (owner && !currentNoticeOwner(owner)) return;
       editor["new"] = mountedEditor;
     } else {
@@ -1661,7 +1698,9 @@ const IntroNoticeRead = /* @__PURE__ */ (() => {
       if (!replyEl) {
         continue;
       }
-      const mountedEditor = await mountSolidNoticeCommentEditor(comment.uuid, "");
+      const mountedEditor = await mountSolidNoticeCommentEditor(comment.uuid, "", null, fallback => {
+        if (!owner || currentNoticeOwner(owner)) editor[comment.uuid] = fallback;
+      });
       if (owner && !currentNoticeOwner(owner)) return;
       editor[comment.uuid] = mountedEditor;
     }
@@ -1682,7 +1721,9 @@ const IntroNoticeRead = /* @__PURE__ */ (() => {
       contentLoading.appendChild(status);
     }
     try {
-      await get_read_article("init");
+      const primary = get_read_article("init");
+      void get_read_article_comment(orderID, primary);
+      await primary;
     } catch (e) {
       console.error("[set_main] get_read_article error:", e);
     }
