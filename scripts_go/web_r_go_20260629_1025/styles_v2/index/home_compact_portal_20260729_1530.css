@@ -524,15 +524,17 @@
 }
 
 .webr-home-compact__notice-title {
-  display: block;
+  display: -webkit-box;
   max-width: 100%;
   flex: 1 1 auto;
   overflow: hidden;
   min-width: 0;
   font-size: 0.78rem;
   line-height: 1.35;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow-wrap: anywhere;
+  white-space: normal;
 }
 
 .webr-home-compact__media {

@@ -24,7 +24,6 @@
     "activity"
   ];
   var summaryItemKeys = ["kind", "title", "summary", "published_at", "href", "image"];
-  var noticeVisibleCharacterLimit = 28;
   var noticeObserver = null;
   var cachedSummary = readCachedSummary();
   var servedCachedSummary = false;
@@ -395,11 +394,8 @@
       }
       node.dataset.fullTitle = fullTitle;
       node.title = fullTitle;
-      var visibleTitle = fullTitle.length > noticeVisibleCharacterLimit
-        ? fullTitle.slice(0, noticeVisibleCharacterLimit - 1).trimEnd() + "…"
-        : fullTitle;
-      if (node.textContent !== visibleTitle) {
-        node.textContent = visibleTitle;
+      if (node.textContent !== fullTitle) {
+        node.textContent = fullTitle;
       }
     });
   }

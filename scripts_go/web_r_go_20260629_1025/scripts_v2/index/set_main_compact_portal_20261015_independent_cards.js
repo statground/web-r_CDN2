@@ -620,7 +620,7 @@
           return null;
         }
         return {
-          title: cleanText(row.title, 96),
+          title: cleanText(row.title, 200),
           display_title_language: row.display_title_language,
           href: "/intro/notice/read/" + id + "/",
           published_at: row.created_at,
@@ -672,7 +672,7 @@
     rows.forEach(function appendNotice(item) {
       var anchor = link(item.href || "/intro/notice/", "webr-home-compact__notice");
       var titleRow = element("span", "webr-home-compact__notice-title-row");
-      titleRow.appendChild(sourceText("strong", "webr-home-compact__notice-title", cleanText(item.title, 76), item.display_title_language));
+      titleRow.appendChild(sourceText("strong", "webr-home-compact__notice-title", cleanText(item.title, 200), item.display_title_language));
       if (item.is_new === true) {
         titleRow.appendChild(newBadge());
       }
