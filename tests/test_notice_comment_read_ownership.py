@@ -15,9 +15,10 @@ READ = "/blank/ajax_board/get_read_article/"
 LIST = "/blank/ajax_board/get_article_list/"
 COMMENTS = "/blank/ajax_board/get_read_article_comment/"
 ARTICLE = dict(uuid=ID, title="Current notice", content="Independent current notice body",
-               category_url="notice", check_reader="guest", is_secret=0, attachments=[])
+               category_url="notice", check_reader="user", is_secret=0, attachments=[])
 COMMENT = dict(uuid=CID, uuid_article=ID, uuid_upper=None, content="Current comment body",
-               active=1, is_secret=0, check_comment_reader="user", created_at="2026-10-16")
+               active=1, is_secret=0, check_comment_reader="user", created_at="2026-10-16",
+               article_category_url="notice", article_category_url_sub="", check_article_reader="user")
 
 
 class NoticeCommentReadTests(unittest.TestCase):
@@ -36,7 +37,7 @@ class NoticeCommentReadTests(unittest.TestCase):
     def fulfill(route, value, status=200):
         route.fulfill(status=status, content_type="application/json", body=json.dumps(value))
 
-    def render(self, responder, *, start="read", width=1440, body_hold=False, editor_hold=False):
+    def render(self, responder, *, start="read", width=1440, body_hold=False, editor_hold=False, primary=None):
         page = self.browser.new_page(viewport={"width": width, "height": 900})
         self.addCleanup(page.close)
         page.set_default_timeout(2500)
@@ -66,7 +67,8 @@ class NoticeCommentReadTests(unittest.TestCase):
             elif path in (READ, LIST, COMMENTS):
                 calls.append({"path": path, "body": route.request.post_data})
                 if path == READ:
-                    self.fulfill(route, ARTICLE)
+                    if primary: primary(route, path, sum(r["path"] == path for r in calls), parked)
+                    else: self.fulfill(route, ARTICLE)
                 else:
                     responder(route, path, sum(r["path"] == path for r in calls), parked)
             else:
