@@ -2404,8 +2404,41 @@ function Div_article_read_file() {
     file.file_name || file.origin_file_name || file.file_url
   )))));
 }
+function CommunityCommentPending() {
+  return React.createElement("section", { "data-webr-comment-pending": "true", class: "w-full rounded-lg border border-gray-200 bg-white p-5 space-y-3" },
+    React.createElement("h2", { class: "text-lg font-bold text-gray-900" }, communityT("댓글")),
+    React.createElement("p", { role: "status", "aria-live": "polite", class: "text-sm text-gray-500" }, communityT("댓글을 불러오고 있습니다.")),
+    React.createElement("div", { "aria-hidden": "true", class: "h-16 w-full rounded bg-gray-200 animate-pulse" }));
+}
+function beginCommunityCommentPending(target) {
+  target.setAttribute("aria-busy", "true");
+  target.setAttribute("data-webr-comment-state", "pending");
+  document.getElementById(target.id + "_action_status")?.remove();
+  if (target.querySelector("[data-webr-comment-pending],[data-webr-comment-pending-addon]")) return;
+  if (!target.firstChild) {
+    ReactDOM.render(React.createElement(CommunityCommentPending), target);
+    return;
+  }
+  // A refresh leaves verified rows and the current editable draft in place.
+  const pending = document.createElement("div");
+  pending.setAttribute("data-webr-comment-pending-addon", "true");
+  pending.className = "mt-3 space-y-2";
+  const status = document.createElement("p");
+  status.setAttribute("role", "status"); status.className = "text-sm text-gray-500";
+  status.textContent = communityT("댓글을 불러오고 있습니다.");
+  const pulse = document.createElement("div");
+  pulse.setAttribute("aria-hidden", "true"); pulse.className = "h-4 w-full rounded bg-gray-200 animate-pulse";
+  pending.append(status, pulse); target.appendChild(pending);
+}
+function finishCommunityCommentPending(target, state) {
+  target.querySelectorAll("[data-webr-comment-pending-addon]").forEach(node => node.remove());
+  target.setAttribute("aria-busy", "false");
+  target.setAttribute("data-webr-comment-state", state);
+  if (target.querySelector("[data-webr-comment-pending]"))
+    ReactDOM.render(React.createElement("h2", { class: "text-lg font-bold text-gray-900" }, communityT("댓글")), target);
+}
 function ReadMain() {
-  return /* @__PURE__ */ React.createElement("div", { class: "flex flex-col justify-center items-center py-8 w-full max-w-screen-2xl mx-auto px-4 sm:px-6 lg:px-8" }, /* @__PURE__ */ React.createElement(Div_page_header, { title: header_title, subtitle: header_subtitle }), /* @__PURE__ */ React.createElement("div", { class: "flex flex-col justify-center items-center w-full space-y-4" }, /* @__PURE__ */ React.createElement("div", { id: "div_article_read_buttons", class: "w-full max-w-5xl flex justify-end" }), /* @__PURE__ */ React.createElement("div", { class: "w-full max-w-5xl" }, /* @__PURE__ */ React.createElement("div", { class: "w-full", id: "div_community_read_header" }, /* @__PURE__ */ React.createElement("div", { class: "w-full h-12 bg-gray-300 mb-4 animate-pulse" })), /* @__PURE__ */ React.createElement("div", { class: "w-full", id: "div_community_read_content" }, /* @__PURE__ */ React.createElement("div", { class: "w-full h-48 bg-gray-300 mb-4 animate-pulse" })), /* @__PURE__ */ React.createElement("div", { class: "w-full", id: "div_community_read_file" }, /* @__PURE__ */ React.createElement("div", { class: "w-full h-12 bg-gray-300 mb-4 animate-pulse" })), /* @__PURE__ */ React.createElement("div", { class: "w-full", id: "div_community_read_comment" }, /* @__PURE__ */ React.createElement("div", { class: "w-full h-24 bg-gray-300 animate-pulse" })))));
+  return /* @__PURE__ */ React.createElement("div", { class: "flex flex-col justify-center items-center py-8 w-full max-w-screen-2xl mx-auto px-4 sm:px-6 lg:px-8" }, /* @__PURE__ */ React.createElement(Div_page_header, { title: header_title, subtitle: header_subtitle }), /* @__PURE__ */ React.createElement("div", { class: "flex flex-col justify-center items-center w-full space-y-4" }, /* @__PURE__ */ React.createElement("div", { id: "div_article_read_buttons", class: "w-full max-w-5xl flex justify-end" }), /* @__PURE__ */ React.createElement("div", { class: "w-full max-w-5xl" }, /* @__PURE__ */ React.createElement("div", { class: "w-full", id: "div_community_read_header" }, /* @__PURE__ */ React.createElement("div", { class: "w-full h-12 bg-gray-300 mb-4 animate-pulse" })), /* @__PURE__ */ React.createElement("div", { class: "w-full", id: "div_community_read_content" }, /* @__PURE__ */ React.createElement("div", { class: "w-full h-48 bg-gray-300 mb-4 animate-pulse" })), /* @__PURE__ */ React.createElement("div", { class: "w-full", id: "div_community_read_file" }, /* @__PURE__ */ React.createElement("div", { class: "w-full h-12 bg-gray-300 mb-4 animate-pulse" })), /* @__PURE__ */ React.createElement("div", { class: "w-full", id: "div_community_read_comment", "aria-busy": "true", "data-webr-comment-state": "pending" }, React.createElement(CommunityCommentPending)))));
 }
 function renderReadPageShell() {
   ReactDOM.render(/* @__PURE__ */ React.createElement(ReadMain, null), document.getElementById("div_main"));
@@ -2774,7 +2807,7 @@ function Div_article_read_comment(props) {
   const commentRows = Object.values(props.data || {}).filter(Boolean);
   const activeCommentCount = commentRows.reduce((count, comment) => count + countActiveCommentRows(comment), 0);
   const comment_list = commentRows.map((comment) => /* @__PURE__ */ React.createElement(Div_comment, { key: comment.uuid, data: comment, depth: 1, is_secret: props.is_secret, check_reader: props.check_reader }));
-  return /* @__PURE__ */ React.createElement("section", { class: "bg-white py-8 lg:py-16 antialiased" }, /* @__PURE__ */ React.createElement("div", { class: "w-full mx-auto px-4 space-y-2" }, /* @__PURE__ */ React.createElement("div", { class: "flex justify-between items-center mb-6" }, /* @__PURE__ */ React.createElement("h2", { class: "text-lg lg:text-2xl font-bold text-gray-900" }, communityT("\uB313\uAE00 ({count})", { count: activeCommentCount.toLocaleString(communityDisplayLocale()) }))), /* @__PURE__ */ React.createElement("form", { class: "mb-6" }, /* @__PURE__ */ React.createElement("div", { class: "mb-4 w-full bg-gray-50 rounded-lg border border-gray-200" }, /* @__PURE__ */ React.createElement("div", { id: "div_comment_new", class: "w-full" }))), /* @__PURE__ */ React.createElement("div", { class: "flex flex-col justify-center items-end w-full space-y-0" }, comment_list), gv_username !== "" && /* @__PURE__ */ React.createElement("div", { class: "flex flex-row justify-center items-center p-6 text-base bg-gray-100 rounded-xl w-full", id: "div_community_read_comment_new" }, /* @__PURE__ */ React.createElement(Div_comment_form, { title: communityT("\uB313\uAE00 \uC4F0\uAE30"), class: "w-full space-y-2", uuid_comment: null }))));
+  return /* @__PURE__ */ React.createElement("section", { class: "bg-white py-8 lg:py-16 antialiased" }, /* @__PURE__ */ React.createElement("div", { class: "w-full mx-auto px-4 space-y-2" }, /* @__PURE__ */ React.createElement("div", { class: "flex justify-between items-center mb-6" }, /* @__PURE__ */ React.createElement("h2", { class: "text-lg lg:text-2xl font-bold text-gray-900" }, communityT("\uB313\uAE00 ({count})", { count: activeCommentCount.toLocaleString(communityDisplayLocale()) }))), /* @__PURE__ */ React.createElement("form", { class: "mb-6" }, /* @__PURE__ */ React.createElement("div", { class: "mb-4 w-full bg-gray-50 rounded-lg border border-gray-200" }, /* @__PURE__ */ React.createElement("div", { id: "div_comment_new", class: "w-full" }))), props.empty === true ? React.createElement("p", { "data-webr-comment-empty": "true", class: "py-4 text-sm text-gray-500" }, communityT("아직 등록된 댓글이 없습니다.")) : null, /* @__PURE__ */ React.createElement("div", { class: "flex flex-col justify-center items-end w-full space-y-0" }, comment_list), gv_username !== "" && /* @__PURE__ */ React.createElement("div", { class: "flex flex-row justify-center items-center p-6 text-base bg-gray-100 rounded-xl w-full", id: "div_community_read_comment_new" }, /* @__PURE__ */ React.createElement(Div_comment_form, { title: communityT("\uB313\uAE00 \uC4F0\uAE30"), class: "w-full space-y-2", uuid_comment: null }))));
 }
 async function click_btn_reply_comment(uuid_comment) {
   (communityState.commentUpper || []).forEach((c) => {
@@ -3039,6 +3072,7 @@ async function get_read_article_comment(orderID_param, primaryPromise = null) {
   const state = { target, scope, initialPrefetch: prefetch, running: true, cancelled: false, expired: false, role: role(),
     controller: null, deadline: performance.now() + COMMUNITY_ACTION_WINDOW_MS, timer: null, ownerTimer: null };
   communityCommentRead = state;
+  beginCommunityCommentPending(target);
   if (prefetch && primaryState) { state.articleID = orderID_param; primaryState.commentPrefetch = state; }
   const owns = () => communityCommentRead === state && !state.cancelled && scope === communityDetailOwnerKey(false) &&
     admin === !!window.gv_is_admin && document.getElementById(target.id) === target &&
@@ -3050,7 +3084,8 @@ async function get_read_article_comment(orderID_param, primaryPromise = null) {
     return true;
   };
   const failure = () => {
-    if (!owns() || !target.parentElement || prefetch && !readableParent()) return;
+    if (!owns() || !target.parentElement || state.commentPainted || prefetch && !readableParent()) return;
+    finishCommunityCommentPending(target, "unavailable");
     const id = target.id + "_action_status";
     let status = document.getElementById(id);
     if (!status) {
@@ -3075,7 +3110,7 @@ async function get_read_article_comment(orderID_param, primaryPromise = null) {
       state.cancel();
     } else if (state.role !== role()) {
       // Only this read's prior-role comments retire; mutation owners stay strict.
-      if (!state.roleRetired) { state.roleRetired = true; communityState.commentData = null; ReactDOM.render(null, target); }
+      if (!state.roleRetired) { state.roleRetired = true; state.commentPainted = false; communityState.commentData = null; ReactDOM.render(null, target); beginCommunityCommentPending(target); }
       state.controller?.abort();
     }
   }, 100);
@@ -3104,7 +3139,7 @@ async function get_read_article_comment(orderID_param, primaryPromise = null) {
           return;
         }
         if (prefetch && (typeof data !== "object" || Array.isArray(data))) throw new Error("Comment map unavailable");
-        if (!data || data.error || data.checker === "ERROR" || data.ok === false || data.pending || data.partial ||
+        if (!data || typeof data !== "object" || Array.isArray(data) || data.error || data.checker === "ERROR" || data.ok === false || data.pending || data.partial ||
             !Object.values(data).every((row) => row && typeof row.uuid === "string" && typeof row.content === "string")) throw new Error("Comment read unavailable");
         if (prefetch && !await acceptedParent() || !owns() || state.expired) return;
         if (state.role !== role()) continue;
@@ -3115,7 +3150,7 @@ async function get_read_article_comment(orderID_param, primaryPromise = null) {
             row.check_article_reader === communityState.articleData.check_reader))) throw new Error("Comment parent changed");
         communityState.commentData = mergeOptimisticComments(data);
         document.getElementById(target.id + "_action_status")?.remove();
-        await set_comment(); return;
+        await set_comment(state); return;
       } catch (_) {
         if (prefetch && !await acceptedParent() || !owns() || state.expired) return;
         if (state.role !== role()) continue;
@@ -3127,6 +3162,8 @@ async function get_read_article_comment(orderID_param, primaryPromise = null) {
   state.promise = Promise.race([read(), cancelled, new Promise((resolve) => {
     state.timer = window.setTimeout(() => { state.expired = true; state.controller?.abort(); failure(); resolve(); }, COMMUNITY_ACTION_WINDOW_MS);
   })]).finally(() => {
+    if (communityCommentRead === state && document.getElementById(target.id) === target && target.getAttribute("data-webr-comment-state") === "pending")
+      finishCommunityCommentPending(target, "unavailable");
     state.running = false; state.cancelled = true; state.controller?.abort();
     window.clearTimeout(state.timer); window.clearInterval(state.ownerTimer);
     if (communityCommentRead === state) communityCommentRead = null;
@@ -3168,13 +3205,9 @@ async function restoreCommunityCommentDrafts(snapshot) {
     if (typeof focus.setSelectionRange === "function" && Number.isInteger(snapshot.start)) focus.setSelectionRange(snapshot.start, snapshot.end);
   }
 }
-async function set_comment() {
+async function set_comment(readState = null) {
   const draftSnapshot = captureCommunityCommentDrafts();
   if (!communityState.commentData) {
-    const container = document.getElementById("div_community_read_comment");
-    if (container) {
-      container.innerHTML = `<div class="w-full py-4 text-sm text-gray-500">${communityT("\uC544\uC9C1 \uB4F1\uB85D\uB41C \uB313\uAE00\uC774 \uC5C6\uC2B5\uB2C8\uB2E4.")}</div>`;
-    }
     return;
   }
   const rawRows = Object.values(communityState.commentData).filter((c) => c && !isCommentDeletedLocally(c.uuid) && (isActiveComment(c) || isDeletedCommentShell(c)));
@@ -3199,7 +3232,7 @@ async function set_comment() {
     check_reader = communityState.articleData.check_reader;
   }
   ReactDOM.render(
-    /* @__PURE__ */ React.createElement(Div_article_read_comment, { data: list_comment, uuid_article, is_secret, check_reader }),
+    /* @__PURE__ */ React.createElement(Div_article_read_comment, { data: list_comment, empty: Object.keys(communityState.commentData).length === 0, uuid_article, is_secret, check_reader }),
     commentContainer
   );
   allComments.forEach((comment) => {
@@ -3213,6 +3246,8 @@ async function set_comment() {
     el.lang = comment.display_content_language || "ko";
     WebRSolidEdit.renderContent(el, comment.content || "");
   });
+  if (readState) readState.commentPainted = true;
+  finishCommunityCommentPending(commentContainer, Object.keys(communityState.commentData).length === 0 ? "empty" : "ready");
   communityState.commentEditors = {};
   const newFormEl = document.querySelector("#div_community_read_comment_new_form");
   const owner = communityActionOwnerKey();

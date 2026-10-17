@@ -1316,7 +1316,7 @@ const IntroNoticeRead = /* @__PURE__ */ (() => {
       }
     ));
     const commentCount = Object.keys(props.data || {}).length;
-    return /* @__PURE__ */ React.createElement("section", { class: "w-full rounded-lg border border-slate-200 bg-white px-5 py-5 shadow-sm md:px-6" }, /* @__PURE__ */ React.createElement("div", { class: "w-full space-y-4" }, /* @__PURE__ */ React.createElement("div", { class: "flex justify-between items-center" }, /* @__PURE__ */ React.createElement("h2", { class: "text-base font-bold text-slate-950" }, "\uB313\uAE00 (", commentCount, ")")), /* @__PURE__ */ React.createElement("form", null, /* @__PURE__ */ React.createElement("div", { class: "w-full rounded-lg border border-slate-200 bg-slate-50" }, /* @__PURE__ */ React.createElement("div", { id: "div_comment_new", class: "w-full" }))), /* @__PURE__ */ React.createElement("div", { class: "flex flex-col justify-center items-end w-full space-y-2" }, comment_list), gv_username !== "" && /* @__PURE__ */ React.createElement(
+    return /* @__PURE__ */ React.createElement("section", { class: "w-full rounded-lg border border-slate-200 bg-white px-5 py-5 shadow-sm md:px-6" }, /* @__PURE__ */ React.createElement("div", { class: "w-full space-y-4" }, /* @__PURE__ */ React.createElement("div", { class: "flex justify-between items-center" }, /* @__PURE__ */ React.createElement("h2", { class: "text-base font-bold text-slate-950" }, "\uB313\uAE00 (", commentCount, ")")), /* @__PURE__ */ React.createElement("form", null, /* @__PURE__ */ React.createElement("div", { class: "w-full rounded-lg border border-slate-200 bg-slate-50" }, /* @__PURE__ */ React.createElement("div", { id: "div_comment_new", class: "w-full" }))), props.empty === true ? React.createElement("p", { "data-webr-comment-empty": "true", class: "py-4 text-sm text-slate-500" }, "아직 등록된 댓글이 없습니다.") : null, /* @__PURE__ */ React.createElement("div", { class: "flex flex-col justify-center items-end w-full space-y-2" }, comment_list), gv_username !== "" && /* @__PURE__ */ React.createElement(
       "div",
       {
         class: "flex flex-row justify-center items-center rounded-lg bg-slate-50 p-4 text-base w-full",
@@ -1537,6 +1537,33 @@ const IntroNoticeRead = /* @__PURE__ */ (() => {
       inputEl.value = "";
     }
   }
+  function NoticeCommentPending() {
+    return React.createElement("section", { "data-webr-comment-pending": "true", class: "w-full rounded-lg border border-slate-200 bg-white p-5 space-y-3" },
+      React.createElement("h2", { class: "text-base font-bold text-slate-950" }, "댓글"),
+      React.createElement("p", { role: "status", "aria-live": "polite", class: "text-sm text-slate-500" }, "댓글을 불러오고 있습니다."),
+      React.createElement("div", { "aria-hidden": "true", class: "h-16 w-full rounded bg-slate-100 animate-pulse" }));
+  }
+  function beginNoticeCommentPending(root) {
+    root.setAttribute("aria-busy", "true");
+    root.setAttribute("data-webr-comment-state", "pending");
+    root.querySelector("[data-webr-comment-read-error]")?.remove();
+    if (root.querySelector("[data-webr-comment-pending],[data-webr-comment-pending-addon]")) return;
+    if (!root.firstChild) { ReactDOM.render(React.createElement(NoticeCommentPending), root); return; }
+    const pending = document.createElement("div");
+    pending.setAttribute("data-webr-comment-pending-addon", "true");
+    pending.className = "mt-3 space-y-2";
+    const status = document.createElement("p");
+    status.setAttribute("role", "status"); status.className = "text-sm text-slate-500";
+    status.textContent = "댓글을 불러오고 있습니다.";
+    const pulse = document.createElement("div");
+    pulse.setAttribute("aria-hidden", "true"); pulse.className = "h-4 w-full rounded bg-slate-100 animate-pulse";
+    pending.append(status, pulse); root.appendChild(pending);
+  }
+  function finishNoticeCommentPending(root, state) {
+    root.querySelectorAll("[data-webr-comment-pending-addon]").forEach(node => node.remove());
+    root.setAttribute("aria-busy", "false");
+    root.setAttribute("data-webr-comment-state", state);
+  }
   async function get_read_article_comment(orderID_param, primaryPromise = null) {
     const root = document.getElementById("div_community_read_comment");
     if (!root) return;
@@ -1559,9 +1586,13 @@ const IntroNoticeRead = /* @__PURE__ */ (() => {
     noticeCommentReadState = state;
     const parentReady = primaryPromise ? Promise.resolve(primaryPromise).then(readablePrimary, () => false) : Promise.resolve(true);
     parentReady.then(readable => { state.primaryPending = false; if (!readable) owner.controller.abort(); });
-    data_comment = null;
-    root.setAttribute("aria-busy", "true");
-    if (!initialPrefetch) ReactDOM.render(React.createElement("div", { class: "h-16 w-full rounded bg-slate-100 animate-pulse", "aria-hidden": "true" }), root);
+    const retainPainted = !initialPrefetch && root.__webrNoticeCommentViewer === owner.viewer &&
+      data_comment && !root.querySelector("[data-webr-comment-pending]");
+    if (!retainPainted) {
+      data_comment = data_comment_upper = null;
+      if (!initialPrefetch) ReactDOM.render(React.createElement(NoticeCommentPending), root);
+    }
+    beginNoticeCommentPending(root);
     const request_data = new FormData();
     request_data.append("orderID", orderID_param);
     request_data.append("tag", "notice");
@@ -1585,7 +1616,11 @@ const IntroNoticeRead = /* @__PURE__ */ (() => {
           responseRows = value;
           break;
         } catch (error) {
-          if (attempt === 0 && error.message === "obsolete notice read" && handoffNoticeViewer(owner)) continue;
+          if (attempt === 0 && error.message === "obsolete notice read" && handoffNoticeViewer(owner)) {
+            ReactDOM.render(React.createElement(NoticeCommentPending), root);
+            beginNoticeCommentPending(root);
+            continue;
+          }
           throw error;
         }
       }
@@ -1606,8 +1641,17 @@ const IntroNoticeRead = /* @__PURE__ */ (() => {
     } catch (error) {
       // An early failure is not visible until the original primary is accepted.
       if (await parentReady && acceptedParent() && sameNoticeDocument(owner)) {
-        data_comment = data_comment_upper = null;
-        ReactDOM.render(React.createElement("p", { role: "alert", class: "w-full rounded-lg border border-amber-200 bg-amber-50 px-5 py-5 text-sm text-amber-900" }, "댓글을 불러오지 못했습니다."), root);
+        // Optional editor readiness cannot turn an already painted read into a failure.
+        if (!owner.commentPainted || !mountedNoticeOwner(owner)) {
+          if (!retainPainted || !mountedNoticeOwner(owner)) data_comment = data_comment_upper = null;
+          if (!mountedNoticeOwner(owner) || root.querySelector("[data-webr-comment-pending]"))
+            ReactDOM.render(React.createElement("h2", { class: "text-base font-bold text-slate-950" }, "댓글"), root);
+          const status = document.createElement("p");
+          status.setAttribute("role", "alert"); status.setAttribute("data-webr-comment-read-error", "true");
+          status.className = "mt-3 rounded-lg border border-amber-200 bg-amber-50 px-5 py-5 text-sm text-amber-900";
+          status.textContent = "댓글을 불러오지 못했습니다."; root.appendChild(status);
+          finishNoticeCommentPending(root, "unavailable");
+        }
       }
     } finally {
       if (cancel) owner.controller.signal.removeEventListener("abort", cancel);
@@ -1624,15 +1668,6 @@ const IntroNoticeRead = /* @__PURE__ */ (() => {
   async function set_comment(owner) {
     if (owner && !currentNoticeOwner(owner)) return;
     if (!data_comment) {
-      console.warn("[set_comment] data_comment is null or undefined");
-      const container = document.getElementById("div_community_read_comment");
-      if (container) {
-        container.innerHTML = `
-				<div class="w-full py-4 text-sm text-gray-500">
-					\uC544\uC9C1 \uB4F1\uB85D\uB41C \uB313\uAE00\uC774 \uC5C6\uC2B5\uB2C8\uB2E4.
-				</div>
-			`;
-      }
       return;
     }
     const allComments = Object.values(data_comment).filter((c) => !!c);
@@ -1663,6 +1698,7 @@ const IntroNoticeRead = /* @__PURE__ */ (() => {
         Div_article_read_comment,
         {
           data: list_comment,
+          empty: Object.keys(data_comment).length === 0,
           uuid_article,
           is_secret,
           check_reader
@@ -1679,6 +1715,8 @@ const IntroNoticeRead = /* @__PURE__ */ (() => {
       }
       WebRSolidEdit.renderContent(el, comment.content || "");
     });
+    if (owner) { owner.commentPainted = true; commentContainer.__webrNoticeCommentViewer = owner.viewer; }
+    finishNoticeCommentPending(commentContainer, Object.keys(data_comment).length === 0 ? "empty" : "ready");
     const newFormEl = document.querySelector("#div_community_read_comment_new_form");
     if (newFormEl) {
       const mountedEditor = await mountSolidNoticeCommentEditor("new", "", null, fallback => {
@@ -1707,7 +1745,7 @@ const IntroNoticeRead = /* @__PURE__ */ (() => {
   }
   async function notice_read_set_main() {
     function Div_main() {
-      return /* @__PURE__ */ React.createElement("div", { class: "flex w-full flex-col items-center px-4 py-8 md:px-8" }, /* @__PURE__ */ React.createElement("div", { class: "w-full max-w-5xl" }, /* @__PURE__ */ React.createElement(Div_page_header, { title: header_title, subtitle: header_subtitle }), /* @__PURE__ */ React.createElement("div", { id: "div_article_read_buttons", class: "mb-4 flex w-full justify-end" }), /* @__PURE__ */ React.createElement("div", { class: "w-full space-y-4" }, /* @__PURE__ */ React.createElement("div", { class: "w-full", id: "div_community_read_header" }, /* @__PURE__ */ React.createElement("div", { class: "w-full rounded-lg border border-slate-200 bg-white p-5 animate-pulse" }, /* @__PURE__ */ React.createElement("div", { class: "mb-3 h-4 w-16 rounded bg-blue-100" }), /* @__PURE__ */ React.createElement("div", { class: "mb-3 h-6 w-4/5 rounded bg-slate-200" }), /* @__PURE__ */ React.createElement("div", { class: "h-4 w-2/5 rounded bg-slate-100" }))), /* @__PURE__ */ React.createElement("div", { class: "w-full rounded-lg border border-slate-200 bg-white p-5", id: "div_community_read_content" }, /* @__PURE__ */ React.createElement("div", { class: "h-48 w-full rounded bg-slate-100 animate-pulse" })), /* @__PURE__ */ React.createElement("div", { class: "w-full", id: "div_community_read_file" }), /* @__PURE__ */ React.createElement("div", { class: "w-full", id: "div_community_read_comment" }, /* @__PURE__ */ React.createElement("div", { class: "w-full rounded-lg border border-slate-200 bg-white p-5 animate-pulse" }, /* @__PURE__ */ React.createElement("div", { class: "mb-3 h-5 w-24 rounded bg-slate-200" }), /* @__PURE__ */ React.createElement("div", { class: "h-16 w-full rounded bg-slate-100" }))))));
+      return /* @__PURE__ */ React.createElement("div", { class: "flex w-full flex-col items-center px-4 py-8 md:px-8" }, /* @__PURE__ */ React.createElement("div", { class: "w-full max-w-5xl" }, /* @__PURE__ */ React.createElement(Div_page_header, { title: header_title, subtitle: header_subtitle }), /* @__PURE__ */ React.createElement("div", { id: "div_article_read_buttons", class: "mb-4 flex w-full justify-end" }), /* @__PURE__ */ React.createElement("div", { class: "w-full space-y-4" }, /* @__PURE__ */ React.createElement("div", { class: "w-full", id: "div_community_read_header" }, /* @__PURE__ */ React.createElement("div", { class: "w-full rounded-lg border border-slate-200 bg-white p-5 animate-pulse" }, /* @__PURE__ */ React.createElement("div", { class: "mb-3 h-4 w-16 rounded bg-blue-100" }), /* @__PURE__ */ React.createElement("div", { class: "mb-3 h-6 w-4/5 rounded bg-slate-200" }), /* @__PURE__ */ React.createElement("div", { class: "h-4 w-2/5 rounded bg-slate-100" }))), /* @__PURE__ */ React.createElement("div", { class: "w-full rounded-lg border border-slate-200 bg-white p-5", id: "div_community_read_content" }, /* @__PURE__ */ React.createElement("div", { class: "h-48 w-full rounded bg-slate-100 animate-pulse" })), /* @__PURE__ */ React.createElement("div", { class: "w-full", id: "div_community_read_file" }), /* @__PURE__ */ React.createElement("div", { class: "w-full", id: "div_community_read_comment", "aria-busy": "true", "data-webr-comment-state": "pending" }, React.createElement(NoticeCommentPending)))));
     }
     ReactDOM.render(/* @__PURE__ */ React.createElement(Div_main, null), document.getElementById("div_main"));
     const contentLoading = document.getElementById("div_community_read_content");
