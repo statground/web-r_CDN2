@@ -2,8 +2,8 @@
 import asyncio
 from datetime import datetime, timedelta, timezone
 import json
-import hashlib
 import os
+import hashlib
 from pathlib import Path
 import unittest
 from urllib.parse import parse_qs
@@ -33,6 +33,8 @@ def payload(currency, query):
            'confirmed_at': date + 'T01:00:00Z', 'created_at': date + 'T00:00:00Z', 'activity_at': date + 'T01:00:00Z',
            'time_basis': 'paid_at', 'grant_status': 'applied' if currency == 'USD' else '', 'grant_role': 'member' if currency == 'USD' else '',
            'granted': True if currency == 'USD' else None, 'review_required': False, 'review_reason': ''}
+    row['account'] = {'email': 'reader@example.invalid', 'nickname': '테스트 독자', 'name': '합성 사용자'}
+    row['account_state'] = 'complete'
     breakdown = {'amt_total': '1234.125', 'amt_tax': '12.345', 'amt_toss': '44.798',
                  'amt_statground': '123.4125', 'amt_benefit_tax': '8.801',
                  'amt_result': '-1234.125', 'basis': 'legacy_krw_formula'} if currency == 'KRW' else {
@@ -58,6 +60,26 @@ def payload(currency, query):
         result['overview'][currency] = result['breakdown'][currency] = result['windows'][currency] = None
         result['products'] = []; result['timeline'] = []
         result['sources'][currency]['summary_state'] = 'environment_required'
+    if query['section'] == 'trend':
+        result['scope']['grain'] = query['grain']
+        grain = query['grain']
+        periods = [date[:8] + str(day).zfill(2) for day in range(1, 4)] if grain == 'day' else [date[:4] + '-' + str(month).zfill(2) for month in range(1, 13)] if grain == 'month' else [str(year) for year in range(int(query['from'][:4]), int(query['to'][:4]) + 1)]
+        periods = [period for period in periods if query['from'][:len(period)] <= period <= query['to'][:len(period)]]
+        result['series'] = {'grain': grain, 'currency': currency, 'environment': query['environment'], 'status': query['status'],
+                            'state': 'complete' if query['environment'] in ('live', 'sandbox') else 'environment_required',
+                            'time_basis': 'original_payment_activity', 'amount_basis': 'completed_payment' if query['status'] == 'completed' else 'not_recorded',
+                            'coverage': {'from': query['from'], 'to': query['to'], 'source_complete': True, 'as_of': DAY + 'T23:59:59+09:00'},
+                            'buckets': [{'period': period, 'amount_minor': str(int(metrics['completed_amount_minor']) * (1 + index % 4)) if query['status'] == 'completed' else None,
+                                         'count': 2 + index % 4, 'complete': True} for index, period in enumerate(periods)]}
+        for bucket in result['series']['buckets']:
+            if bucket['period'] > DAY[:len(bucket['period'])]: bucket.update(amount_minor=None, count=None, complete=False)
+        if result['series']['state'] != 'complete':
+            for row in result['series']['buckets']: row.update(amount_minor=None, count=None, complete=False)
+        result['sources'][currency]['trend_state'] = result['series']['state']
+        result['sources'][other]['trend_state'] = 'filtered'
+        result['sources'][currency]['summary_state'] = result['sources'][currency]['ledger_state'] = 'not_requested'
+        result['ledger'].update(state='not_requested', rows=[], total=None)
+        return result
     if query['section'] == 'summary':
         result['sources'][currency]['ledger_state'] = 'not_requested'
         result['ledger'].update(state='not_requested', rows=[])
@@ -78,22 +100,29 @@ class PaymentWorkspace(unittest.IsolatedAsyncioTestCase):
         self.page = await self.context.new_page()
         self.calls = []
         self.producer_records = None
+        self.actual_legacy_css = ''.join(Path(p).read_text() for p in os.environ.get('PAYMENT_LEGACY_CSS', '').split(os.pathsep) if p)
         self.producer_scope_errors = []
         self.gates = {'KRW': asyncio.Event(), 'USD': asyncio.Event()}
         self.ledger_gate = asyncio.Event(); self.ledger_gate.set()
-        self.fail = set()
+        self.failed_currencies = set()
         self.deny = False
         self.wrong_scope = False
         self.keyset = False
+        self.trend_gap = False
+        self.trend_zero = False
+        self.trend_gate = asyncio.Event(); self.trend_gate.set()
+        self.trend_fail = set()
         self.authority_unavailable = False
         self.html = '''<!doctype html><html><head><meta charset="utf-8"><style>
-          body{margin:0;background:#f8fafc}#div_main{max-width:1400px;margin:auto;padding:24px}
+          *{box-sizing:border-box}body{margin:0;background:#f8fafc}#div_main{max-width:1400px;margin:auto;padding:24px}
           .webr-admin-shell{display:grid;grid-template-columns:220px minmax(0,1fr);gap:24px}
           aside{background:white;padding:20px;font:14px system-ui;border:1px solid #e2e8f0;border-radius:8px}
           @media(max-width:768px){#div_main{padding:12px}.webr-admin-shell{grid-template-columns:minmax(0,1fr)}aside{display:none}}
           </style></head><body><div id="webr-admin-read-status" data-admin-read-state="pending"></div>
           <div id="div_main"><div class="webr-admin-shell"><aside>관리자<br>결제 현황<br>정산 내역</aside>
           <main class="webr-admin-firstview-content">Original server frame</main></div></div></body></html>'''
+        if self.actual_legacy_css:
+            self.html = self.html.replace('<html>', '<html data-webr-admin-dashboard=payments>').replace('</style>', self.actual_legacy_css + '</style>').replace('class="webr-admin-firstview-content"', 'class="webr-admin-firstview-content webr-admin-statistics-payments"')
         await self.context.route('**/*', self.route)
         await self.page.goto('https://fixture.invalid/admin/payments/')
         await self.page.evaluate('''owner => {
@@ -104,7 +133,7 @@ class PaymentWorkspace(unittest.IsolatedAsyncioTestCase):
     async def asyncTearDown(self):
         for gate in self.gates.values():
             gate.set()
-        self.ledger_gate.set()
+        self.ledger_gate.set(); self.trend_gate.set()
         await self.context.close()
         await self.browser.close()
         await self.playwright.stop()
@@ -133,13 +162,20 @@ class PaymentWorkspace(unittest.IsolatedAsyncioTestCase):
         await self.gates[query['currency']].wait()
         if query['section'] == 'ledger':
             await self.ledger_gate.wait()
+        if query['section'] == 'trend':
+            await self.trend_gate.wait()
         try:
             if self.deny:
                 await route.fulfill(status=403, content_type='application/json', body='not-json-private-denial')
-            elif query['currency'] in self.fail:
+            elif query['currency'] in self.failed_currencies or query['section'] == 'trend' and query['currency'] in self.trend_fail:
                 await route.fulfill(status=503, content_type='application/json', body=json.dumps({'error': 'authority_unavailable'} if self.authority_unavailable else {}))
             else:
                 value = payload(query['currency'], query)
+                if query['section'] == 'trend':
+                    if self.trend_gap and len(value['series']['buckets']) > 1: value['series']['buckets'][1].update(amount_minor=None, count=None, complete=False)
+                    if self.trend_zero:
+                        for bucket in value['series']['buckets']:
+                            if bucket['complete']: bucket.update(amount_minor=0, count=0)
                 if self.keyset and query['currency'] == 'KRW':
                     value['ledger']['total'] = 70 if query['section'] == 'summary' else None
                     if query['section'] == 'ledger':
@@ -163,18 +199,150 @@ class PaymentWorkspace(unittest.IsolatedAsyncioTestCase):
         await self.page.add_script_tag(content=SCRIPT.read_text())
         await self.page.wait_for_function('document.querySelectorAll("[data-section]").length===3')
 
+    async def test_trends_and_account_identity_preserve_independent_scopes(self):
+        self.gates['KRW'].set(); self.gates['USD'].set()
+        await self.start()
+        await self.page.wait_for_function('document.querySelectorAll("[data-section][aria-busy=true]").length===0')
+        self.assertEqual(len(self.calls), 6)
+        self.assertEqual([q['grain'] for q in self.calls if q['section'] == 'trend'], ['day', 'day'])
+        self.assertEqual(await self.page.locator('.pw-trend-figure svg').count(), 2)
+        self.assertIn('reader@example.invalid', await self.page.locator('.pw-ledger').inner_text())
+        self.assertIn('테스트 독자', await self.page.locator('.pw-ledger').inner_text())
+        self.assertIn('합성 사용자', await self.page.locator('.pw-ledger').inner_text())
+        self.assertNotIn('private-fixture-owner', await self.page.locator('.pw-ledger').inner_text())
+        original = [(q['from'], q['to']) for q in self.calls if q['section'] != 'trend']
+        await self.page.locator('[data-trend-preset=year]').click()
+        await self.page.wait_for_function('document.querySelector("[data-section=timeline]").getAttribute("aria-busy")==="false"')
+        self.assertEqual(len(self.calls), 8)
+        self.assertTrue(all(q['grain'] == 'year' for q in self.calls[-2:]))
+        self.assertEqual(int(self.calls[-1]['to'][:4]) - int(self.calls[-1]['from'][:4]), 9)
+        self.assertEqual([(q['from'], q['to']) for q in self.calls if q['section'] != 'trend'], original)
+        self.assertIn('추이 기간은 위 요약·원장 기간과 별도', await self.page.locator('[data-section=timeline]').inner_text())
+        await self.page.locator('[data-trend-metric=count]').click()
+        self.assertEqual(len(self.calls), 8)
+        self.assertIn('완료 건수', await self.page.locator('.pw-trend-figure').first.inner_text())
+        for width in (1440, 390):
+            await self.page.set_viewport_size({'width': width, 'height': 1000})
+            self.assertFalse(await self.page.evaluate('document.documentElement.scrollWidth>innerWidth'))
+            host = await self.page.locator('main').bounding_box(); workspace = await self.page.locator('.webr-payment-workspace').bounding_box()
+            self.assertAlmostEqual(host['width'], workspace['width'], delta=1)
+            if os.environ.get('PAYMENT_SCREENSHOT_DIR'):
+                folder = Path(os.environ['PAYMENT_SCREENSHOT_DIR']); folder.mkdir(parents=True, exist_ok=True)
+                await self.page.screenshot(path=str(folder / f'payments-synthetic-{width}.png'), full_page=True)
+        await self.page.evaluate("document.dispatchEvent(new PageTransitionEvent('pagehide'))")
+        await self.page.evaluate("window.dispatchEvent(new PageTransitionEvent('pagehide'))")
+        self.assertNotIn('reader@example.invalid', await self.page.locator('#div_main').inner_text())
+
+    async def test_trend_failure_gap_zero_and_future_are_not_revenue_or_sibling_failure(self):
+        self.gates['KRW'].set(); self.gates['USD'].set(); self.trend_gate.clear(); self.trend_gap = True
+        await self.start()
+        await self.page.wait_for_function('document.querySelector("[data-section=overview]").getAttribute("aria-busy")==="false" && document.querySelector("[data-section=ledger]").getAttribute("aria-busy")==="false"')
+        self.assertEqual(await self.page.locator('[data-section=timeline]').get_attribute('aria-busy'), 'true')
+        self.assertIn('reader@example.invalid', await self.page.locator('.pw-ledger').inner_text())
+        self.trend_fail.add('USD'); self.trend_gate.set()
+        await self.page.wait_for_function('document.querySelector("[data-section=timeline]").getAttribute("aria-busy")==="false"')
+        self.assertEqual(await self.page.locator('.pw-trend-figure svg').count(), 1)
+        self.assertIn('누락 구간을 0으로', await self.page.locator('[data-section=timeline]').inner_text())
+        path = await self.page.locator('.pw-chart-line').get_attribute('d')
+        self.assertEqual(path.count('M'), 2)
+        self.assertEqual(await self.page.locator('[data-section=overview]').get_attribute('data-state'), 'complete')
+        self.trend_fail.clear(); self.trend_gap = False; self.trend_zero = True
+        await self.page.locator('[data-trend-grain=month]').click()
+        await self.page.wait_for_function('document.querySelector("[data-section=timeline]").getAttribute("aria-busy")==="false"')
+        self.assertIn('완료 결제는 0', await self.page.locator('[data-section=timeline]').inner_text())
+        self.assertEqual(len(self.calls), 8)
+        query = dict(self.calls[-1]); value = payload(query['currency'], query)
+        future_query = dict(query, **{'from': DAY[:4] + '-01-01', 'to': DAY[:4] + '-12-31'})
+        bad = payload(query['currency'], future_query); bad['series']['buckets'][-1].update(complete=True, amount_minor='0', count=0)
+        self.assertFalse(await self.page.evaluate('v=>WebRPaymentWorkspace.validate(v,v.scope,"trend",v.admin_snapshot_owner)', bad))
+        # Mixed environments cannot turn null amounts into fake revenue.
+        mixed = dict(query, environment='all'); value = payload(query['currency'], mixed)
+        value['sources'][query['currency']]['state'] = 'environment_required'
+        self.assertTrue(await self.page.evaluate('v=>WebRPaymentWorkspace.validate(v,v.scope,"trend",v.admin_snapshot_owner)', value))
+        value['series']['buckets'][0].update(amount_minor='1', count=1, complete=True)
+        self.assertFalse(await self.page.evaluate('v=>WebRPaymentWorkspace.validate(v,v.scope,"trend",v.admin_snapshot_owner)', value))
+
+    async def test_route_purpose_and_period_presets_screenshots(self):
+        self.gates['KRW'].set(); self.gates['USD'].set()
+        await self.start()
+        await self.page.wait_for_function('document.querySelectorAll("[data-section][aria-busy=true]").length===0')
+        async def capture(label):
+            for width in (1440, 390):
+                await self.page.set_viewport_size({'width': width, 'height': 1000})
+                self.assertFalse(await self.page.evaluate('document.documentElement.scrollWidth>innerWidth'))
+                host = await self.page.locator('main').bounding_box(); body = await self.page.locator('.webr-payment-workspace').bounding_box()
+                self.assertAlmostEqual(host['width'], body['width'], delta=1)
+                if os.environ.get('PAYMENT_SCREENSHOT_DIR'):
+                    folder = Path(os.environ['PAYMENT_SCREENSHOT_DIR']); folder.mkdir(parents=True, exist_ok=True)
+                    await self.page.screenshot(path=str(folder / f'{label}-{width}.png'), full_page=True)
+        self.assertIn('권한 적용 확인', await self.page.locator('[data-section=overview]').inner_text())
+        self.assertNotIn('예상 정산액', await self.page.locator('[data-section=overview]').inner_text())
+        self.assertEqual(await self.page.locator('.pw-chart-scale').count(), 2)
+        self.assertGreater(await self.page.locator('.pw-chart-dot[tabindex="0"]').count(), 0)
+        await capture('payments-daily')
+        old_scope = await self.page.locator('[name=from]').input_value()
+        await self.page.locator('[data-trend-preset=month]').click()
+        await self.page.wait_for_function('document.querySelector("[data-section=timeline]").getAttribute("aria-busy")==="false"')
+        self.assertEqual(await self.page.locator('[name=from]').input_value(), old_scope)
+        self.assertTrue(all(q['section'] == 'trend' and q['grain'] == 'month' for q in self.calls[-2:]))
+        self.assertEqual(len(self.calls), 8)
+        await capture('payments-monthly')
+        await self.page.locator('[data-trend-preset=year]').click()
+        await self.page.wait_for_function('document.querySelector("[data-section=timeline]").getAttribute("aria-busy")==="false"')
+        await capture('payments-annual')
+        await self.page.goto('https://fixture.invalid/admin/balance_account/2026/9/')
+        await self.page.evaluate('''owner=>{window.WEBR_ADMIN_SNAPSHOTS={schema:1,owner};window.gv_is_admin=true;window.gv_role='관리자';window.WebRAdminSnapshots={stop(){}};}''', OWNER)
+        before = len(self.calls)
+        await self.start()
+        await self.page.wait_for_function('document.querySelectorAll("[data-section][aria-busy=true]").length===0')
+        self.assertEqual(len(self.calls) - before, 4)
+        self.assertFalse(any(q['section'] == 'trend' for q in self.calls[before:]))
+        self.assertFalse(await self.page.locator('[data-section=timeline]').is_visible())
+        self.assertIn('예상 정산액', await self.page.locator('[data-section=overview]').inner_text())
+        self.assertIn('1,234.125 KRW', await self.page.locator('.pw-card').first.inner_text())
+        self.assertEqual(await self.page.locator('[data-section=overview] table').first.locator('tbody tr').count(), 6)
+        await capture('balance-settlement')
+
+    async def test_legacy_grid_host_is_full_width_and_filters_do_not_overlap(self):
+        # Both the pending host and live mount must retain the outer sidebar,
+        # while the retired legacy two-column statistics grid has one workspace.
+        await self.page.add_style_tag(content='''.statistics-payments{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}''')
+        await self.page.locator('main').evaluate("node=>node.classList.add('statistics-payments')")
+        await self.start()
+        for width in (1440, 820, 390):
+            await self.page.set_viewport_size({'width': width, 'height': 1000})
+            bounds = await self.page.evaluate('''() => {
+              const host=document.querySelector('main').getBoundingClientRect(),root=document.querySelector('.webr-payment-workspace').getBoundingClientRect();
+              const fields=[...document.querySelectorAll('.pw-filter input,.pw-filter select')].map(n=>({field:n.getBoundingClientRect().toJSON(),label:n.parentElement.getBoundingClientRect().toJSON()}));
+              return {host:host.width,root:root.width,overflow:document.documentElement.scrollWidth>innerWidth,fields};
+            }''')
+            self.assertAlmostEqual(bounds['root'], bounds['host'], delta=1)
+            self.assertFalse(bounds['overflow'])
+            for item in bounds['fields']:
+                self.assertGreaterEqual(item['field']['left'], item['label']['left'] - 1)
+                self.assertLessEqual(item['field']['right'], item['label']['right'] + 1)
+        self.gates['KRW'].set(); self.gates['USD'].set()
+        await self.page.wait_for_function('document.querySelectorAll("[data-section][aria-busy=true]").length===0')
+        self.assertEqual(len(self.calls), 6)
+        self.assertIn('USD', await self.page.locator('[data-section=overview]').inner_text())
+        await self.page.set_viewport_size({'width': 1440, 'height': 1000})
+        host = await self.page.locator('main').bounding_box()
+        workspace = await self.page.locator('.webr-payment-workspace').bounding_box()
+        self.assertAlmostEqual(host['width'], workspace['width'], delta=1)
+        self.assertEqual(round((await self.page.locator('aside').bounding_box())['width']), 260 if self.actual_legacy_css else 220)
+
     async def test_actual_go_serialized_summary_and_ledger_contract(self):
-        # Generated by App b26597f's actual handler + writeJSON under its
+        # Generated by the current App actual handler + writeJSON under its
         # synctest clock. Only database rows and admitted identity are synthetic.
         fixture = (ROOT / 'tests/fixtures/admin_payment_workspace_producer.json').read_bytes()
         self.assertEqual(hashlib.sha256(fixture).hexdigest(),
-                         'b497f32d572de908a4823f619b75e7e0a2f210551cde43662d3df8ad5a6445e7')
+                         '2529cd13923268f8e8f933ba17855d05b7d4750dae38447c2235cdd126face87')
         self.producer_records = json.loads(fixture)
-        self.assertEqual(len(self.producer_records), 8)
+        self.assertEqual(len(self.producer_records), 20)
         await self.page.clock.set_fixed_time(datetime(2000, 1, 1, tzinfo=timezone.utc))
         await self.start()
         await self.page.wait_for_function('document.querySelectorAll("[data-section][aria-busy=true]").length===0')
-        self.assertEqual(len(self.calls), 4)
+        self.assertEqual(len(self.calls), 6)
         self.assertEqual(self.producer_scope_errors, [])
         self.assertTrue(all(q['from'] == '2000-01-01' and q['to'] == '2000-01-31' for q in self.calls))
         overview = self.page.locator('[data-section=overview]')
@@ -188,14 +356,18 @@ class PaymentWorkspace(unittest.IsolatedAsyncioTestCase):
         self.assertIn('정기결제', ledger)
         self.assertIn('권한 확인되지 않음', ledger)
         await overview.locator('summary').click()
-        review = overview.get_by_text('검토 필요', exact=True).locator('..')
+        review = overview.locator('.pw-card').filter(has=self.page.get_by_role('heading', name='검토 필요', exact=True))
         self.assertIn('확인되지 않음', await review.inner_text())
+        for grain in ('month', 'year'):
+            await self.page.locator(f'[data-trend-grain={grain}]').click()
+            await self.page.wait_for_function('document.querySelector("[data-section=timeline]").getAttribute("aria-busy")==="false"')
+        self.assertEqual(len(self.calls), 10)
         # The next natural filter uses the remaining real producer records.
         # Unsupported KRW sandbox coverage must not erase the verified USD part.
         await self.page.locator('[name=environment]').select_option('sandbox')
-        await self.page.locator('button[type=submit]').click()
+        await self.page.locator('.pw-filter button[type=submit]').click()
         await self.page.wait_for_function('document.querySelectorAll("[data-section][aria-busy=true]").length===0')
-        self.assertEqual(len(self.calls), 8)
+        self.assertEqual(len(self.calls), 16)
         self.assertEqual(self.producer_scope_errors, [])
         text = await self.page.locator('[data-section=overview]').inner_text()
         self.assertIn('12.99 USD', text)
@@ -203,6 +375,12 @@ class PaymentWorkspace(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn('32,000 KRW', text)
         self.assertEqual(await self.page.locator('.pw-ledger tbody tr').count(), 1)
         self.assertIn('일부 통화를 확인하지 못했습니다', await self.page.locator('[data-section=ledger] .pw-status').inner_text())
+
+        for grain in ('day', 'month'):
+            await self.page.locator(f'[data-trend-grain={grain}]').click()
+            await self.page.wait_for_function('document.querySelector("[data-section=timeline]").getAttribute("aria-busy")==="false"')
+        self.assertEqual(len(self.calls), 20)
+        self.assertEqual(self.producer_scope_errors, [])
 
     async def test_both_arrival_orders_paint_independently(self):
         for first in ('KRW', 'USD'):
@@ -213,10 +391,10 @@ class PaymentWorkspace(unittest.IsolatedAsyncioTestCase):
                 await self.page.evaluate('''owner=>{window.WEBR_ADMIN_SNAPSHOTS={schema:1,owner};window.gv_is_admin=true;window.gv_role='관리자';window.WebRAdminSnapshots={stop(){}};}''', OWNER)
                 await self.start()
                 await self.page.wait_for_function('document.querySelector("[data-section=overview]").getAttribute("aria-busy")==="true"')
-                while len(self.calls) < 4:
+                while len(self.calls) < 6:
                     await asyncio.sleep(.01)
                 self.assertEqual({(q['section'], q['currency']) for q in self.calls},
-                                 {(s, c) for s in ('summary', 'ledger') for c in ('KRW', 'USD')})
+                                 {(s, c) for s in ('summary', 'ledger', 'trend') for c in ('KRW', 'USD')})
                 self.gates[first].set()
                 amount = '123,450 KRW' if first == 'KRW' else '20.99 USD'
                 await self.page.wait_for_function('text=>document.querySelector("[data-section=overview]").textContent.includes(text)', arg=amount)
@@ -231,15 +409,14 @@ class PaymentWorkspace(unittest.IsolatedAsyncioTestCase):
                 self.assertIn('123,450 KRW', await self.page.locator('[data-section=overview]').inner_text())
 
     async def test_one_source_failure_does_not_erase_good_currency_or_round_money(self):
-        self.fail.add('USD')
+        self.failed_currencies.add('USD')
         self.gates['KRW'].set(); self.gates['USD'].set()
         await self.start()
         await self.page.wait_for_function('document.querySelectorAll("[data-section][aria-busy=true]").length===0')
         overview = await self.page.locator('[data-section=overview]').inner_text()
         self.assertIn('123,450 KRW', overview)
         self.assertIn('확인되지 않음', overview)
-        self.assertIn('1,234.125 KRW', overview)
-        self.assertIn('−1,234.125 KRW', overview)
+        self.assertNotIn('예상 정산액', overview)
         self.assertNotIn('0.00 USD', overview)
         self.assertEqual(await self.page.locator('.pw-ledger tbody tr').count(), 1)
         self.assertIn('권한 확인되지 않음', await self.page.locator('.pw-ledger').inner_text())
@@ -251,14 +428,14 @@ class PaymentWorkspace(unittest.IsolatedAsyncioTestCase):
         await self.page.wait_for_function('document.querySelectorAll("[data-section][aria-busy=true]").length===0')
         self.deny = True
         await self.page.locator('[name=environment]').select_option('sandbox')
-        await self.page.locator('button[type=submit]').click()
+        await self.page.locator('.pw-filter button[type=submit]').click()
         await self.page.wait_for_function('window.fixtureRetired===true')
         text = await self.page.locator('#webr-payment-workspace').inner_text()
         self.assertNotIn('123,450', text)
         self.assertNotIn('Fixture membership', text)
         self.assertEqual(await self.page.locator('.pw-ledger').count(), 0)
-        self.assertLessEqual(len(self.calls), 8)
-        self.assertGreaterEqual(len(self.calls), 5)
+        self.assertLessEqual(len(self.calls), 12)
+        self.assertGreaterEqual(len(self.calls), 7)
 
     async def test_wrong_filter_response_is_not_adopted_and_mobile_has_no_page_overflow(self):
         self.wrong_scope = True
@@ -274,7 +451,7 @@ class PaymentWorkspace(unittest.IsolatedAsyncioTestCase):
         await self.start()
         await self.page.wait_for_function('document.querySelectorAll("[data-section][aria-busy=true]").length===0')
         await self.page.locator('[name=environment]').select_option('all')
-        await self.page.locator('button[type=submit]').click()
+        await self.page.locator('.pw-filter button[type=submit]').click()
         await self.page.wait_for_function('document.querySelectorAll("[data-section][aria-busy=true]").length===0')
         overview = await self.page.locator('[data-section=overview]').inner_text()
         self.assertNotIn('123,450 KRW', overview)
@@ -293,15 +470,17 @@ class PaymentWorkspace(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(await self.page.locator('h1').inner_text(), '정산액 조회')
         self.assertEqual(await self.page.locator('[name=month]').input_value(), '2026-09')
         self.assertTrue(all(q['from'] == '2026-09-01' and q['to'] == '2026-09-30' for q in self.calls))
-        await self.page.locator('[data-section=overview] summary').click()
+        self.assertTrue(await self.page.locator('[data-section=overview] details').get_attribute('open') is not None)
         self.assertEqual(await self.page.locator('[data-section=overview] table').first.locator('tbody tr').count(), 6)
         self.assertEqual(await self.page.locator('[data-section=overview] table').nth(1).locator('tbody tr').count(), 4)
         self.assertIn('권한 적용 미확인', await self.page.locator('[data-section=overview]').inner_text())
-        self.assertIn('123,450 KRW', await self.page.locator('[data-section=timeline]').inner_text())
-        self.assertIn('20.99 USD', await self.page.locator('[data-section=timeline]').inner_text())
+        self.assertIn('1,234.125 KRW', await self.page.locator('[data-section=overview]').inner_text())
+        self.assertIn('−1,234.125 KRW', await self.page.locator('[data-section=overview]').inner_text())
+        self.assertFalse(await self.page.locator('[data-section=timeline]').is_visible())
+        self.assertEqual(len(self.calls), 4)
         self.assertEqual(await self.page.locator('.pw-ledger tbody tr').count(), 2)
-        out = Path('/tmp/webr-step4-payment-workspace-controls-v2-audit-20261018')
-        out.mkdir(exist_ok=True)
+        out = Path('/tmp/webr-step4-payment-trends-source-backend-20261018/balance-controlled')
+        out.mkdir(parents=True, exist_ok=True)
         await self.page.screenshot(path=str(out / 'desktop.png'), full_page=True)
         await self.page.set_viewport_size({'width': 390, 'height': 844})
         self.assertFalse(await self.page.evaluate('document.documentElement.scrollWidth>innerWidth+1'))
@@ -346,28 +525,28 @@ class PaymentWorkspace(unittest.IsolatedAsyncioTestCase):
         self.gates['KRW'].set(); self.gates['USD'].set()
         await self.start()
         await self.page.wait_for_function('document.querySelectorAll("[data-section][aria-busy=true]").length===0')
-        self.assertEqual(len(self.calls), 4)
+        self.assertEqual(len(self.calls), 6)
         self.assertTrue(all(q['cursor'] == '' for q in self.calls))
-        self.assertIn('fixture-page-1', await self.page.locator('.pw-ledger tbody tr').first.inner_text())
+        self.assertIn('fixture-page-1', await self.page.locator('.pw-ledger tbody tr').first.text_content())
         await self.page.get_by_role('button', name='KRW 다음', exact=True).click()
         await self.page.wait_for_function('document.querySelector(".pw-ledger").textContent.includes("fixture-page-2")')
-        self.assertEqual(len(self.calls), 5)
+        self.assertEqual(len(self.calls), 7)
         self.assertEqual((self.calls[-1]['currency'], self.calls[-1]['section'], self.calls[-1]['cursor']),
                          ('KRW', 'ledger', 'opaque-KRW-page-2'))
-        self.assertIn('fixture-USD', await self.page.locator('.pw-ledger').inner_text())
-        self.assertIn('정기결제', await self.page.locator('.pw-ledger').inner_text())
+        self.assertIn('fixture-USD', await self.page.locator('.pw-ledger').text_content())
+        self.assertIn('정기결제', await self.page.locator('.pw-ledger').text_content())
         self.assertTrue(await self.page.get_by_role('button', name='KRW 다음', exact=True).is_disabled())
         await self.page.get_by_role('button', name='KRW 이전', exact=True).click()
         await self.page.wait_for_function('document.querySelector(".pw-ledger").textContent.includes("fixture-page-1")')
         self.assertEqual(self.calls[-1]['cursor'], '')
-        await self.page.locator('button[type=submit]').click()
+        await self.page.locator('.pw-filter button[type=submit]').click()
         await self.page.wait_for_function('document.querySelectorAll("[data-section][aria-busy=true]").length===0')
-        self.assertEqual(len(self.calls), 10)
-        self.assertTrue(all(q['cursor'] == '' for q in self.calls[-4:]))
+        self.assertEqual(len(self.calls), 14)
+        self.assertTrue(all(q['cursor'] == '' for q in self.calls[-6:]))
         self.assertNotIn('opaque-KRW', await self.page.locator('#webr-payment-workspace').inner_text())
 
     async def test_authority_unavailable_retires_previously_painted_currency(self):
-        self.fail.add('USD'); self.authority_unavailable = True
+        self.failed_currencies.add('USD'); self.authority_unavailable = True
         self.gates['KRW'].set()
         await self.start()
         await self.page.wait_for_function('document.querySelector("[data-section=overview]").textContent.includes("123,450 KRW")')
@@ -393,8 +572,8 @@ class PaymentWorkspace(unittest.IsolatedAsyncioTestCase):
         self.gates['USD'].set()
         await self.page.wait_for_function('document.querySelectorAll("[data-section][aria-busy=true]").length===0')
         self.assertIn('20.99 USD', await self.page.locator('[data-section=overview]').inner_text())
-        self.assertEqual(sum(q['currency'] == 'KRW' for q in self.calls), 2)
-        self.assertEqual(sum(q['currency'] == 'USD' for q in self.calls), 4)
+        self.assertEqual(sum(q['currency'] == 'KRW' for q in self.calls), 3)
+        self.assertEqual(sum(q['currency'] == 'USD' for q in self.calls), 6)
         self.assertTrue(all(q['environment'] == 'live' for q in self.calls))
         self.assertEqual(await self.page.locator('[name=environment]').input_value(), 'sandbox')
         self.assertIn('123,450 KRW', await self.page.locator('[data-section=overview]').inner_text())
@@ -418,15 +597,15 @@ class PaymentWorkspace(unittest.IsolatedAsyncioTestCase):
           };
         }''')
         await self.start()
-        while len(self.calls) < 4:
+        while len(self.calls) < 6:
             await asyncio.sleep(.01)
-        self.assertEqual(await self.page.evaluate('window.fixtureAdvance(4000)'), 4)
+        self.assertEqual(await self.page.evaluate('window.fixtureAdvance(4000)'), 6)
         self.assertEqual(await self.page.evaluate('window.fixtureAborts'), 0)
         self.assertEqual(await self.page.locator('[data-section=overview]').get_attribute('aria-busy'), 'true')
         self.assertEqual(await self.page.evaluate('window.fixtureAdvance(8000)'), 0)
         await self.page.wait_for_function('document.querySelectorAll("[data-section][aria-busy=true]").length===0')
-        self.assertEqual(await self.page.evaluate('window.fixtureAborts'), 4)
-        self.assertEqual(len(self.calls), 4)
+        self.assertEqual(await self.page.evaluate('window.fixtureAborts'), 6)
+        self.assertEqual(len(self.calls), 6)
         self.assertNotIn('123,450', await self.page.locator('#webr-payment-workspace').inner_text())
 
     async def test_toss_recurring_paid_status_keeps_legacy_and_paypal_gates(self):
