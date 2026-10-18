@@ -323,6 +323,7 @@ function resetListPagination() {
 const COMMUNITY_ACTION_WINDOW_MS = 45000;
 const communityActions = new Map();
 const communityCommentCreateIDs = new Map();
+const communityCommentPendingReceipts = new Map();
 function communityViewerOwnerKey() {
   return JSON.stringify([typeof gv_username === "undefined" ? "" : String(gv_username || ""),
     String(window.gv_role || ""), !!window.gv_is_admin]);
@@ -390,6 +391,7 @@ function communityActionMessage(state, text) {
 function retireCommunityActionRights() {
   communityActions.forEach((state) => cancelCommunityAction(state));
   communityCommentCreateIDs.clear();
+  communityCommentPendingReceipts.clear();
   communityState.deletedCommentIDs = {};
   communityState.commentEditors = {}; communityState.commentFiles = {};
   clearCommunityDetailBody();
@@ -430,6 +432,7 @@ function communityCommentRequestID(editorKey, content, secret) {
 }
 window.addEventListener("pagehide", () => {
   communityActions.forEach((state) => cancelCommunityAction(state));
+  communityCommentPendingReceipts.clear();
   communityState.commentData = null;
   communityState.deletedCommentIDs = {};
 });
@@ -2962,6 +2965,37 @@ function refreshCommentsQuietly() {
     console.error("[refreshCommentsQuietly] failed", error);
   });
 }
+function validPendingCommentReceipt(data, operation, targetID) {
+  const receipt = data?.receipt;
+  const uuid = value => typeof value === "string" && /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(value);
+  return data?.pending === true && data.checker === "PENDING" && receipt &&
+    Object.keys(receipt).sort().join(",") === "fingerprint,marker,operation,previous_version_ms,uuid" &&
+    receipt.operation === operation && uuid(receipt.uuid) && receipt.uuid === data.uuid && uuid(receipt.marker) &&
+    (operation === "insert" || receipt.uuid === targetID) && Number.isSafeInteger(receipt.previous_version_ms) &&
+    (operation === "insert" ? receipt.previous_version_ms === 0 : receipt.previous_version_ms > 0) &&
+    typeof receipt.fingerprint === "string" && /^[0-9a-f]{64}$/.test(receipt.fingerprint);
+}
+async function confirmPendingCommentMutation(state, pending) {
+  communityActionMessage(state, communityT("저장 상태를 확인 중입니다. 입력 내용은 유지됩니다."));
+  let delay;
+  try {
+    for (; pending.attempts < 3 && currentCommunityAction(state);) {
+      if (pending.attempts) {
+        await Promise.race([state.cancelPromise, new Promise(resolve => { delay = window.setTimeout(resolve, 1000); })]);
+        window.clearTimeout(delay);
+      }
+      if (!currentCommunityAction(state)) break;
+      const body = new FormData();
+      for (const [key, value] of pending.fields) body.append(key, value);
+      body.append("receipt", JSON.stringify(pending.receipt));
+      pending.attempts += 1;
+      const data = await communityActionJSON(state, "/blank/ajax_board/get_comment_mutation_receipt/", body);
+      if (data?.checker === "SUCCESS" && data.receipt_verified === true && data.uuid === pending.receipt.uuid) return data;
+      if (!(data?.checker === "PENDING" && data.pending === true && data.uuid === pending.receipt.uuid)) break;
+    }
+  } finally { window.clearTimeout(delay); }
+  return null;
+}
 async function comment_action(action, uuid_comment) {
   const isNew = uuid_comment === "new";
   const deleting = action === "delete";
@@ -2996,16 +3030,39 @@ async function comment_action(action, uuid_comment) {
       endpoint = "/blank/ajax_board/update_comment/"; body.append("uuid_comment", uuid_comment);
     } else return;
     if (!deleting) { body.append("txt_content", content); body.append("chk_secret", secret); }
-    const data = await communityActionJSON(state, endpoint, body);
+    const pendingKey = state.draftOwner + "|" + editorKey;
+    const signature = JSON.stringify([action, uuid_comment, content, secret]);
+    let pending = communityCommentPendingReceipts.get(pendingKey);
+    if (pending && pending.signature !== signature) {
+      message = communityT("이전 댓글의 저장 상태를 먼저 확인해 주세요. 입력 내용은 유지됩니다."); return;
+    }
+    let data;
+    if (pending) {
+      // A retained receipt never grants a fresh confirmation budget.
+      state.deadline = Math.min(state.deadline, pending.deadline);
+      window.clearTimeout(state.timer);
+      state.timer = window.setTimeout(() => cancelCommunityAction(state, true), Math.max(0, state.deadline - performance.now()));
+      data = await confirmPendingCommentMutation(state, pending);
+    } else {
+      data = await communityActionJSON(state, endpoint, body);
+      const operation = deleting ? "delete" : action === "edit" ? "update" : "insert";
+      if (validPendingCommentReceipt(data, operation, uuid_comment)) {
+        pending = { signature, receipt: data.receipt, fields: Array.from(body.entries()), deadline: state.deadline, attempts: 0 };
+        communityCommentPendingReceipts.set(pendingKey, pending);
+        data = await confirmPendingCommentMutation(state, pending);
+      }
+    }
+    if (!data && pending) { message = communityT("저장 상태를 아직 확인하지 못했습니다. 입력 내용은 유지됩니다. 같은 댓글을 다시 등록하지 마세요."); return; }
     const comment = data?.comment;
     const expectedReply = action === "submit" ? (isNew ? "" : uuid_comment) : String(row?.uuid_upper || "");
     const validACK = data?.checker === "SUCCESS" && typeof data.uuid === "string" && data.uuid !== "" &&
       (deleting ? data.uuid === uuid_comment : comment?.uuid === data.uuid && comment.uuid_article === orderID &&
         (action !== "edit" || data.uuid === uuid_comment) && String(comment.uuid_upper || "") === expectedReply &&
-        typeof comment.content === "string" && ["writer", "admin"].includes(comment.check_comment_reader) &&
-        Number(comment.active) === 1 && [0, 1].includes(Number(comment.is_secret)));
+        typeof comment.content === "string" && comment.content === content.trim() && ["writer", "admin"].includes(comment.check_comment_reader) &&
+        Number(comment.active) === 1 && Number(comment.is_secret) === Number(secret));
     if (!validACK || data.error) { message = data?.error || communityActionFailure(state); return; }
     state.acknowledged = true;
+    communityCommentPendingReceipts.delete(pendingKey);
     if (deleting) await removeCommentTreeFromView(data.uuid);
     else {
       await uploadQueuedFiles(queuedCommentFiles(uuid_comment), { note: "Comment", scope: "comment", articleUUID: orderID,

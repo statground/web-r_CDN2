@@ -270,5 +270,126 @@ class CommunityActionTests(unittest.TestCase):
         self.assertEqual(page.evaluate('calls.length'), 1)
 
 
+    def pending_comment(self, page, operation='insert', cid=CID):
+        page.evaluate('''({operation,cid})=>{
+          refreshCommentsQuietly=()=>{};
+          window.pending={checker:'PENDING',pending:true,uuid:cid,receipt:{operation,uuid:cid,
+            marker:'33333333-3333-4333-8333-333333333333',previous_version_ms:operation==='insert'?0:1000,fingerprint:'a'.repeat(64)}};
+        }''', {'operation': operation, 'cid': cid})
+
+    def test_pending_comment_insert_confirms_readonly_exact_payload(self):
+        page = self.render('read')
+        self.pending_comment(page)
+        page.locator('#txt_content_comment_new_fallback').fill('Exact pending body')
+        page.locator('#chk_secret_new').check()
+        page.evaluate('''responses.push({body:pending},{body:{checker:'SUCCESS',receipt_verified:true,uuid:pending.uuid,
+          comment:{...communityState.commentData[0],content:'Exact pending body',is_secret:1}}});
+          void comment_action('submit','new').finally(()=>done=true)''')
+        page.wait_for_function('done')
+        self.assertEqual(page.evaluate('calls.map(c=>c.endpoint)'), ['/blank/ajax_board/insert_comment/', '/blank/ajax_board/get_comment_mutation_receipt/'])
+        self.assertEqual(page.locator('#txt_content_comment_new_fallback').input_value(), '')
+        self.assertEqual(page.evaluate('calls[0].fields.request_id===calls[1].fields.request_id'), True)
+        self.assertEqual(page.evaluate('communityCommentPendingReceipts.size'), 0)
+        self.assertIn('Exact pending body', page.locator('#div_main').inner_text())
+
+    def test_pending_comment_mismatch_or_denial_never_clears_draft(self):
+        for failure in ['body', 'secret', 'parent', 'unverified', 'denied']:
+            with self.subTest(failure=failure):
+                page = self.render('read')
+                self.pending_comment(page)
+                page.locator('#txt_content_comment_new_fallback').fill('Intended pending body')
+                page.evaluate('''failure=>{
+                  const data={checker:'SUCCESS',receipt_verified:true,uuid:pending.uuid,comment:{...communityState.commentData[0],content:'Intended pending body'}};
+                  if(failure==='body')data.comment.content='Older body';
+                  if(failure==='secret')data.comment.is_secret=1;
+                  if(failure==='parent')data.comment.uuid_article='44444444-4444-4444-8444-444444444444';
+                  if(failure==='unverified')data.receipt_verified=false;
+                  responses.push({body:pending},failure==='denied'?{status:403,body:{access_denied:true}}:{body:data});
+                  void comment_action('submit','new').finally(()=>done=true);
+                }''', failure)
+                page.wait_for_function('done')
+                self.assertEqual(page.evaluate('calls.length'), 2)
+                self.assertNotIn('Older body', page.locator('#div_main').inner_text())
+                if failure == 'denied':
+                    self.assertEqual(page.locator('#txt_content_comment_new_fallback').count(), 0)
+                else:
+                    self.assertEqual(page.locator('#txt_content_comment_new_fallback').input_value(), 'Intended pending body')
+                    self.assertEqual(page.evaluate('communityCommentPendingReceipts.size'), 1)
+                page.close()
+
+    def test_pending_comment_three_reads_and_repeat_action_never_reposts(self):
+        page = self.render('read')
+        self.pending_comment(page)
+        page.locator('#txt_content_comment_new_fallback').fill('Retained pending body')
+        page.evaluate('''responses.push({body:pending},...Array.from({length:3},()=>({body:{checker:'PENDING',pending:true,uuid:pending.uuid}})));
+          void comment_action('submit','new').finally(()=>done=true)''')
+        page.wait_for_function('calls.length===2')
+        page.clock.run_for(1001)
+        page.wait_for_function('calls.length===3')
+        page.clock.run_for(1001)
+        page.wait_for_function('done')
+        self.assertEqual(page.evaluate('calls.length'), 4)
+        self.assertEqual(page.locator('#txt_content_comment_new_fallback').input_value(), 'Retained pending body')
+        page.evaluate('''done=false;responses.push({body:{checker:'SUCCESS',receipt_verified:true,uuid:pending.uuid,
+          comment:{...communityState.commentData[0],content:'Retained pending body'}}});void comment_action('submit','new').finally(()=>done=true)''')
+        page.wait_for_function('done')
+        self.assertEqual(page.evaluate("calls.filter(c=>c.endpoint==='/blank/ajax_board/insert_comment/').length"), 1)
+        self.assertEqual(page.evaluate('calls.length'), 4)
+        self.assertEqual(page.evaluate('communityCommentPendingReceipts.values().next().value.attempts'), 3)
+        self.assertEqual(page.locator('#txt_content_comment_new_fallback').input_value(), 'Retained pending body')
+
+    def test_pending_comment_original_deadline_pagehide_and_late_typing(self):
+        for case in ['deadline', 'pagehide', 'late_typing']:
+            with self.subTest(case=case):
+                page = self.render('read')
+                self.pending_comment(page)
+                page.locator('#txt_content_comment_new_fallback').fill('Original pending body')
+                page.evaluate("responses.push({hold:true},{holdBody:true});void comment_action('submit','new').finally(()=>done=true)")
+                page.wait_for_function('held.length===1')
+                page.clock.run_for(44000)
+                page.evaluate('held.shift()({ok:true,status:200,json:async()=>pending})')
+                page.wait_for_function('calls.length===2 && held.length===1')
+                if case == 'deadline':
+                    page.clock.run_for(1001)
+                elif case == 'pagehide':
+                    page.evaluate("window.dispatchEvent(new PageTransitionEvent('pagehide'))")
+                else:
+                    page.locator('#txt_content_comment_new_fallback').fill('New unsent revision')
+                    page.evaluate("held.shift()({checker:'SUCCESS',receipt_verified:true,uuid:pending.uuid,comment:{...communityState.commentData[0],content:'Original pending body'}})")
+                page.wait_for_function('done')
+                self.assertEqual(page.evaluate('calls.length'), 2)
+                if case == 'pagehide':
+                    self.assertEqual(page.evaluate('communityCommentPendingReceipts.size'), 0)
+                if case == 'late_typing':
+                    self.assertEqual(page.locator('#txt_content_comment_new_fallback').input_value(), 'New unsent revision')
+                elif case == 'deadline':
+                    self.assertEqual(page.locator('#txt_content_comment_new_fallback').input_value(), 'Original pending body')
+                    page.evaluate("done=false;void comment_action('submit','new').finally(()=>done=true)")
+                    page.wait_for_function('done')
+                    self.assertEqual(page.evaluate('calls.length'), 2, 'retained receipt cannot reset the original deadline')
+                page.close()
+
+    def test_pending_comment_edit_and_delete_confirm_without_write_replay(self):
+        for operation in ['update', 'delete']:
+            with self.subTest(operation=operation):
+                page = self.render('read')
+                self.pending_comment(page, operation)
+                if operation == 'update':
+                    page.evaluate('click_btn_edit_comment(communityState.commentData[0].uuid)')
+                    page.locator('#div_comment_editor_main_' + CID).get_by_role('textbox').fill('Exact edit')
+                    page.evaluate("responses.push({body:pending},{body:{checker:'SUCCESS',receipt_verified:true,uuid:pending.uuid,comment:{...communityState.commentData[0],content:'Exact edit'}}});void comment_action('edit',pending.uuid).finally(()=>done=true)")
+                else:
+                    page.evaluate("responses.push({body:pending},{body:{checker:'SUCCESS',receipt_verified:true,uuid:pending.uuid}});void comment_action('delete',pending.uuid).finally(()=>done=true)")
+                page.wait_for_function('done')
+                self.assertEqual(page.evaluate('calls.length'), 2)
+                self.assertEqual(page.evaluate('calls[1].endpoint'), '/blank/ajax_board/get_comment_mutation_receipt/')
+                self.assertEqual(page.evaluate('communityCommentPendingReceipts.size'), 0)
+                if operation == 'delete':
+                    self.assertNotIn('Saved fixture comment', page.locator('#div_main').inner_text())
+                else:
+                    self.assertIn('Exact edit', page.locator('#div_main').inner_text())
+                page.close()
+
+
 if __name__ == '__main__':
     unittest.main()
