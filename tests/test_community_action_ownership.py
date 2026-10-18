@@ -168,20 +168,89 @@ class CommunityActionTests(unittest.TestCase):
         self.assertEqual(page.evaluate('Object.values(communityState.commentData).length'), 1)
         self.assertEqual(page.evaluate('calls.length'), 1)
 
-    def test_pending_article_keeps_request_identity_and_check_is_bounded(self):
+    def test_pending_article_with_error_uses_only_remaining_save_deadline(self):
         page = self.render()
-        page.evaluate("responses.push({body:{pending:true,uuid:orderID}});void submit_write().finally(()=>done=true)")
-        page.wait_for_function('done')
-        self.assertIn('글이 저장되었습니다', page.locator('#div_button_list').inner_text())
-        self.assertEqual(page.evaluate('calls.length'), 1)
-        self.assertTrue(page.evaluate('sessionStorage.length>0'))
-        page.evaluate('responses.push({holdBody:true})')
-        page.get_by_role('button', name='공개 여부 확인', exact=True).click()
+        page.evaluate("responses.push({hold:true});void submit_write().finally(()=>done=true)")
         page.wait_for_function('held.length===1')
-        page.clock.run_for(45001)
-        self.assertTrue(page.get_by_role('button', name='공개 여부 확인', exact=True).is_enabled())
+        page.clock.run_for(30000)
+        page.evaluate("responses.push({holdBody:true});held.shift()({ok:true,status:200,json:async()=>({pending:true,uuid:orderID,error:'visibility not confirmed'})})")
+        page.wait_for_function('calls.length===2 && held.length===1')
+        self.assertNotIn('글이 저장되었습니다', page.locator('#div_button_list').inner_text())
+        self.assertNotIn(ID, page.locator('#div_button_list').inner_text())
+        self.assertEqual(page.locator('#div_button_list button').count(), 0)
+        page.clock.run_for(15001)
+        page.wait_for_function('done')
         self.assertEqual(page.evaluate('calls.length'), 2)
+        self.assertEqual(page.evaluate("calls.filter(c=>c.endpoint.includes('insert_article')).length"), 1)
         self.assertTrue(page.evaluate('sessionStorage.length>0'))
+        self.assertEqual(page.locator('#txt_title').input_value(), 'Unsent fixture title')
+        self.assertIn('Unsent fixture body', page.locator('#txt_content').input_value())
+        self.assertEqual(page.locator('#div_button_list [aria-busy="false"]').count(), 1)
+
+    def pending_detail(self, **changes):
+        body = dict(uuid=ID, title='Unsent fixture title', content='<p>Unsent fixture body</p>',
+                    is_secret=0, category_url='free', category_url_sub='', check_reader='writer')
+        body.update(changes)
+        return body
+
+    def test_pending_article_confirms_exact_current_payload_before_upload(self):
+        page = self.render()
+        page.evaluate("window.uploads=[];uploadQueuedFiles=async(files,options)=>{uploads.push({ack:options.state.acknowledged,uuid:options.articleUUID});cancelCommunityAction(options.state);};responses.push({body:{pending:true,uuid:orderID,error:'visibility not confirmed'}},{body:{not_found:true}});void submit_write().finally(()=>done=true)")
+        page.wait_for_function('calls.length===2')
+        page.evaluate('(body)=>responses.push({body})', self.pending_detail())
+        page.clock.run_for(1001)
+        page.wait_for_function('done')
+        self.assertEqual(page.evaluate('calls.map(c=>c.endpoint)'), ['/blank/ajax_board/insert_article/', '/blank/ajax_board/get_read_article/', '/blank/ajax_board/get_read_article/'])
+        self.assertEqual(page.evaluate('uploads'), [dict(ack=True, uuid=ID)])
+
+    def test_publication_pending_preserves_upload_then_readonly_confirmation(self):
+        page = self.render()
+        page.evaluate("window.uploads=[];uploadQueuedFiles=async(files,options)=>uploads.push({ack:options.state.acknowledged,uuid:options.articleUUID});responses.push({body:{uuid:orderID,publication_pending:true}},{holdBody:true});void submit_write().finally(()=>done=true)")
+        page.wait_for_function('held.length===1')
+        self.assertEqual(page.evaluate('uploads'), [dict(ack=True, uuid=ID)])
+        self.assertEqual(page.evaluate('calls.map(c=>c.endpoint)'), ['/blank/ajax_board/insert_article/', '/blank/ajax_board/get_read_article/'])
+        page.evaluate("window.dispatchEvent(new PageTransitionEvent('pagehide'))")
+        page.evaluate('(body)=>held.shift()(body)', self.pending_detail())
+        page.wait_for_function('done')
+        self.assertTrue(page.evaluate('sessionStorage.length>0'))
+        self.assertEqual(page.evaluate('uploads.length'), 1)
+
+    def test_pending_article_wrong_payload_or_rights_never_confirms(self):
+        for changed in [dict(title='old title'), dict(content='old body'), dict(is_secret=1),
+                        dict(category_url='notice'), dict(category_url_sub='other'), dict(check_reader='user')]:
+            with self.subTest(changed=changed):
+                page = self.render()
+                page.evaluate("window.uploads=0;uploadQueuedFiles=async()=>{uploads++;};responses.push({body:{pending:true,uuid:orderID,error:'visibility not confirmed'}})")
+                page.evaluate('(body)=>responses.push({body})', self.pending_detail(**changed))
+                page.evaluate('void submit_write().finally(()=>done=true)')
+                page.wait_for_function('done')
+                self.assertEqual(page.evaluate('uploads'), 0)
+                self.assertEqual(page.evaluate('calls.length'), 2)
+                self.assertEqual(page.locator('#div_button_list button').count(), 0)
+                self.assertTrue(page.evaluate('sessionStorage.length>0'))
+                page.close()
+
+    def test_pending_article_denial_retires_and_never_reposts(self):
+        page = self.render()
+        page.evaluate("responses.push({body:{pending:true,uuid:orderID,error:'visibility not confirmed'}},{status:403,body:{denied:true}});void submit_write().finally(()=>done=true)")
+        page.wait_for_function('done')
+        self.assertIn('현재 계정으로 처리할 수 없습니다', page.locator('#div_main').inner_text())
+        self.assertEqual(page.evaluate('calls.length'), 2)
+        self.assertEqual(page.locator('#txt_title').count(), 0)
+
+    def test_pending_article_pagehide_or_owner_change_ignores_late_read(self):
+        for retire in ["window.dispatchEvent(new PageTransitionEvent('pagehide'))", "gv_username='different-viewer'"]:
+            with self.subTest(retire=retire):
+                page = self.render()
+                page.evaluate("window.uploads=0;uploadQueuedFiles=async()=>{uploads++;};responses.push({body:{pending:true,uuid:orderID,error:'visibility not confirmed'}},{holdBody:true});void submit_write().finally(()=>done=true)")
+                page.wait_for_function('held.length===1')
+                page.evaluate(retire)
+                page.evaluate('(body)=>held.shift()(body)', self.pending_detail())
+                page.wait_for_function('done')
+                self.assertEqual(page.evaluate('uploads'), 0)
+                self.assertEqual(page.evaluate('calls.length'), 2)
+                self.assertNotIn('게시 상태를 확인했습니다', page.locator('#div_main').inner_text())
+                page.close()
 
     def test_edit_error_dto_never_grants_edit_form(self):
         page = self.render('edit')

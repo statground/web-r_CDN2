@@ -3344,52 +3344,59 @@ function Div_main_stop() {
     communityT("\uBAA9\uB85D\uC73C\uB85C")
   )));
 }
-function showPendingArticlePublication(uuid) {
-  const container = document.getElementById("div_button_list");
+async function showPendingArticlePublication(uuid, state, expected) {
+  // A known write UUID is not an ACK. Confirm only through the existing fresh
+  // detail read, inside this save action's original owner and deadline.
+  state.publicationPending = true;
   const panel = document.createElement("div");
   panel.setAttribute("role", "status");
+  panel.setAttribute("aria-live", "polite");
+  panel.setAttribute("aria-busy", "true");
   panel.className = "w-full rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm text-slate-800";
   const heading = document.createElement("strong");
   heading.className = "block text-base text-slate-900";
-  heading.textContent = communityT("글이 저장되었습니다");
+  heading.textContent = communityT("저장 상태를 확인하고 있습니다");
   const explanation = document.createElement("p");
   explanation.className = "mt-2";
-  explanation.textContent = communityT("공개 목록과 상세 페이지는 게시 데이터 검증이 완료되면 나타납니다. 이 화면에서 같은 글을 다시 등록하지 마세요.");
-  const identifier = document.createElement("p");
-  identifier.className = "mt-2 break-all text-slate-600";
-  identifier.textContent = communityT("글 ID: {id}", { id: uuid });
-  const check = document.createElement("button");
-  check.id = "webr_pending_publication_check";
-  check.type = "button";
-  check.className = "mt-3 rounded-lg border border-blue-400 bg-white px-3 py-2 font-medium text-blue-700";
-  check.textContent = communityT("공개 여부 확인");
+  explanation.textContent = communityT("같은 글을 다시 등록하지 마세요. 입력 내용은 이 화면에 유지됩니다.");
   const result = document.createElement("p");
   result.className = "mt-2 text-slate-600";
-  check.addEventListener("click", async () => {
-    const state = beginCommunityAction("article-publication", check);
-    if (!state) return;
-    check.disabled = true;
-    result.textContent = communityT("게시 상태를 확인하고 있습니다.");
-    try {
+  result.textContent = communityT("게시 상태를 확인하고 있습니다.");
+  panel.append(heading, explanation, result);
+  state.target.replaceChildren(panel);
+  let delay = null;
+  let confirmed = false;
+  try {
+    for (let attempt = 0; attempt < 3 && currentCommunityAction(state); attempt += 1) {
+      if (attempt) {
+        await Promise.race([state.cancelPromise, new Promise(resolve => { delay = window.setTimeout(resolve, 1000); })]);
+        window.clearTimeout(delay);
+      }
+      if (!currentCommunityAction(state)) return false;
       const body = new FormData();
       body.append("orderID", uuid);
       const response = await communityActionJSON(state, "/blank/ajax_board/get_read_article/", body);
-      if (validCommunityDetail(response, uuid)) {
-        clearCommunityCreateRequestID();
-        location.href = init_url + "read/" + uuid + "/";
-        return;
+      if (validCommunityDetail(response, uuid) && ["writer", "admin"].includes(response.check_reader) &&
+          response.title === expected.title && response.content === expected.content &&
+          response.is_secret === expected.secret && response.category_url === expected.category &&
+          String(response.category_url_sub || "") === expected.subcategory) {
+        confirmed = true;
+        return true;
       }
-      result.textContent = communityT("아직 게시 데이터 검증 중입니다. 잠시 후 다시 확인해 주세요.");
-    } catch (_) {
-      if (communityActionStillOwned(state)) result.textContent = communityT("게시 상태를 확인하지 못했습니다. 잠시 후 다시 시도해 주세요.");
-    } finally {
-      const owned = communityActionStillOwned(state);
-      finishCommunityAction(state);
-      if (owned) check.disabled = false;
+      if (!response || typeof response !== "object" || Array.isArray(response) ||
+          !(response.pending === true || response.publication_pending === true || response.not_found === true)) break;
     }
-  });
-  panel.append(heading, explanation, identifier, check, result);
-  container.replaceChildren(panel);
+  } catch (_) {
+    // Unknown/error/denial is never permission to submit the article again.
+  } finally {
+    window.clearTimeout(delay);
+    if (communityActionStillOwned(state) && (!state.cancelled || state.expired)) {
+      panel.setAttribute("aria-busy", "false");
+      result.textContent = communityT(confirmed ? "게시 상태를 확인했습니다." :
+        "저장 상태를 아직 확인하지 못했습니다. 입력 내용은 유지됩니다. 같은 글을 다시 등록하지 마세요.");
+    }
+  }
+  return false;
 }
 let communityCreateRequestID = "";
 let communityCreateRequestOwner = "";
@@ -3440,12 +3447,16 @@ async function submit_write() {
     if (!requestID) throw new Error("Request identity unavailable");
     body.append("request_id", requestID);
     const data = await communityActionJSON(state, "/blank/ajax_board/insert_article/", body);
-    if (!data || data.error || !data.uuid) { message = data?.error || communityActionFailure(state); return; }
+    const knownUUID = typeof data?.uuid === "string" && /^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(data.uuid);
+    const expected = { title: txt_title, content: txt_content.trim(), secret: chk_secret ? 1 : 0,
+      category: String(url || "").trim(), subcategory: String(sub || "").trim() };
+    if (knownUUID && data.pending === true) {
+      if (!await showPendingArticlePublication(data.uuid, state, expected)) return;
+    } else if (!data || data.error || !knownUUID) { message = data?.error || communityActionFailure(state); return; }
     state.acknowledged = true;
-    if (data.pending) { showPendingArticlePublication(data.uuid); return; }
     await uploadQueuedFiles(queuedArticleFiles(), { note: "Article", scope: "article", articleUUID: data.uuid, state });
     if (!currentCommunityAction(state)) return;
-    if (data.publication_pending) { showPendingArticlePublication(data.uuid); return; }
+    if (data.publication_pending === true && !await showPendingArticlePublication(data.uuid, state, expected)) return;
     clearCommunityCreateRequestID();
     location.href = init_url + "read/" + data.uuid + "/";
   } catch (_) { message = communityActionFailure(state); }
@@ -3454,7 +3465,7 @@ async function submit_write() {
     finishCommunityAction(state);
     if (owned) {
       communityState.toggle_click_submit = false;
-      if (!state.acknowledged || message) ReactDOM.render(React.createElement(Div_button), state.target);
+      if ((!state.acknowledged && !state.publicationPending) || message) ReactDOM.render(React.createElement(Div_button), state.target);
       if (message) communityActionMessage(state, message);
     }
   }
