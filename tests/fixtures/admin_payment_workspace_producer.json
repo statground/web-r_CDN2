@@ -1,0 +1,904 @@
+[
+  {
+    "scenario": "live",
+    "request": {
+      "from": "2000-01-01",
+      "to": "2000-01-31",
+      "environment": "live",
+      "provider": "all",
+      "currency": "KRW",
+      "status": "completed",
+      "section": "summary",
+      "cursor": "",
+      "page": 1,
+      "page_size": 50
+    },
+    "response": {
+      "admin_snapshot_date": "2000-01-01",
+      "admin_snapshot_owner": "11111111-1111-4111-8111-111111111111",
+      "breakdown": {
+        "KRW": {
+          "amt_benefit_tax": 2198,
+          "amt_result": 22781,
+          "amt_statground": 2775,
+          "amt_tax": 3200,
+          "amt_toss": 1045,
+          "amt_total": 32000,
+          "basis": "legacy_krw_formula"
+        },
+        "USD": null
+      },
+      "complete": true,
+      "ledger": {
+        "has_more": false,
+        "next_cursor": null,
+        "rows": [],
+        "state": "not_requested",
+        "total": 2
+      },
+      "ok": true,
+      "overview": {
+        "KRW": {
+          "completed_amount_minor": 32000,
+          "completed_count": 2,
+          "membership_applied_count": 1,
+          "membership_pending_count": 0,
+          "membership_unknown_count": 1,
+          "other_count": null,
+          "refund_review_count": null,
+          "review_count": null,
+          "unconfirmed_date_count": null
+        },
+        "USD": null
+      },
+      "products": [
+        {
+          "completed_amount_minor": 10000,
+          "completed_count": 1,
+          "currency": "KRW",
+          "environment": "live",
+          "kind": "one_time",
+          "product_id": "legacy-product",
+          "product_name": "Legacy membership",
+          "provider": "toss"
+        },
+        {
+          "completed_amount_minor": 22000,
+          "completed_count": 1,
+          "currency": "KRW",
+          "environment": "live",
+          "kind": "subscription",
+          "product_id": "recurring-product",
+          "product_name": "Recurring membership",
+          "provider": "toss"
+        }
+      ],
+      "schema": "webr.admin.payments.v1",
+      "scope": {
+        "from": "2000-01-01",
+        "to": "2000-01-31",
+        "environment": "live",
+        "provider": "all",
+        "currency": "KRW",
+        "status": "completed",
+        "section": "summary",
+        "cursor": "",
+        "page": 1,
+        "page_size": 50
+      },
+      "sources": {
+        "KRW": {
+          "components": {
+            "one_time": {
+              "coverage": "completed_only",
+              "diagnostic_state": "unavailable",
+              "environment_basis": "legacy_non_test_cohort",
+              "ledger_state": "not_requested",
+              "summary_state": "complete"
+            },
+            "subscription": {
+              "ledger_state": "not_requested",
+              "summary_state": "complete"
+            }
+          },
+          "ledger_state": "not_requested",
+          "revenue": true,
+          "state": "complete",
+          "summary_state": "complete"
+        },
+        "USD": {
+          "ledger_state": "filtered",
+          "revenue": false,
+          "state": "filtered",
+          "summary_state": "filtered"
+        }
+      },
+      "timeline": [
+        {
+          "KRW": {
+            "completed_amount_minor": 32000,
+            "completed_count": 2
+          },
+          "USD": null,
+          "date": "2000-01-01"
+        }
+      ],
+      "windows": {
+        "KRW": {
+          "all": {
+            "completed_amount_minor": 32000,
+            "completed_count": 2,
+            "from": "",
+            "to": ""
+          },
+          "month": {
+            "completed_amount_minor": 32000,
+            "completed_count": 2,
+            "from": "2000-01-01",
+            "to": "2000-01-31"
+          },
+          "today": {
+            "completed_amount_minor": 32000,
+            "completed_count": 2,
+            "from": "2000-01-01",
+            "to": "2000-01-01"
+          },
+          "year": {
+            "completed_amount_minor": 32000,
+            "completed_count": 2,
+            "from": "2000-01-01",
+            "to": "2000-12-31"
+          }
+        },
+        "USD": null
+      }
+    }
+  },
+  {
+    "scenario": "live",
+    "request": {
+      "from": "2000-01-01",
+      "to": "2000-01-31",
+      "environment": "live",
+      "provider": "all",
+      "currency": "KRW",
+      "status": "completed",
+      "section": "ledger",
+      "cursor": "",
+      "page": 1,
+      "page_size": 50
+    },
+    "response": {
+      "admin_snapshot_date": "2000-01-01",
+      "admin_snapshot_owner": "11111111-1111-4111-8111-111111111111",
+      "breakdown": {
+        "KRW": null,
+        "USD": null
+      },
+      "complete": true,
+      "ledger": {
+        "has_more": false,
+        "next_cursor": null,
+        "rows": [
+          {
+            "id": "20000000-0000-4000-8000-000000000001",
+            "kind": "subscription",
+            "owner_id": "11111111-1111-4111-8111-111111111111",
+            "product_id": "recurring-product",
+            "product_name": "Recurring membership",
+            "currency": "KRW",
+            "amount_minor": 22000,
+            "status": "paid",
+            "granted": true,
+            "review_required": false,
+            "created_at": "2000-01-01T00:00:00Z",
+            "confirmed_at": "2000-01-01T00:00:00Z",
+            "time_basis": "membership_applied",
+            "grant_status": "applied",
+            "grant_role": "member",
+            "provider": "toss",
+            "environment": "live",
+            "classification": "completed",
+            "activity_at": "2000-01-01T00:00:00Z",
+            "refund_amount_minor": null,
+            "fee_amount_minor": null,
+            "net_amount_minor": null
+          },
+          {
+            "id": "10000000-0000-4000-8000-000000000001",
+            "kind": "one_time",
+            "owner_id": "11111111-1111-4111-8111-111111111111",
+            "product_id": "legacy-product",
+            "product_name": "Legacy membership",
+            "currency": "KRW",
+            "amount_minor": 10000,
+            "status": "DONE",
+            "granted": null,
+            "review_required": false,
+            "created_at": "2000-01-01T00:00:00Z",
+            "confirmed_at": "2000-01-01T00:00:00Z",
+            "time_basis": "canonical_order_date",
+            "grant_status": "",
+            "grant_role": "",
+            "provider": "toss",
+            "environment": "live",
+            "classification": "completed",
+            "activity_at": "2000-01-01T00:00:00Z",
+            "refund_amount_minor": null,
+            "fee_amount_minor": null,
+            "net_amount_minor": null
+          }
+        ],
+        "state": "complete",
+        "total": null
+      },
+      "ok": true,
+      "overview": {
+        "KRW": null,
+        "USD": null
+      },
+      "products": [],
+      "schema": "webr.admin.payments.v1",
+      "scope": {
+        "from": "2000-01-01",
+        "to": "2000-01-31",
+        "environment": "live",
+        "provider": "all",
+        "currency": "KRW",
+        "status": "completed",
+        "section": "ledger",
+        "cursor": "",
+        "page": 1,
+        "page_size": 50
+      },
+      "sources": {
+        "KRW": {
+          "components": {
+            "one_time": {
+              "coverage": "completed_only",
+              "diagnostic_state": "unavailable",
+              "environment_basis": "legacy_non_test_cohort",
+              "ledger_state": "complete",
+              "summary_state": "not_requested"
+            },
+            "subscription": {
+              "ledger_state": "complete",
+              "summary_state": "not_requested"
+            }
+          },
+          "ledger_state": "complete",
+          "revenue": false,
+          "state": "complete",
+          "summary_state": "not_requested"
+        },
+        "USD": {
+          "ledger_state": "filtered",
+          "revenue": false,
+          "state": "filtered",
+          "summary_state": "filtered"
+        }
+      },
+      "timeline": [],
+      "windows": {
+        "KRW": null,
+        "USD": null
+      }
+    }
+  },
+  {
+    "scenario": "live",
+    "request": {
+      "from": "2000-01-01",
+      "to": "2000-01-31",
+      "environment": "live",
+      "provider": "all",
+      "currency": "USD",
+      "status": "completed",
+      "section": "summary",
+      "cursor": "",
+      "page": 1,
+      "page_size": 50
+    },
+    "response": {
+      "admin_snapshot_date": "2000-01-01",
+      "admin_snapshot_owner": "11111111-1111-4111-8111-111111111111",
+      "breakdown": {
+        "KRW": null,
+        "USD": {
+          "amt_benefit_tax": null,
+          "amt_result": null,
+          "amt_statground": null,
+          "amt_tax": null,
+          "amt_toss": null,
+          "amt_total": null,
+          "basis": "not_recorded"
+        }
+      },
+      "complete": true,
+      "ledger": {
+        "has_more": false,
+        "next_cursor": null,
+        "rows": [],
+        "state": "not_requested",
+        "total": 1
+      },
+      "ok": true,
+      "overview": {
+        "KRW": null,
+        "USD": {
+          "completed_amount_minor": 1299,
+          "completed_count": 1,
+          "membership_applied_count": 1,
+          "membership_pending_count": 0,
+          "membership_unknown_count": 0,
+          "other_count": 0,
+          "refund_review_count": 0,
+          "review_count": 0,
+          "unconfirmed_date_count": 0
+        }
+      },
+      "products": [
+        {
+          "completed_amount_minor": 1299,
+          "completed_count": 1,
+          "currency": "USD",
+          "environment": "live",
+          "kind": "subscription",
+          "product_id": "recurring-product",
+          "product_name": "Recurring membership",
+          "provider": "paypal"
+        }
+      ],
+      "schema": "webr.admin.payments.v1",
+      "scope": {
+        "from": "2000-01-01",
+        "to": "2000-01-31",
+        "environment": "live",
+        "provider": "all",
+        "currency": "USD",
+        "status": "completed",
+        "section": "summary",
+        "cursor": "",
+        "page": 1,
+        "page_size": 50
+      },
+      "sources": {
+        "KRW": {
+          "ledger_state": "filtered",
+          "revenue": false,
+          "state": "filtered",
+          "summary_state": "filtered"
+        },
+        "USD": {
+          "ledger_state": "not_requested",
+          "revenue": true,
+          "state": "complete",
+          "summary_state": "complete"
+        }
+      },
+      "timeline": [
+        {
+          "KRW": null,
+          "USD": {
+            "completed_amount_minor": 1299,
+            "completed_count": 1
+          },
+          "date": "2000-01-01"
+        }
+      ],
+      "windows": {
+        "KRW": null,
+        "USD": {
+          "all": {
+            "completed_amount_minor": 1299,
+            "completed_count": 1,
+            "from": "",
+            "to": ""
+          },
+          "month": {
+            "completed_amount_minor": 1299,
+            "completed_count": 1,
+            "from": "2000-01-01",
+            "to": "2000-01-31"
+          },
+          "today": {
+            "completed_amount_minor": 1299,
+            "completed_count": 1,
+            "from": "2000-01-01",
+            "to": "2000-01-01"
+          },
+          "year": {
+            "completed_amount_minor": 1299,
+            "completed_count": 1,
+            "from": "2000-01-01",
+            "to": "2000-12-31"
+          }
+        }
+      }
+    }
+  },
+  {
+    "scenario": "live",
+    "request": {
+      "from": "2000-01-01",
+      "to": "2000-01-31",
+      "environment": "live",
+      "provider": "all",
+      "currency": "USD",
+      "status": "completed",
+      "section": "ledger",
+      "cursor": "",
+      "page": 1,
+      "page_size": 50
+    },
+    "response": {
+      "admin_snapshot_date": "2000-01-01",
+      "admin_snapshot_owner": "11111111-1111-4111-8111-111111111111",
+      "breakdown": {
+        "KRW": null,
+        "USD": null
+      },
+      "complete": true,
+      "ledger": {
+        "has_more": false,
+        "next_cursor": null,
+        "rows": [
+          {
+            "id": "20000000-0000-4000-8000-000000000001",
+            "kind": "subscription",
+            "owner_id": "11111111-1111-4111-8111-111111111111",
+            "product_id": "recurring-product",
+            "product_name": "Recurring membership",
+            "currency": "USD",
+            "amount_minor": 1299,
+            "status": "COMPLETED",
+            "granted": true,
+            "review_required": false,
+            "created_at": "2000-01-01T00:00:00Z",
+            "confirmed_at": "2000-01-01T00:00:00Z",
+            "time_basis": "provider_payment",
+            "grant_status": "applied",
+            "grant_role": "member",
+            "provider": "paypal",
+            "environment": "live",
+            "classification": "completed",
+            "activity_at": "2000-01-01T00:00:00Z",
+            "refund_amount_minor": null,
+            "fee_amount_minor": null,
+            "net_amount_minor": null
+          }
+        ],
+        "state": "complete",
+        "total": null
+      },
+      "ok": true,
+      "overview": {
+        "KRW": null,
+        "USD": null
+      },
+      "products": [],
+      "schema": "webr.admin.payments.v1",
+      "scope": {
+        "from": "2000-01-01",
+        "to": "2000-01-31",
+        "environment": "live",
+        "provider": "all",
+        "currency": "USD",
+        "status": "completed",
+        "section": "ledger",
+        "cursor": "",
+        "page": 1,
+        "page_size": 50
+      },
+      "sources": {
+        "KRW": {
+          "ledger_state": "filtered",
+          "revenue": false,
+          "state": "filtered",
+          "summary_state": "filtered"
+        },
+        "USD": {
+          "ledger_state": "complete",
+          "revenue": false,
+          "state": "complete",
+          "summary_state": "not_requested"
+        }
+      },
+      "timeline": [],
+      "windows": {
+        "KRW": null,
+        "USD": null
+      }
+    }
+  },
+  {
+    "scenario": "sandbox",
+    "request": {
+      "from": "2000-01-01",
+      "to": "2000-01-31",
+      "environment": "sandbox",
+      "provider": "all",
+      "currency": "KRW",
+      "status": "completed",
+      "section": "summary",
+      "cursor": "",
+      "page": 1,
+      "page_size": 50
+    },
+    "response": {
+      "admin_snapshot_date": "2000-01-01",
+      "admin_snapshot_owner": "11111111-1111-4111-8111-111111111111",
+      "breakdown": {
+        "KRW": null,
+        "USD": null
+      },
+      "complete": false,
+      "ledger": {
+        "has_more": null,
+        "next_cursor": null,
+        "rows": [],
+        "state": "not_requested",
+        "total": null
+      },
+      "ok": true,
+      "overview": {
+        "KRW": null,
+        "USD": null
+      },
+      "products": [],
+      "schema": "webr.admin.payments.v1",
+      "scope": {
+        "from": "2000-01-01",
+        "to": "2000-01-31",
+        "environment": "sandbox",
+        "provider": "all",
+        "currency": "KRW",
+        "status": "completed",
+        "section": "summary",
+        "cursor": "",
+        "page": 1,
+        "page_size": 50
+      },
+      "sources": {
+        "KRW": {
+          "components": {
+            "one_time": {
+              "coverage": "completed_only",
+              "diagnostic_state": "unavailable",
+              "environment_basis": "legacy_non_test_cohort",
+              "ledger_state": "not_requested",
+              "summary_state": "unavailable"
+            },
+            "subscription": {
+              "ledger_state": "not_requested",
+              "summary_state": "complete"
+            }
+          },
+          "ledger_state": "not_requested",
+          "revenue": false,
+          "state": "unavailable",
+          "summary_state": "unavailable"
+        },
+        "USD": {
+          "ledger_state": "filtered",
+          "revenue": false,
+          "state": "filtered",
+          "summary_state": "filtered"
+        }
+      },
+      "timeline": [],
+      "windows": {
+        "KRW": null,
+        "USD": null
+      }
+    }
+  },
+  {
+    "scenario": "sandbox",
+    "request": {
+      "from": "2000-01-01",
+      "to": "2000-01-31",
+      "environment": "sandbox",
+      "provider": "all",
+      "currency": "KRW",
+      "status": "completed",
+      "section": "ledger",
+      "cursor": "",
+      "page": 1,
+      "page_size": 50
+    },
+    "response": {
+      "admin_snapshot_date": "2000-01-01",
+      "admin_snapshot_owner": "11111111-1111-4111-8111-111111111111",
+      "breakdown": {
+        "KRW": null,
+        "USD": null
+      },
+      "complete": false,
+      "ledger": {
+        "has_more": null,
+        "next_cursor": null,
+        "rows": [],
+        "state": "unavailable",
+        "total": null
+      },
+      "ok": true,
+      "overview": {
+        "KRW": null,
+        "USD": null
+      },
+      "products": [],
+      "schema": "webr.admin.payments.v1",
+      "scope": {
+        "from": "2000-01-01",
+        "to": "2000-01-31",
+        "environment": "sandbox",
+        "provider": "all",
+        "currency": "KRW",
+        "status": "completed",
+        "section": "ledger",
+        "cursor": "",
+        "page": 1,
+        "page_size": 50
+      },
+      "sources": {
+        "KRW": {
+          "components": {
+            "one_time": {
+              "coverage": "completed_only",
+              "diagnostic_state": "unavailable",
+              "environment_basis": "legacy_non_test_cohort",
+              "ledger_state": "unavailable",
+              "summary_state": "not_requested"
+            },
+            "subscription": {
+              "ledger_state": "complete",
+              "summary_state": "not_requested"
+            }
+          },
+          "ledger_state": "unavailable",
+          "revenue": false,
+          "state": "unavailable",
+          "summary_state": "not_requested"
+        },
+        "USD": {
+          "ledger_state": "filtered",
+          "revenue": false,
+          "state": "filtered",
+          "summary_state": "filtered"
+        }
+      },
+      "timeline": [],
+      "windows": {
+        "KRW": null,
+        "USD": null
+      }
+    }
+  },
+  {
+    "scenario": "sandbox",
+    "request": {
+      "from": "2000-01-01",
+      "to": "2000-01-31",
+      "environment": "sandbox",
+      "provider": "all",
+      "currency": "USD",
+      "status": "completed",
+      "section": "summary",
+      "cursor": "",
+      "page": 1,
+      "page_size": 50
+    },
+    "response": {
+      "admin_snapshot_date": "2000-01-01",
+      "admin_snapshot_owner": "11111111-1111-4111-8111-111111111111",
+      "breakdown": {
+        "KRW": null,
+        "USD": {
+          "amt_benefit_tax": null,
+          "amt_result": null,
+          "amt_statground": null,
+          "amt_tax": null,
+          "amt_toss": null,
+          "amt_total": null,
+          "basis": "not_recorded"
+        }
+      },
+      "complete": true,
+      "ledger": {
+        "has_more": false,
+        "next_cursor": null,
+        "rows": [],
+        "state": "not_requested",
+        "total": 1
+      },
+      "ok": true,
+      "overview": {
+        "KRW": null,
+        "USD": {
+          "completed_amount_minor": 1299,
+          "completed_count": 1,
+          "membership_applied_count": 1,
+          "membership_pending_count": 0,
+          "membership_unknown_count": 0,
+          "other_count": 0,
+          "refund_review_count": 0,
+          "review_count": 0,
+          "unconfirmed_date_count": 0
+        }
+      },
+      "products": [
+        {
+          "completed_amount_minor": 1299,
+          "completed_count": 1,
+          "currency": "USD",
+          "environment": "sandbox",
+          "kind": "subscription",
+          "product_id": "recurring-product",
+          "product_name": "Recurring membership",
+          "provider": "paypal"
+        }
+      ],
+      "schema": "webr.admin.payments.v1",
+      "scope": {
+        "from": "2000-01-01",
+        "to": "2000-01-31",
+        "environment": "sandbox",
+        "provider": "all",
+        "currency": "USD",
+        "status": "completed",
+        "section": "summary",
+        "cursor": "",
+        "page": 1,
+        "page_size": 50
+      },
+      "sources": {
+        "KRW": {
+          "ledger_state": "filtered",
+          "revenue": false,
+          "state": "filtered",
+          "summary_state": "filtered"
+        },
+        "USD": {
+          "ledger_state": "not_requested",
+          "revenue": false,
+          "state": "complete",
+          "summary_state": "complete"
+        }
+      },
+      "timeline": [
+        {
+          "KRW": null,
+          "USD": {
+            "completed_amount_minor": 1299,
+            "completed_count": 1
+          },
+          "date": "2000-01-01"
+        }
+      ],
+      "windows": {
+        "KRW": null,
+        "USD": {
+          "all": {
+            "completed_amount_minor": 1299,
+            "completed_count": 1,
+            "from": "",
+            "to": ""
+          },
+          "month": {
+            "completed_amount_minor": 1299,
+            "completed_count": 1,
+            "from": "2000-01-01",
+            "to": "2000-01-31"
+          },
+          "today": {
+            "completed_amount_minor": 1299,
+            "completed_count": 1,
+            "from": "2000-01-01",
+            "to": "2000-01-01"
+          },
+          "year": {
+            "completed_amount_minor": 1299,
+            "completed_count": 1,
+            "from": "2000-01-01",
+            "to": "2000-12-31"
+          }
+        }
+      }
+    }
+  },
+  {
+    "scenario": "sandbox",
+    "request": {
+      "from": "2000-01-01",
+      "to": "2000-01-31",
+      "environment": "sandbox",
+      "provider": "all",
+      "currency": "USD",
+      "status": "completed",
+      "section": "ledger",
+      "cursor": "",
+      "page": 1,
+      "page_size": 50
+    },
+    "response": {
+      "admin_snapshot_date": "2000-01-01",
+      "admin_snapshot_owner": "11111111-1111-4111-8111-111111111111",
+      "breakdown": {
+        "KRW": null,
+        "USD": null
+      },
+      "complete": true,
+      "ledger": {
+        "has_more": false,
+        "next_cursor": null,
+        "rows": [
+          {
+            "id": "20000000-0000-4000-8000-000000000001",
+            "kind": "subscription",
+            "owner_id": "11111111-1111-4111-8111-111111111111",
+            "product_id": "recurring-product",
+            "product_name": "Recurring membership",
+            "currency": "USD",
+            "amount_minor": 1299,
+            "status": "COMPLETED",
+            "granted": true,
+            "review_required": false,
+            "created_at": "2000-01-01T00:00:00Z",
+            "confirmed_at": "2000-01-01T00:00:00Z",
+            "time_basis": "provider_payment",
+            "grant_status": "applied",
+            "grant_role": "member",
+            "provider": "paypal",
+            "environment": "sandbox",
+            "classification": "completed",
+            "activity_at": "2000-01-01T00:00:00Z",
+            "refund_amount_minor": null,
+            "fee_amount_minor": null,
+            "net_amount_minor": null
+          }
+        ],
+        "state": "complete",
+        "total": null
+      },
+      "ok": true,
+      "overview": {
+        "KRW": null,
+        "USD": null
+      },
+      "products": [],
+      "schema": "webr.admin.payments.v1",
+      "scope": {
+        "from": "2000-01-01",
+        "to": "2000-01-31",
+        "environment": "sandbox",
+        "provider": "all",
+        "currency": "USD",
+        "status": "completed",
+        "section": "ledger",
+        "cursor": "",
+        "page": 1,
+        "page_size": 50
+      },
+      "sources": {
+        "KRW": {
+          "ledger_state": "filtered",
+          "revenue": false,
+          "state": "filtered",
+          "summary_state": "filtered"
+        },
+        "USD": {
+          "ledger_state": "complete",
+          "revenue": false,
+          "state": "complete",
+          "summary_state": "not_requested"
+        }
+      },
+      "timeline": [],
+      "windows": {
+        "KRW": null,
+        "USD": null
+      }
+    }
+  }
+]
