@@ -324,6 +324,7 @@ const COMMUNITY_ACTION_WINDOW_MS = 45000;
 const communityActions = new Map();
 const communityCommentCreateIDs = new Map();
 const communityCommentPendingReceipts = new Map();
+const communityArticlePendingReceipts = new Map();
 function communityViewerOwnerKey() {
   return JSON.stringify([typeof gv_username === "undefined" ? "" : String(gv_username || ""),
     String(window.gv_role || ""), !!window.gv_is_admin]);
@@ -392,6 +393,7 @@ function retireCommunityActionRights() {
   communityActions.forEach((state) => cancelCommunityAction(state));
   communityCommentCreateIDs.clear();
   communityCommentPendingReceipts.clear();
+  communityArticlePendingReceipts.clear();
   communityState.deletedCommentIDs = {};
   communityState.commentEditors = {}; communityState.commentFiles = {};
   clearCommunityDetailBody();
@@ -433,6 +435,7 @@ function communityCommentRequestID(editorKey, content, secret) {
 window.addEventListener("pagehide", () => {
   communityActions.forEach((state) => cancelCommunityAction(state));
   communityCommentPendingReceipts.clear();
+  communityArticlePendingReceipts.clear();
   communityState.commentData = null;
   communityState.deletedCommentIDs = {};
 });
@@ -2671,7 +2674,8 @@ async function click_btn_delete() {
   let message = "";
   try {
     const body = new FormData(); body.append("uuid", orderID);
-    const data = await communityActionJSON(state, "/blank/ajax_board/delete_article/", body);
+    const data = await articleMutationResponse(state, "delete", "/blank/ajax_board/delete_article/", body);
+    if (!data) { message = articlePendingMessage(); return; }
     if (!data || data.checker !== "SUCCESS" || data.error) { message = data?.error || communityActionFailure(state); return; }
     location.href = init_url;
   } catch (_) { message = communityActionFailure(state); }
@@ -2974,6 +2978,82 @@ function validPendingCommentReceipt(data, operation, targetID) {
     (operation === "insert" || receipt.uuid === targetID) && Number.isSafeInteger(receipt.previous_version_ms) &&
     (operation === "insert" ? receipt.previous_version_ms === 0 : receipt.previous_version_ms > 0) &&
     typeof receipt.fingerprint === "string" && /^[0-9a-f]{64}$/.test(receipt.fingerprint);
+}
+function articlePendingMessage() {
+  return communityT("저장 상태를 아직 확인하지 못했습니다. 입력 내용은 유지됩니다. 같은 글을 다시 저장하지 마세요.");
+}
+function currentArticleMutationDraft(pending) {
+  if (pending.operation === "delete") return true;
+  return document.getElementById("txt_title")?.value.trim() === pending.title &&
+    getArticleEditorHTML() === pending.content && !!document.getElementById("chk_secret")?.checked === pending.secret &&
+    String(url || "") === pending.category && String(sub || "") === pending.subcategory &&
+    queuedArticleFiles().length === pending.files.length && queuedArticleFiles().every((file, index) => file === pending.files[index]);
+}
+async function articleMutationResponse(state, operation, endpoint, body) {
+  const key = state.draftOwner;
+  // A different account/role must never inherit private receipt buffers.
+  for (const owner of communityArticlePendingReceipts.keys()) if (owner !== key) communityArticlePendingReceipts.delete(owner);
+  const fields = Array.from(body.entries());
+  const files = queuedArticleFiles().slice();
+  const signature = JSON.stringify([operation, fields]);
+  let pending = communityArticlePendingReceipts.get(key);
+  if (pending && pending.signature !== signature) throw new Error(articlePendingMessage());
+  if (!pending) {
+    // Reserve before dispatch: a lost HTTP/body receipt can still mean the write committed.
+    pending = { operation, signature, fields, uuid: null, receipt: null, deadline: state.deadline, attempts: 0,
+      title: fields.find(([name]) => name === "txt_title")?.[1], content: fields.find(([name]) => name === "txt_content")?.[1],
+      secret: fields.find(([name]) => name === "chk_secret")?.[1] === "true", category: String(url || ""), subcategory: String(sub || ""), files };
+    communityArticlePendingReceipts.set(key, pending);
+    let data;
+    try { data = await communityActionJSON(state, endpoint, body); }
+    catch (error) {
+      if (state.draftOwner !== communityDraftOwnerKey()) communityArticlePendingReceipts.delete(key);
+      throw error;
+    }
+    const known = typeof data?.uuid === "string" && /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(data.uuid);
+    if (data?.pending !== true) {
+      const originalACK = data && !data.error && data.ok !== false && !data.partial &&
+        (operation === "delete" ? data.checker === "SUCCESS" : known && (operation === "insert" || data.uuid === orderID));
+      if (originalACK) communityArticlePendingReceipts.delete(key);
+      return data;
+    }
+    if (known && (operation === "insert" || data.uuid === orderID)) {
+      pending.uuid = data.uuid;
+      if (validPendingCommentReceipt(data, operation, orderID)) pending.receipt = data.receipt;
+    }
+  }
+  state.publicationPending = true;
+  state.deadline = Math.min(state.deadline, pending.deadline);
+  window.clearTimeout(state.timer);
+  state.timer = window.setTimeout(() => cancelCommunityAction(state, true), Math.max(0, state.deadline - performance.now()));
+  communityActionMessage(state, communityT("저장 상태를 확인 중입니다. 입력 내용은 유지됩니다."));
+  if (!pending.receipt) return null;
+  let delay;
+  try {
+    for (; pending.attempts < 3 && currentCommunityAction(state);) {
+      if (pending.attempts) {
+        await Promise.race([state.cancelPromise, new Promise(resolve => { delay = window.setTimeout(resolve, 1000); })]);
+        window.clearTimeout(delay);
+      }
+      if (!currentCommunityAction(state)) break;
+      const confirmation = new FormData();
+      if (operation !== "delete") for (const [name, value] of pending.fields) confirmation.append(name, value);
+      confirmation.append("receipt", JSON.stringify(pending.receipt));
+      pending.attempts += 1;
+      const data = await communityActionJSON(state, "/blank/ajax_board/get_article_mutation_receipt/", confirmation);
+      if (data?.checker === "SUCCESS" && !data.error && !data.pending && !data.partial && data.ok !== false && data.receipt_verified === true && data.uuid === pending.uuid &&
+          data.active === (operation === "delete" ? 0 : 1)) {
+        if (!currentArticleMutationDraft(pending)) return null;
+        communityArticlePendingReceipts.delete(key);
+        return { checker: "SUCCESS", uuid: pending.uuid, receipt_verified: true, active: data.active };
+      }
+      if (!(data?.checker === "PENDING" && data.pending === true && data.uuid === pending.uuid)) break;
+    }
+  } finally {
+    window.clearTimeout(delay);
+    if (state.draftOwner !== communityDraftOwnerKey()) communityArticlePendingReceipts.delete(key);
+  }
+  return null;
 }
 async function confirmPendingCommentMutation(state, pending) {
   communityActionMessage(state, communityT("저장 상태를 확인 중입니다. 입력 내용은 유지됩니다."));
@@ -3402,8 +3482,8 @@ function Div_main_stop() {
   )));
 }
 async function showPendingArticlePublication(uuid, state, expected) {
-  // A known write UUID is not an ACK. Confirm only through the existing fresh
-  // detail read, inside this save action's original owner and deadline.
+  // Called only after a canonical write ACK with publication_pending. This
+  // checks visibility; an uncertain service receipt uses the receipt endpoint.
   state.publicationPending = true;
   const panel = document.createElement("div");
   panel.setAttribute("role", "status");
@@ -3503,13 +3583,12 @@ async function submit_write() {
     const requestID = stableCommunityCreateRequestID();
     if (!requestID) throw new Error("Request identity unavailable");
     body.append("request_id", requestID);
-    const data = await communityActionJSON(state, "/blank/ajax_board/insert_article/", body);
+    const data = await articleMutationResponse(state, "insert", "/blank/ajax_board/insert_article/", body);
+    if (!data) { message = articlePendingMessage(); return; }
     const knownUUID = typeof data?.uuid === "string" && /^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(data.uuid);
     const expected = { title: txt_title, content: txt_content.trim(), secret: chk_secret ? 1 : 0,
       category: String(url || "").trim(), subcategory: String(sub || "").trim() };
-    if (knownUUID && data.pending === true) {
-      if (!await showPendingArticlePublication(data.uuid, state, expected)) return;
-    } else if (!data || data.error || !knownUUID) { message = data?.error || communityActionFailure(state); return; }
+    if (!data || data.pending === true || data.error || !knownUUID) { message = data?.error || communityActionFailure(state); return; }
     state.acknowledged = true;
     await uploadQueuedFiles(queuedArticleFiles(), { note: "Article", scope: "article", articleUUID: data.uuid, state });
     if (!currentCommunityAction(state)) return;
@@ -3545,7 +3624,8 @@ async function submit_edit() {
     body.append("tag", url); body.append("tag_sub", sub); body.append("uuid_article", orderID);
     body.append("txt_title", txt_title); body.append("txt_content", txt_content); body.append("chk_secret", chk_secret);
     if (communityState.articleData?.file_url != null) body.append("attached_file", communityState.articleData.file_url);
-    const data = await communityActionJSON(state, "/blank/ajax_board/update_article/", body);
+    const data = await articleMutationResponse(state, "update", "/blank/ajax_board/update_article/", body);
+    if (!data) { message = articlePendingMessage(); return; }
     if (!data || data.error || data.uuid !== orderID) { message = data?.error || communityActionFailure(state); return; }
     state.acknowledged = true;
     await uploadQueuedFiles(queuedArticleFiles(), { note: "Article", scope: "article", articleUUID: data.uuid, state });
