@@ -51,7 +51,7 @@ def payload(currency, query):
                           'currency': currency, 'product_id': 'membership',
                           'product_name': 'Fixture membership',
                           'completed_amount_minor': metrics['completed_amount_minor'], 'completed_count': 2}],
-            'timeline': [{'date': date, currency: {'amount_minor': metrics['completed_amount_minor'], 'count': 2}, other: None}],
+            'timeline': [{'date': date, currency: {'completed_amount_minor': metrics['completed_amount_minor'], 'completed_count': 2}, other: None}],
             'ledger': {'state': 'complete', 'rows': [row], 'total': 1, 'has_more': False, 'next_cursor': None}}
     if query['environment'] in ('all', 'unknown'):
         result['overview'][currency] = result['breakdown'][currency] = result['windows'][currency] = None
@@ -241,6 +241,8 @@ class PaymentWorkspace(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(await self.page.locator('[data-section=overview] table').first.locator('tbody tr').count(), 6)
         self.assertEqual(await self.page.locator('[data-section=overview] table').nth(1).locator('tbody tr').count(), 4)
         self.assertIn('권한 적용 미확인', await self.page.locator('[data-section=overview]').inner_text())
+        self.assertIn('123,450 KRW', await self.page.locator('[data-section=timeline]').inner_text())
+        self.assertIn('20.99 USD', await self.page.locator('[data-section=timeline]').inner_text())
         self.assertEqual(await self.page.locator('.pw-ledger tbody tr').count(), 2)
         out = Path('/tmp/webr-step4-payment-workspace-controls-v2-audit-20261018')
         out.mkdir(exist_ok=True)

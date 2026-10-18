@@ -79,7 +79,7 @@
           row.environment === expected.environment && minor(row.completed_amount_minor) && integer(row.completed_count));
     }
     if (section === 'timeline') return Array.isArray(payload.timeline) && (!['all', 'unknown'].includes(expected.environment) || payload.timeline.length === 0) && payload.timeline.every(row => object(row) && validDate(row.date) &&
-      currencies.every(c => row[c] === null || object(row[c]) && minor(row[c].amount_minor) && integer(row[c].count)));
+      currencies.every(c => row[c] === null || object(row[c]) && minor(row[c].completed_amount_minor) && integer(row[c].completed_count)));
     if (!object(payload.ledger) || !['complete', 'partial', 'unavailable', 'filtered'].includes(payload.ledger.state) ||
         !Array.isArray(payload.ledger.rows) || payload.ledger.rows.length > expected.page_size ||
         !(payload.ledger.total === null || integer(payload.ledger.total)) || !(payload.ledger.has_more === null || typeof payload.ledger.has_more === 'boolean') ||
@@ -271,14 +271,14 @@
         '통화별 결제 흐름을 확인하고 있습니다.' : payload.complete ? '선택한 기간에 확인된 완료 결제가 없습니다.' : '결제 흐름을 확인하지 못했습니다.')); return; }
       const fragment = document.createDocumentFragment();
       fragment.append(node('p', 'pw-muted', '통화별 눈금입니다. KRW와 USD 막대의 길이는 서로 비교하지 않습니다.'));
-      const maxima = Object.fromEntries(currencies.map(c => [c, Math.max(1, ...payload.timeline.map(row => Number(row[c]?.amount_minor || 0)))]));
+      const maxima = Object.fromEntries(currencies.map(c => [c, Math.max(1, ...payload.timeline.map(row => Number(row[c]?.completed_amount_minor || 0)))]));
       payload.timeline.forEach(row => {
         const line = node('div', 'pw-timeline-row'); line.append(node('time', '', row.date));
         currencies.forEach(c => {
           const track = node('div', 'pw-track'); track.dataset.currency = c;
-          const text = node('span'); text.textContent = row[c] ? money(row[c].amount_minor, c) + ' · ' + row[c].count + t('건') : t('확인되지 않음');
+          const text = node('span'); text.textContent = row[c] ? money(row[c].completed_amount_minor, c) + ' · ' + row[c].completed_count + t('건') : t('확인되지 않음');
           const bar = node('i'); bar.setAttribute('aria-hidden', 'true');
-          bar.style.width = (row[c] ? Math.max(0, Number(row[c].amount_minor)) / maxima[c] * 100 : 0) + '%';
+          bar.style.width = (row[c] ? Math.max(0, Number(row[c].completed_amount_minor)) / maxima[c] * 100 : 0) + '%';
           track.append(text, bar); line.append(track);
         }); fragment.append(line);
       }); body.replaceChildren(fragment);
