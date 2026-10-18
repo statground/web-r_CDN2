@@ -63,9 +63,34 @@
     if (!object(payload) || payload.schema !== 'webr.admin.payments.v1' || payload.ok !== true ||
         typeof payload.complete !== 'boolean' || !sameScope(payload.scope, expected) ||
         payload.admin_snapshot_owner !== owner || payload.admin_snapshot_date !== kstDay() ||
-        !object(payload.sources) || !currencies.every(c => object(payload.sources[c]) && sourceStates.includes(payload.sources[c].state) &&
+        !object(payload.sources) || !currencies.every(c => object(payload.sources[c]) && (sourceStates.includes(payload.sources[c].state) || section === 'trend' && payload.sources[c].state === 'environment_required') &&
           ['complete', 'unavailable', 'filtered', 'environment_required', 'not_requested'].includes(payload.sources[c].summary_state) &&
           ['complete', 'unavailable', 'filtered', 'not_requested'].includes(payload.sources[c].ledger_state) && typeof payload.sources[c].revenue === 'boolean')) return false;
+    if (section === 'trend') {
+      const series = payload.series, c = expected.currency;
+      const states = ['complete', 'unavailable', 'environment_required', 'filtered'];
+      if (!object(series) || !['day', 'month', 'year'].includes(expected.grain) || payload.scope.grain !== expected.grain ||
+          series.time_basis !== 'original_payment_activity' || series.grain !== expected.grain || series.currency !== c || series.environment !== expected.environment || series.status !== expected.status ||
+          !states.includes(series.state) || payload.sources[c].trend_state !== series.state ||
+          series.amount_basis !== (expected.status === 'completed' ? 'completed_payment' : 'not_recorded') ||
+          !object(series.coverage) || series.coverage.from !== expected.from || series.coverage.to !== expected.to ||
+          typeof series.coverage.source_complete !== 'boolean' || !Array.isArray(series.buckets) || series.buckets.length > (expected.grain === 'year' ? 10 : 367) || !timestamp(series.coverage.as_of)) return false;
+      if (['all', 'unknown'].includes(expected.environment) && series.state !== 'environment_required') return false;
+      const period = expected.grain === 'day' ? /^\d{4}-\d{2}-\d{2}$/ : expected.grain === 'month' ? /^\d{4}-\d{2}$/ : /^\d{4}$/;
+      let previous = '';
+      return series.buckets.every(row => {
+        if (!object(row) || typeof row.period !== 'string' || !period.test(row.period) || !validDate(row.period + (expected.grain === 'month' ? '-01' : expected.grain === 'year' ? '-01-01' : '')) || row.period <= previous ||
+            row.period < expected.from.slice(0, row.period.length) || row.period > expected.to.slice(0, row.period.length) ||
+            typeof row.complete !== 'boolean' || !(row.amount_minor === null || minor(row.amount_minor) && BigInt(String(row.amount_minor)) >= 0n) ||
+            !(row.count === null || integer(row.count))) return false;
+        previous = row.period;
+        const asOf = new Date(Date.parse(series.coverage.as_of) + 9 * 3600000).toISOString().slice(0, row.period.length);
+        if (row.period > asOf && row.complete) return false;
+        if (!row.complete) return row.amount_minor === null && row.count === null;
+        return series.state === 'complete' && series.coverage.source_complete && row.count !== null &&
+          (expected.status === 'completed' ? row.amount_minor !== null : row.amount_minor === null);
+      });
+    }
     if (section === 'overview') {
       if (!object(payload.overview) || !object(payload.breakdown) || !object(payload.windows) || !Array.isArray(payload.products)) return false;
       if (!object(payload.ledger) || payload.ledger.state !== 'not_requested' || !Array.isArray(payload.ledger.rows) || payload.ledger.rows.length ||
@@ -88,6 +113,7 @@
         (payload.ledger.has_more !== true && payload.ledger.next_cursor !== null)) return false;
     return payload.ledger.rows.every(row => object(row) && ['one_time', 'subscription'].includes(row.kind) && ['toss', 'paypal'].includes(row.provider) && row.currency === expected.currency && row.provider === (row.currency === 'KRW' ? 'toss' : 'paypal') &&
       ['live', 'sandbox', 'unknown'].includes(row.environment) && (expected.environment === 'all' || row.environment === expected.environment) && typeof row.id === 'string' && typeof row.status === 'string' &&
+      (row.account === undefined || object(row.account) && ['complete', 'missing', 'unavailable'].includes(row.account_state) && ['email', 'nickname', 'name'].every(key => row.account[key] === null || typeof row.account[key] === 'string' && row.account[key].length <= 512)) &&
       (row.amount_minor === null || minor(row.amount_minor)) && (row.confirmed_at === null || timestamp(row.confirmed_at)) &&
       (row.created_at === null || timestamp(row.created_at)) && timestamp(row.activity_at) && typeof row.review_required === 'boolean' && (row.granted === null || typeof row.granted === 'boolean') && row.classification === expected.status &&
       (expected.status !== 'completed' || row.status === (row.provider === 'paypal' ? 'COMPLETED' : row.kind === 'subscription' ? 'paid' : 'DONE') && !row.review_required && timestamp(row.confirmed_at)));
@@ -101,7 +127,7 @@
     const nonce = document.querySelector('script[nonce]')?.nonce;
     if (nonce) style.nonce = nonce;
     style.textContent = `
-#div_main .webr-admin-payment-content{display:block!important;grid-template-columns:minmax(0,1fr)!important;min-width:0;width:100%}
+:root[data-webr-admin-dashboard] #div_main>div>:nth-child(2).webr-admin-payment-content,#div_main .webr-admin-payment-content{display:block!important;grid-template-columns:minmax(0,1fr)!important;min-width:0;width:100%}
 #div_main .webr-payment-workspace{width:100%;min-width:0;color:#172033;font:14px/1.55 system-ui,sans-serif;--pw-line:#e2e8f0;--pw-muted:#64748b}
 .webr-payment-workspace *{box-sizing:border-box}.webr-payment-workspace h1,.webr-payment-workspace h2,.webr-payment-workspace h3,.webr-payment-workspace p{margin:0}
 .webr-payment-workspace .pw-header{display:flex;justify-content:space-between;align-items:flex-start;gap:1rem;margin-bottom:1.25rem}.webr-payment-workspace h1{font-size:1.7rem;letter-spacing:-.045em;line-height:1.3;font-weight:800}.webr-payment-workspace .pw-eyebrow{color:#0f766e;font-size:.7rem;letter-spacing:.12em;font-weight:800;margin-bottom:.4rem}
@@ -110,6 +136,8 @@
 .webr-payment-workspace .pw-overview{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:.75rem}.webr-payment-workspace .pw-card,.webr-payment-workspace .pw-panel{min-width:0;border:1px solid var(--pw-line);border-radius:.75rem;background:#fff;padding:1rem}.webr-payment-workspace .pw-card h3{font-size:.75rem;color:#64748b;font-weight:600;margin-bottom:.65rem}.webr-payment-workspace .pw-currency-line{display:flex;align-items:baseline;justify-content:space-between;gap:.5rem;padding:.2rem 0}.webr-payment-workspace .pw-currency-line small{color:#64748b;font-size:.65rem;font-weight:700}.webr-payment-workspace .pw-currency-line strong{font-size:1.12rem;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}.webr-payment-workspace .pw-panel{margin-top:1rem}.webr-payment-workspace h2{font-size:.95rem;font-weight:800}.webr-payment-workspace .pw-panel-head{display:flex;justify-content:space-between;align-items:center;gap:1rem;margin-bottom:.75rem}.webr-payment-workspace .pw-status{font-size:.75rem;color:#64748b;min-height:1.2em;margin:.5rem 0}.webr-payment-workspace [data-state=unavailable]>.pw-status{color:#b45309}.webr-payment-workspace details{margin-top:.75rem}.webr-payment-workspace summary{cursor:pointer;font-size:.8rem;font-weight:700;color:#475569;padding:.45rem 0}
 .webr-payment-workspace .pw-scroll{max-width:100%;overflow:auto}.webr-payment-workspace table{width:100%;border-collapse:collapse;text-align:start;font-size:.77rem}.webr-payment-workspace th{padding:.7rem .6rem;border-block:1px solid var(--pw-line);color:#64748b;font-weight:600;background:#f8fafc;white-space:nowrap}.webr-payment-workspace td{padding:.8rem .6rem;border-bottom:1px solid #f1f5f9;vertical-align:top;overflow-wrap:anywhere}.webr-payment-workspace th:first-child,.webr-payment-workspace td:first-child{padding-inline-start:0}.webr-payment-workspace .pw-ledger{min-width:740px}.webr-payment-workspace .pw-products{min-width:600px}.webr-payment-workspace .pw-badge{display:inline-block;padding:.15rem .4rem;border:1px solid #e2e8f0;border-radius:.3rem;color:#475569;background:#f8fafc;font-size:.65rem;white-space:nowrap;margin:.1rem .25rem .1rem 0}.webr-payment-workspace .pw-live{color:#0f766e;background:#f0fdfa;border-color:#ccfbf1}.webr-payment-workspace .pw-warning{color:#92400e;background:#fffbeb;border-color:#fef3c7}.webr-payment-workspace .pw-amount{font-weight:800;white-space:nowrap;font-variant-numeric:tabular-nums}.webr-payment-workspace .pw-pager{display:flex;align-items:center;justify-content:space-between;gap:1rem;margin-top:1rem}.webr-payment-workspace .pw-pager>div{display:flex;gap:.4rem}.webr-payment-workspace .pw-pager>div>div{display:flex;align-items:center;flex-wrap:wrap;gap:.25rem}.webr-payment-workspace .pw-empty{padding:1.25rem 0;color:#64748b;font-size:.8rem}
 .webr-payment-workspace .pw-timeline-row{display:grid;grid-template-columns:85px minmax(0,1fr) minmax(0,1fr);gap:1rem;align-items:center;padding:.45rem 0;border-top:1px solid #f1f5f9;font-size:.75rem}.webr-payment-workspace .pw-track{display:grid;gap:.2rem}.webr-payment-workspace .pw-track i{height:4px;max-width:100%;background:#0f766e;border-radius:4px;display:block}.webr-payment-workspace .pw-track[data-currency=USD] i{background:#64748b}.webr-payment-workspace .pw-track span{font-variant-numeric:tabular-nums;overflow-wrap:anywhere}.webr-payment-workspace [aria-busy=true]>.pw-status:before{content:'';display:inline-block;width:6px;height:6px;border-radius:50%;background:#0f766e;margin-inline-end:.4rem;animation:pw-pulse 1s ease-in-out infinite alternate}@keyframes pw-pulse{to{opacity:.25}}@media(prefers-reduced-motion:reduce){.webr-payment-workspace [aria-busy=true]>.pw-status:before{animation:none}}
+
+.webr-payment-workspace .pw-trend-tabs{display:flex;gap:.3rem;flex-wrap:wrap}.webr-payment-workspace .pw-trend-tabs button[aria-pressed=true]{background:#0f172a;color:#fff;border-color:#0f172a}.webr-payment-workspace .pw-trend-range{display:flex;gap:.6rem;align-items:end;flex-wrap:wrap;margin:.5rem 0 1rem}.webr-payment-workspace .pw-trend-range label{flex:0 1 180px}.webr-payment-workspace .pw-trend-tools{display:flex;justify-content:space-between;gap:.75rem;flex-wrap:wrap;margin:.75rem 0}.webr-payment-workspace .pw-trend-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:1rem}.webr-payment-workspace .pw-trend-figure{margin:0;min-width:0;border:1px solid var(--pw-line);border-radius:.65rem;padding:.85rem}.webr-payment-workspace .pw-trend-heading{display:flex;justify-content:space-between;gap:.5rem;flex-wrap:wrap}.webr-payment-workspace .pw-trend-figure svg{display:block;width:100%;height:auto;margin-top:.5rem;overflow:visible}.webr-payment-workspace .pw-chart-grid{stroke:#e2e8f0;stroke-width:1}.webr-payment-workspace .pw-chart-line{stroke:#0f766e;stroke-width:2.5;stroke-linejoin:round}.webr-payment-workspace .pw-chart-dot{fill:#0f766e;stroke:white;stroke-width:1}.webr-payment-workspace [data-currency=USD] .pw-chart-line{stroke:#475569}.webr-payment-workspace [data-currency=USD] .pw-chart-dot{fill:#475569}.webr-payment-workspace .pw-chart-label{display:none;fill:#64748b;font:12px system-ui}.webr-payment-workspace .pw-chart-frame{display:grid;grid-template-columns:minmax(60px,22%) minmax(0,1fr);gap:.4rem;align-items:stretch}.webr-payment-workspace .pw-chart-scale span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-variant-numeric:tabular-nums}.webr-payment-workspace .pw-chart-scale{max-width:90px;display:flex;flex-direction:column;justify-content:space-between;padding:5% 0 13%;color:#475569;font-size:.68rem;line-height:1.4;overflow-wrap:anywhere}.webr-payment-workspace .pw-scroll-cue{display:none}.webr-payment-workspace .pw-chart-axis{display:flex;justify-content:space-between;gap:.5rem;color:#64748b;font-size:.75rem}.webr-payment-workspace .pw-chart-gap{fill:#b45309}.webr-payment-workspace .pw-account{min-width:145px;max-width:240px;overflow-wrap:anywhere}.webr-payment-workspace .pw-identifiers{font-size:.7rem}.webr-payment-workspace .pw-identifiers summary{font-size:.7rem;font-weight:400}.webr-payment-workspace .pw-ledger{min-width:940px}@media(max-width:767px){.webr-payment-workspace .pw-scroll-cue{display:block;color:#475569;font-size:.75rem;margin:.4rem 0}}@media(max-width:950px){.webr-payment-workspace .pw-trend-grid{grid-template-columns:minmax(0,1fr)}}
 @media(max-width:1100px){.webr-payment-workspace .pw-overview{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:600px){.webr-payment-workspace .pw-header{display:block}.webr-payment-workspace .pw-switch{width:max-content;margin-top:.8rem}.webr-payment-workspace h1{font-size:1.45rem}.webr-payment-workspace .pw-filter{padding:.8rem;gap:.5rem}.webr-payment-workspace label{flex-basis:42%}.webr-payment-workspace .pw-card,.webr-payment-workspace .pw-panel{padding:.85rem}.webr-payment-workspace .pw-currency-line{display:block}.webr-payment-workspace .pw-currency-line strong{display:block;font-size:1rem}.webr-payment-workspace .pw-timeline-row{grid-template-columns:70px minmax(0,1fr) minmax(0,1fr);gap:.6rem}.webr-payment-workspace .pw-pager{flex-direction:column;align-items:stretch}.webr-payment-workspace .pw-pager>div{flex-wrap:wrap;justify-content:space-between}}
 `;
     document.head.append(style);
@@ -130,7 +158,8 @@
     root.id = 'webr-payment-workspace';
     const active = new Set();
     const panels = {};
-    let closed = false, epoch = 0, scope = null;
+    let closed = false, epoch = 0, scope = null, trendGrain = 'day', trendMetric = 'amount', trendRange = null, trendRangePinned = false;
+    const trendInputs = {}, grainButtons = {};
     function authorized() {
       if (!closed && window.WEBR_ADMIN_SNAPSHOTS === bootstrap && bootstrap.owner === owner && window.gv_is_admin === true &&
           window.gv_role === '관리자' && location.pathname === path && root.isConnected &&
@@ -148,7 +177,7 @@
     installStyle();
     const header = node('header', 'pw-header'), heading = node('div');
     heading.append(node('p', 'pw-eyebrow', '결제 관리'), node('h1', '', balance ? '정산액 조회' : '결제 현황'),
-      node('p', 'pw-muted', '결제 수단과 통화를 한 화면에서 확인합니다. 금액은 통화별로 구분합니다.'));
+      node('p', 'pw-muted', balance ? '월별 수수료·세금·예상 정산액과 지급 내역을 확인합니다.' : '기간별 결제 흐름과 결제 계정을 확인합니다. KRW와 USD는 합산하지 않습니다.'));
     const tabs = node('nav', 'pw-switch'); tabs.setAttribute('aria-label', t('결제 메뉴'));
     for (const [href, title, selected] of [['/admin/payments/', '결제 현황', !balance], ['/admin/balance_account/', '정산액 조회', balance]]) {
       const a = node('a', '', title); a.href = href; if (selected) a.setAttribute('aria-current', 'page'); tabs.append(a);
@@ -174,13 +203,64 @@
     field('status', '원장 구분', '', [['completed', '완료 결제'], ['refund', '환불·취소'], ['diagnostic', '대기·확인 필요']]);
     const submit = node('button', '', '적용'); submit.type = 'submit'; form.append(submit); root.append(form);
     const scopeNote = node('p', 'pw-muted'); root.append(scopeNote);
-    for (const [name, title] of [['overview', '결제 요약'], ['timeline', '결제 흐름'], ['ledger', '통합 원장']]) {
+    for (const [name, title] of [['overview', balance ? '월별 정산 요약' : '선택 기간 결제 요약'], ['timeline', balance ? '월별 결제 내역' : '결제 추이'], ['ledger', balance ? '정산 확인 원장' : '결제 계정별 원장']]) {
       const element = node('section', name === 'overview' ? '' : 'pw-panel');
       element.dataset.section = name;
+      element.hidden = balance && name === "timeline";
       const head = node('div', 'pw-panel-head'); head.append(node('h2', '', title));
       const status = node('p', 'pw-status'); status.setAttribute('role', 'status'); status.setAttribute('aria-live', 'polite');
       const body = node('div'); element.append(head, status, body); root.append(element);
-      panels[name] = {element, status, body, data: null, reports: {}, controllers: {}, states: {}, pages: {KRW: 1, USD: 1}, cursors: {KRW: [''], USD: ['']}};
+      panels[name] = {element, head, status, body, data: null, reports: {}, controllers: {}, states: {}, pages: {KRW: 1, USD: 1}, cursors: {KRW: [''], USD: ['']}};
+    }
+    if (!balance) {
+      const tools = node('div', 'pw-trend-tools'), grains = node('div', 'pw-trend-tabs'), metrics = node('div', 'pw-trend-tabs');
+      grains.setAttribute('aria-label', t('추이 집계 단위')); metrics.setAttribute('aria-label', t('추이 지표'));
+      for (const [grain, title] of [['day', '일별'], ['month', '월별'], ['year', '연별']]) {
+        const button = node('button', '', title); button.type = 'button'; button.dataset.trendGrain = grain;
+        button.setAttribute('aria-pressed', String(grain === trendGrain)); grainButtons[grain] = button;
+        button.addEventListener('click', () => {
+          if (!authorized() || trendGrain === grain) return;
+          trendGrain = grain; panels.timeline.reports = {};
+          grains.querySelectorAll('button').forEach(n => n.setAttribute('aria-pressed', String(n === button)));
+          requestedCurrencies().forEach(c => load('trend', epoch, c));
+        }); grains.append(button);
+      }
+      for (const [metric, title] of [['amount', '결제액'], ['count', '건수']]) {
+        const button = node('button', '', title); button.type = 'button'; button.dataset.trendMetric = metric;
+        button.setAttribute('aria-pressed', String(metric === trendMetric));
+        button.addEventListener('click', () => {
+          if (!authorized()) return; trendMetric = metric;
+          metrics.querySelectorAll('button').forEach(n => n.setAttribute('aria-pressed', String(n === button))); paint('timeline');
+        }); metrics.append(button);
+      }
+      const presets = node('div', 'pw-trend-tabs'); presets.setAttribute('aria-label', t('추이 기간 선택'));
+      for (const [preset, title] of [['day', '이번 달 · 일별'], ['month', '올해 · 월별'], ['year', '최근 10년 · 연별']]) {
+        const button = node('button', '', title); button.type = 'button'; button.dataset.trendPreset = preset;
+        button.addEventListener('click', () => {
+          if (!authorized()) return;
+          const today = kstDay(), year = Number(today.slice(0, 4));
+          trendRange = preset === 'day' ? {from: today.slice(0, 7) + '-01', to: periodEnd(today.slice(0, 7))} :
+            {from: String(preset === 'year' ? year - 9 : year) + '-01-01', to: String(year) + '-12-31'};
+          trendGrain = preset; trendRangePinned = true; syncTrendControls(); reloadTrend();
+        }); presets.append(button);
+      }
+      const range = node('form', 'pw-trend-range');
+      range.setAttribute('aria-label', t('추이 전용 조회 기간'));
+      for (const [key, title] of [['from', '추이 시작일'], ['to', '추이 종료일']]) {
+        const wrap = node('label'), input = node('input'); input.type = 'date'; input.required = true; input.name = 'trend_' + key;
+        wrap.append(node('span', '', title), input); range.append(wrap); trendInputs[key] = input;
+      }
+      const rangeApply = node('button', '', '추이 기간 적용'); rangeApply.type = 'submit'; range.append(rangeApply);
+      range.addEventListener('submit', event => {
+        event.preventDefault(); if (!authorized()) return;
+        const from = trendInputs.from.value, to = trendInputs.to.value;
+        const days = (Date.parse(to) - Date.parse(from)) / 86400000 + 1, years = Number(to.slice(0, 4)) - Number(from.slice(0, 4)) + 1;
+        if (!validDate(from) || !validDate(to) || from > to || (trendGrain === 'year' ? years > 10 : days > 366)) {
+          label(panels.timeline.status, trendGrain === 'year' ? '연별 추이는 최대 10개 연도까지 조회할 수 있습니다.' : '일별·월별 추이는 366일 이내의 기간을 선택해 주세요.'); return;
+        }
+        trendRange = {from, to}; trendRangePinned = true; syncTrendControls(); reloadTrend();
+      });
+      tools.append(grains, metrics, presets); panels.timeline.head.after(tools); tools.after(range);
     }
     target.replaceChildren(root);
     const globalStatus = document.getElementById('webr-admin-read-status');
@@ -191,11 +271,11 @@
     document.addEventListener('visibilitychange', () => {
       if (document.hidden) { active.forEach(controller => controller.abort()); return; }
       if (!scope || !authorized()) return;
-      for (const group of ['summary', 'ledger']) for (const currency of requestedCurrencies()) {
-        const names = group === 'summary' ? ['overview', 'timeline'] : ['ledger'];
+      for (const group of (balance ? ['summary', 'ledger'] : ['summary', 'ledger', 'trend'])) for (const currency of requestedCurrencies()) {
+        const names = group === 'trend' ? ['timeline'] : group === 'summary' ? balance ? ['overview', 'timeline'] : ['overview'] : ['ledger'];
         const usable = names.some(name => {
           const source = panels[name].reports[currency]?.sources[currency];
-          return group === 'summary' ? ['complete', 'filtered', 'environment_required'].includes(source?.summary_state) : ['complete', 'filtered'].includes(source?.ledger_state);
+          return group === 'trend' ? ['complete', 'filtered', 'environment_required'].includes(source?.trend_state) : group === 'summary' ? ['complete', 'filtered', 'environment_required'].includes(source?.summary_state) : ['complete', 'filtered'].includes(source?.ledger_state);
         });
         if (!usable && names.some(name => ['pending', 'unavailable'].includes(panels[name].states[currency]))) load(group, epoch, currency);
       }
@@ -206,6 +286,18 @@
       Object.keys(panels).forEach(name => { if (panels[name].data) render(name, panels[name].data); });
     });
 
+    function syncTrendControls() {
+      if (balance || !trendRange) return;
+      trendInputs.from.value = trendRange.from; trendInputs.to.value = trendRange.to;
+      const long = (Date.parse(trendRange.to) - Date.parse(trendRange.from)) / 86400000 + 1 > 366;
+      Object.entries(grainButtons).forEach(([grain, button]) => {
+        button.setAttribute('aria-pressed', String(grain === trendGrain)); button.disabled = long && grain !== 'year';
+      });
+    }
+    function reloadTrend() {
+      panels.timeline.reports = {};
+      requestedCurrencies().forEach(c => load('trend', epoch, c));
+    }
     function table(headers, className = '') {
       const wrap = node('div', 'pw-scroll'), table = node('table', className), head = table.createTHead().insertRow();
       wrap.tabIndex = 0; wrap.setAttribute('aria-label', t('표의 나머지 열은 가로로 스크롤하여 확인할 수 있습니다.'));
@@ -224,14 +316,17 @@
     function revenueScope() { return scope.environment === 'live' || scope.environment === 'sandbox'; }
     function renderOverview(payload) {
       const body = panels.overview.body, fragment = document.createDocumentFragment(), cards = node('div', 'pw-overview');
-      for (const [title, kind] of [['완료 결제액', 'amount'], ['완료 건수', 'count'], ['수수료 추정', 'fee'], ['예상 정산액', 'net']]) {
+      for (const [title, kind] of (balance ? [['총 결제액', 'amount'], ['부가세', 'tax'], ['수수료 추정', 'fee'], ['예상 정산액', 'net']] : [['완료 결제액', 'amount'], ['완료 건수', 'count'], ['권한 적용 확인', 'applied'], ['검토 필요', 'review']])) {
         const card = node('section', 'pw-card'); card.append(node('h3', '', title));
         currencies.forEach(c => {
           const metrics = payload.overview[c], breakdown = payload.breakdown[c];
           let value = t(payload.sources[c].state === 'pending' ? '확인 중' : payload.sources[c].state === 'filtered' ? '선택 제외' : '확인되지 않음');
           if (revenueScope() && payload.sources[c].summary_state === 'complete') {
-            if (kind === 'amount') value = money(metrics?.completed_amount_minor, c);
+            if (kind === 'amount') value = balance && c === 'KRW' ? money(breakdown?.amt_total, c, false) : money(metrics?.completed_amount_minor, c);
             if (kind === 'count' && integer(metrics?.completed_count)) value = metrics.completed_count.toLocaleString() + ' ' + t('건');
+            if (kind === 'applied' && integer(metrics?.membership_applied_count)) value = metrics.membership_applied_count.toLocaleString() + ' ' + t('건');
+            if (kind === 'review' && integer(metrics?.review_count)) value = metrics.review_count.toLocaleString() + ' ' + t('건');
+            if (kind === 'tax') value = money(breakdown?.amt_tax, c, false);
             if (kind === 'fee') value = money(breakdown?.amt_toss, c, false);
             if (kind === 'net') value = money(breakdown?.amt_result, c, false);
           }
@@ -239,13 +334,13 @@
         }); cards.append(card);
       }
       fragment.append(cards, node('p', 'pw-status', scope.environment === 'sandbox' ? '테스트 결제는 실제 매출이나 정산액이 아닙니다.' :
-        revenueScope() ? 'KRW 수수료·세금·정산액은 기존 산식의 추정값입니다. USD 수수료와 실수령액은 기록되지 않았습니다.' : '환경을 선택하면 해당 환경의 합계를 확인할 수 있습니다. 실제·테스트 금액은 합산하지 않습니다.'));
-      const detail = node('details'); detail.append(node('summary', '', '금액 상세 · 누적 기간 · 상품 구성'));
+        revenueScope() ? balance ? 'KRW 수수료·세금·정산액은 기존 산식의 추정값입니다. USD 수수료와 실수령액은 기록되지 않았습니다.' : '완료가 확인된 결제만 집계합니다. 대기·환불·확인 필요 내역은 원장에서 구분합니다.' : '환경을 선택하면 해당 환경의 합계를 확인할 수 있습니다. 실제·테스트 금액은 합산하지 않습니다.'));
+      const detail = node('details'); detail.open = balance; detail.append(node('summary', '', balance ? '정산 산식 · 수수료·세금 상세' : '누적 기간 · 상품 구성 · 권한 상태'));
       const breakdownTable = table(['정산 항목', 'KRW', 'USD']);
       for (const [title, key] of [['총 결제액', 'amt_total'], ['부가세', 'amt_tax'], ['Toss 수수료', 'amt_toss'], ['운영 수수료', 'amt_statground'], ['소득세', 'amt_benefit_tax'], ['예상 정산액', 'amt_result']]) {
         cells(breakdownTable.body.insertRow(), [t(title), ...currencies.map(c => revenueScope() ? money(payload.breakdown[c]?.[key], c, false) : t('확인되지 않음'))]);
       }
-      detail.append(breakdownTable.wrap, node('p', 'pw-muted', '원화 산식을 PayPal 금액에 적용하지 않습니다.'));
+      if (balance) detail.append(breakdownTable.wrap, node('p', 'pw-muted', '원화 산식을 PayPal 금액에 적용하지 않습니다.'));
       const windows = table(['누적 기준', 'KRW 완료 금액 / 건수', 'USD 완료 금액 / 건수']);
       for (const [key, title] of [['all', '전체 기간'], ['year', '올해'], ['month', '이번 달'], ['today', '오늘']]) {
         cells(windows.body.insertRow(), [t(title), ...currencies.map(c => {
@@ -266,8 +361,77 @@
       }
       fragment.append(detail); body.replaceChildren(fragment);
     }
+    function trendFigure(buckets, currency, metric) {
+      const figure = node('figure', 'pw-trend-figure'); figure.dataset.currency = currency;
+      const amount = metric === 'amount', key = amount ? 'amount_minor' : 'count';
+      const metricTitle = amount ? '완료 결제액' : scope.status === 'completed' ? '완료 건수' : scope.status === 'refund' ? '환불 검토 결제 건수' : '대기·확인 필요 건수';
+      const text = value => value === null ? t('확인되지 않음') : amount ? money(value, currency) : decimalText(value) + ' ' + t('건');
+      const values = buckets.map(row => row.complete === true && row[key] !== null ? BigInt(String(row[key])) : null);
+      const known = values.filter(value => value !== null), maximum = known.reduce((a, b) => a > b ? a : b, 0n);
+      const heading = node('figcaption', 'pw-trend-heading');
+      heading.append(node('strong', '', currency + ' · ' + t(metricTitle)),
+        node('span', 'pw-muted', known.length ? t('최대') + ' ' + text(maximum.toString()) : t('확인된 데이터 없음')));
+      figure.append(heading);
+      if (!known.length) figure.append(node('p', 'pw-empty', '이 통화의 흐름을 아직 확인하지 못했습니다. 누락 구간을 0으로 표시하지 않습니다.'));
+      else {
+        const ns = 'http://www.w3.org/2000/svg';
+        const svgNode = (tag, attrs, content) => {
+          const n = document.createElementNS(ns, tag); Object.entries(attrs).forEach(([k, v]) => n.setAttribute(k, String(v)));
+          if (content != null) n.textContent = content; return n;
+        };
+        const chart = svgNode('svg', {viewBox: '0 0 620 214', role: 'img', 'aria-label': currency + ' ' + t(metricTitle) + ' ' + t('추이')});
+        chart.append(svgNode('title', {}, currency + ' ' + t('통화별 독립 눈금. 확인되지 않은 구간은 연결하지 않습니다.')));
+        [24, 90, 156].forEach(y => chart.append(svgNode('line', {x1: 24, y1: y, x2: 596, y2: y, class: 'pw-chart-grid'})));
+        chart.append(svgNode('text', {x: 12, y: 160, 'text-anchor': 'end', class: 'pw-chart-label'}, '0'));
+        const x = index => buckets.length === 1 ? 310 : 24 + index / (buckets.length - 1) * 572;
+        const y = value => 156 - (maximum ? Number(value * 10000n / maximum) / 10000 : 0) * 132;
+        let path = '';
+        values.forEach((value, index) => {
+          if (value === null) { path += ' '; return; }
+          path += (index === 0 || values[index - 1] === null ? 'M' : 'L') + x(index).toFixed(2) + ',' + y(value).toFixed(2) + ' ';
+        });
+        chart.append(svgNode('path', {d: path, fill: 'none', class: 'pw-chart-line'}));
+        values.forEach((value, index) => {
+          if (value === null) {
+            chart.append(svgNode('text', {x: x(index), y: 180, 'text-anchor': 'middle', class: 'pw-chart-gap'}, '·'));
+            return;
+          }
+          const dot = svgNode('circle', {cx: x(index), cy: y(value), r: 3, class: 'pw-chart-dot', tabindex: '0', 'aria-label': buckets[index].period + ' · ' + text(value.toString())});
+          dot.append(svgNode('title', {}, buckets[index].period + ' · ' + text(value.toString()))); chart.append(dot);
+        });
+        [...new Set([0, Math.floor((buckets.length - 1) / 2), buckets.length - 1])].forEach(index => {
+          chart.append(svgNode('text', {x: x(index), y: 202, 'text-anchor': index === 0 ? 'start' : index === buckets.length - 1 ? 'end' : 'middle', class: 'pw-chart-label'}, buckets[index].period));
+        });
+        const frame = node('div', 'pw-chart-frame'), scale = node('div', 'pw-chart-scale');
+        [maximum, maximum / 2n, 0n].forEach(value => scale.append(node('span', '', amount ? money(value.toString(), currency).replace(/\s+(KRW|USD)$/, '') : decimalText(value.toString()))));
+        frame.append(scale, chart); figure.append(frame);
+        const axis = node('div', 'pw-chart-axis');
+        [...new Set([0, Math.floor((buckets.length - 1) / 2), buckets.length - 1])].forEach(index => axis.append(node('span', '', buckets[index].period)));
+        figure.append(axis);
+        if (maximum === 0n) figure.append(node('p', 'pw-muted', scope.status === 'completed' ? '확인된 구간의 완료 결제는 0입니다.' : '확인된 구간의 기록은 0건입니다.'));
+        if (known.length < buckets.length) figure.append(node('p', 'pw-muted', '확인되지 않은 구간은 선을 연결하거나 0으로 채우지 않습니다.'));
+      }
+      const detail = node('details'); detail.append(node('summary', '', currency + ' · ' + t('기간별 정확한 값')));
+      const rows = table(['기간', scope.status === 'completed' ? '완료 금액' : '금액 미기록', scope.status === 'completed' ? '완료 건수' : '기록 건수', '확인 상태']);
+      buckets.forEach(row => cells(rows.body.insertRow(), [row.period, row.complete ? money(row.amount_minor, currency) : t('확인되지 않음'),
+        row.complete && row.count !== null ? decimalText(row.count) : t('확인되지 않음'), t(row.complete ? '확인됨' : '미확인')]));
+      detail.append(rows.wrap); figure.append(detail); return figure;
+    }
     function renderTimeline(payload) {
       const body = panels.timeline.body;
+      if (!balance) {
+        if (!revenueScope()) { body.replaceChildren(node('p', 'pw-empty', '환경을 선택하면 통화별 결제 추이를 확인할 수 있습니다.')); return; }
+        const fragment = document.createDocumentFragment(), charts = node('div', 'pw-trend-grid');
+        fragment.append(node('p', 'pw-muted', trendRange.from + ' – ' + trendRange.to + ' · ' + t('추이 조회 기간 · 통화별 독립 눈금입니다. KRW와 USD 금액을 서로 더하거나 비교하지 않습니다.')));
+        fragment.append(node('p', 'pw-muted', '추이 기간은 위 요약·원장 기간과 별도입니다. 결제 수단·통화·환경·원장 구분은 함께 적용합니다.'));
+        if (scope.status !== 'completed') fragment.append(node('p', 'pw-status', '환불·검토 분류는 원결제 활동일 기준의 건수입니다. 실제 환불일·환불액이나 새 매출을 뜻하지 않습니다.'));
+        requestedCurrencies().forEach(c => {
+          const series = payload.series?.[c];
+          if (!series || series.state !== 'complete') {
+            const card = node('div', 'pw-trend-figure'); card.append(node('strong', '', c), node('p', 'pw-empty', panels.timeline.states[c] === 'pending' ? '결제 흐름을 확인하고 있습니다.' : '결제 흐름이 확인되지 않았습니다. 누락 구간을 0으로 표시하지 않습니다.')); charts.append(card);
+          } else charts.append(trendFigure(series.buckets, c, scope.status === 'completed' ? trendMetric : 'count'));
+        }); fragment.append(charts); body.replaceChildren(fragment); return;
+      }
       if (!revenueScope()) { body.replaceChildren(node('p', 'pw-empty', '환경별 흐름은 실제 또는 테스트 환경을 선택한 뒤 확인할 수 있습니다.')); return; }
       if (!payload.timeline.length) { body.replaceChildren(node('p', 'pw-empty', requestedCurrencies().some(c => panels.timeline.states[c] === 'pending') ?
         '통화별 결제 흐름을 확인하고 있습니다.' : payload.complete ? '선택한 기간에 확인된 완료 결제가 없습니다.' : '결제 흐름을 확인하지 못했습니다.')); return; }
@@ -292,20 +456,29 @@
       if (!report.rows.length) fragment.append(node('p', 'pw-empty', requestedCurrencies().some(c => panels.ledger.states[c] === 'pending') ? '통화별 결제 원장을 확인하고 있습니다.' :
         report.state === 'complete' || report.state === 'filtered' ? '선택한 조건에 해당하는 내역이 없습니다.' : '일부 결제 원장을 확인하지 못했습니다.'));
       else {
-        const result = table(['일시', '상품 · 결제 식별자', '수단 · 통화 · 환경', '금액', '상태 · 권한'], 'pw-ledger');
+        const result = table(['일시', '결제 계정', '상품', '수단 · 통화 · 환경', '금액', '상태 · 권한'], 'pw-ledger');
         report.rows.forEach(row => {
           const when = node('div'), date = row.activity_at;
           when.append(node('div', '', date ? new Intl.DateTimeFormat(undefined, {timeZone: 'Asia/Seoul', dateStyle: 'short', timeStyle: 'short'}).format(new Date(date)) : '일자 미확인'),
             node('div', 'pw-muted', row.time_basis === 'membership_applied' ? '권한 반영일' : row.confirmed_at ? '결제 확인일' : '생성일 · 완료 미확인'));
-          const product = node('div'); product.append(literal('div', '', row.product_name || row.product_id || t('상품 미확인')), literal('div', 'pw-muted', row.id));
-          if (row.owner_id) product.append(literal('div', 'pw-muted', t('계정') + ' · ' + row.owner_id));
+          const account = node('div', 'pw-account'); account.dataset.paymentAccount = '';
+          const identity = row.account || {}, known = ['email', 'nickname', 'name'].filter(key => typeof identity[key] === 'string' && identity[key].trim());
+          if (known.length) {
+            account.append(literal('strong', '', identity[known[0]]));
+            known.slice(1).forEach(key => account.append(literal('div', 'pw-muted', identity[key])));
+          } else account.append(node('div', 'pw-muted', row.account_state === 'unavailable' ? '계정 정보를 확인하지 못했습니다.' : '계정 정보가 확인되지 않습니다.'));
+          const identifiers = node('details', 'pw-identifiers'); identifiers.append(node('summary', '', '기술 식별자'));
+          identifiers.append(literal('div', 'pw-muted', row.id));
+          if (row.owner_id) identifiers.append(literal('div', 'pw-muted', row.owner_id));
+          account.append(identifiers);
+          const product = literal('div', '', row.product_name || row.product_id || t('상품 미확인'));
           const source = node('div'); source.append(badge(row.kind === 'subscription' ? '정기결제' : '단건 결제'), badge(row.provider === 'paypal' ? 'PayPal' : 'Toss'), badge(row.currency), badge(row.environment === 'live' ? '실제' : row.environment === 'sandbox' ? '테스트' : '환경 미확인', row.environment !== 'live', row.environment === 'live'));
           const amount = node('span', 'pw-amount'); amount.textContent = money(row.amount_minor, row.currency);
           const state = node('div'); state.append(badge(row.status, row.review_required));
           state.append(node('div', 'pw-muted', row.granted === null ? '권한 확인되지 않음' : row.grant_status === 'applied' && row.granted ? '권한 반영됨' : row.grant_status === 'canceled' ? '권한 취소됨' : '권한 미반영'));
           if (row.review_required) state.append(node('div', 'pw-muted', '확인 필요'));
-          cells(result.body.insertRow(), [when, product, source, amount, state]);
-        }); fragment.append(result.wrap);
+          cells(result.body.insertRow(), [when, account, product, source, amount, state]);
+        }); fragment.append(node('p', 'pw-scroll-cue', '표를 좌우로 밀어 결제 금액과 상태를 확인하세요.'), result.wrap);
       }
       const pager = node('nav', 'pw-pager'); pager.setAttribute('aria-label', t('결제 원장 페이지'));
       pager.append(node('span', 'pw-muted', '통화별 최대 50건 · 현재 페이지를 함께 시간순으로 표시합니다.'));
@@ -348,7 +521,7 @@
     function combined(name) {
       const panel = panels[name], wanted = requestedCurrencies();
       const result = {complete: wanted.every(c => panel.reports[c] && (name === 'ledger' ? ['complete', 'filtered'].includes(panel.reports[c].sources[c].ledger_state) :
-        ['complete', 'filtered', 'environment_required'].includes(panel.reports[c].sources[c].summary_state))), sources: {}, overview: {}, breakdown: {}, windows: {}, products: [], timeline: [], ledger: {state: 'partial', rows: [], total: null, has_more: false}};
+        ['complete', 'filtered', 'environment_required'].includes(panel.reports[c].sources[c][name === 'timeline' && !balance ? 'trend_state' : 'summary_state']))), sources: {}, overview: {}, breakdown: {}, windows: {}, products: [], timeline: [], series: {}, ledger: {state: 'partial', rows: [], total: null, has_more: false}};
       const days = new Map();
       currencies.forEach(c => {
         const report = panel.reports[c];
@@ -356,6 +529,7 @@
         result.overview[c] = report?.overview?.[c] || null;
         result.breakdown[c] = report?.breakdown?.[c] || null;
         result.windows[c] = report?.windows?.[c] || null;
+        result.series[c] = report?.series || null;
         result.products.push(...(report?.products || []).filter(row => row.currency === c));
         (report?.timeline || []).forEach(row => {
           if (!days.has(row.date)) days.set(row.date, {date: row.date, KRW: null, USD: null});
@@ -382,9 +556,9 @@
     }
     async function load(group, ownEpoch, currency) {
       if (!authorized()) return;
-      const names = group === 'summary' ? ['overview', 'timeline'] : ['ledger'];
-      const expected = {...scope, currency, section: group, page: group === 'ledger' ? panels.ledger.pages[currency] : 1,
-        cursor: group === 'ledger' ? panels.ledger.cursors[currency][panels.ledger.pages[currency] - 1] : ''}, controller = new AbortController();
+      const names = group === 'trend' ? ['timeline'] : group === 'summary' ? balance ? ['overview', 'timeline'] : ['overview'] : ['ledger'];
+      const expected = {...scope, ...(group === 'trend' ? trendRange : {}), currency, section: group, page: group === 'ledger' ? panels.ledger.pages[currency] : 1,
+        cursor: group === 'ledger' ? panels.ledger.cursors[currency][panels.ledger.pages[currency] - 1] : '', ...(group === 'trend' ? {grain: trendGrain} : {})}, controller = new AbortController();
       names.forEach(name => { const panel = panels[name]; panel.controllers[currency]?.abort(); panel.controllers[currency] = controller; panel.states[currency] = 'pending'; paint(name); });
       active.add(controller);
       const timer = setTimeout(() => controller.abort(), requestBudgets[currency]);
@@ -401,8 +575,8 @@
         if (response.status === 503 && object(payload) && payload.error === 'authority_unavailable') { retire(); return; }
         if (!response.ok) throw new Error('payment_section_unavailable');
         if (payload.admin_snapshot_owner !== owner) { retire(); return; }
-        if (!names.every(name => validate(payload, expected, name, owner))) throw new Error('payment_section_invalid');
-        names.forEach(name => { panels[name].reports[currency] = payload; panels[name].states[currency] = name === 'ledger' ? payload.sources[currency].ledger_state : payload.sources[currency].summary_state; });
+        if (!names.every(name => validate(payload, expected, group === 'trend' ? 'trend' : name, owner))) throw new Error('payment_section_invalid');
+        names.forEach(name => { panels[name].reports[currency] = payload; panels[name].states[currency] = name === 'ledger' ? payload.sources[currency].ledger_state : group === 'trend' ? payload.sources[currency].trend_state : payload.sources[currency].summary_state; });
       } catch (_) {
         if (!current()) return;
         names.forEach(name => { panels[name].states[currency] = 'unavailable'; });
@@ -424,6 +598,10 @@
       }
       ++epoch; active.forEach(controller => controller.abort()); active.clear();
       scope = {from, to, environment: inputs.environment.value, provider: inputs.provider.value, currency: inputs.currency.value, status: inputs.status.value, page: 1, page_size: 50};
+      if (!trendRangePinned) trendRange = {from, to};
+      if (scope.status !== 'completed') trendMetric = 'count';
+      root.querySelectorAll('[data-trend-metric]').forEach(button => { button.disabled = scope.status !== 'completed' && button.dataset.trendMetric === 'amount'; button.setAttribute('aria-pressed', String(button.dataset.trendMetric === trendMetric)); });
+      syncTrendControls();
       scopeNote.textContent = from + ' – ' + to + ' · ' + t(scope.environment === 'live' ? '실제 결제' : scope.environment === 'sandbox' ? '테스트 결제' : '환경별 합계 구분 필요');
       Object.values(panels).forEach(panel => { panel.data = null; panel.reports = {}; panel.states = {}; panel.pages = {KRW: 1, USD: 1}; panel.cursors = {KRW: [''], USD: ['']}; panel.body.replaceChildren(); });
       if (!requestedCurrencies().length) {
@@ -432,7 +610,7 @@
         return;
       }
       renderOverview({overview: {KRW: null, USD: null}, breakdown: {KRW: null, USD: null}, windows: {KRW: null, USD: null}, products: [], sources: {KRW: {state: 'unavailable'}, USD: {state: 'unavailable'}}});
-      ['summary', 'ledger'].forEach(group => requestedCurrencies().forEach(currency => load(group, epoch, currency)));
+      (balance ? ['summary', 'ledger'] : ['summary', 'ledger', 'trend']).forEach(group => requestedCurrencies().forEach(currency => load(group, epoch, currency)));
     }
     form.addEventListener('submit', event => { event.preventDefault(); apply(); });
     instance = Object.freeze({mount: () => instance, stop: retire});
