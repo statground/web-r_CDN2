@@ -90,7 +90,7 @@
       ['live', 'sandbox', 'unknown'].includes(row.environment) && (expected.environment === 'all' || row.environment === expected.environment) && typeof row.id === 'string' && typeof row.status === 'string' &&
       (row.amount_minor === null || minor(row.amount_minor)) && (row.confirmed_at === null || timestamp(row.confirmed_at)) &&
       (row.created_at === null || timestamp(row.created_at)) && timestamp(row.activity_at) && typeof row.review_required === 'boolean' && (row.granted === null || typeof row.granted === 'boolean') && row.classification === expected.status &&
-      (expected.status !== 'completed' || row.status === (row.provider === 'toss' ? 'DONE' : 'COMPLETED') && !row.review_required && timestamp(row.confirmed_at)));
+      (expected.status !== 'completed' || row.status === (row.provider === 'paypal' ? 'COMPLETED' : row.kind === 'subscription' ? 'paid' : 'DONE') && !row.review_required && timestamp(row.confirmed_at)));
   }
 
   function installStyle() {

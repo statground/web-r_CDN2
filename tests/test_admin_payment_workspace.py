@@ -131,6 +131,7 @@ class PaymentWorkspace(unittest.IsolatedAsyncioTestCase):
                         second = query['cursor'] == 'opaque-KRW-page-2'
                         value['ledger']['rows'][0]['id'] = 'fixture-page-2' if second else 'fixture-page-1'
                         value['ledger']['rows'][0]['kind'] = 'subscription' if second else 'one_time'
+                        value['ledger']['rows'][0]['status'] = 'paid' if second else 'DONE'
                         value['ledger']['has_more'] = not second
                         value['ledger']['next_cursor'] = None if second else 'opaque-KRW-page-2'
                 if self.keyset and query['currency'] == 'USD' and query['section'] == 'ledger':
@@ -369,6 +370,27 @@ class PaymentWorkspace(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(await self.page.evaluate('window.fixtureAborts'), 4)
         self.assertEqual(len(self.calls), 4)
         self.assertNotIn('123,450', await self.page.locator('#webr-payment-workspace').inner_text())
+
+    async def test_toss_recurring_paid_status_keeps_legacy_and_paypal_gates(self):
+        self.gates['KRW'].set(); self.gates['USD'].set()
+        await self.start()
+        query=dict(self.calls[0],currency='KRW',section='ledger')
+        recurring=payload('KRW',query)
+        recurring['ledger']['rows'][0].update(kind='subscription',status='paid',granted=True,grant_status='applied')
+        results=await self.page.evaluate('''({data,owner})=>{
+          const validate=window.WebRPaymentWorkspace.validate,run=v=>validate(v,v.scope,'ledger',owner);
+          const clone=()=>JSON.parse(JSON.stringify(data));
+          const positive=run(data),bad=[];
+          for(const status of ['DONE','pending','failed']){const v=clone();v.ledger.rows[0].status=status;bad.push(run(v));}
+          const review=clone();review.ledger.rows[0].review_required=true;bad.push(run(review));
+          const noDate=clone();noDate.ledger.rows[0].confirmed_at=null;bad.push(run(noDate));
+          const legacy=clone();legacy.ledger.rows[0].kind='one_time';bad.push(run(legacy));
+          legacy.ledger.rows[0].status='DONE';const legacyValid=run(legacy);
+          const paypal=clone();paypal.scope.currency='USD';Object.assign(paypal.ledger.rows[0],{provider:'paypal',currency:'USD'});bad.push(run(paypal));
+          paypal.ledger.rows[0].status='COMPLETED';const paypalValid=run(paypal);
+          return {positive,legacyValid,paypalValid,bad};
+        }''',{'data':recurring,'owner':OWNER})
+        self.assertEqual(results,{'positive':True,'legacyValid':True,'paypalValid':True,'bad':[False]*7})
 
 
 if __name__ == '__main__':
