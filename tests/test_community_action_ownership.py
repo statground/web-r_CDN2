@@ -168,24 +168,14 @@ class CommunityActionTests(unittest.TestCase):
         self.assertEqual(page.evaluate('Object.values(communityState.commentData).length'), 1)
         self.assertEqual(page.evaluate('calls.length'), 1)
 
-    def test_pending_article_with_error_uses_only_remaining_save_deadline(self):
-        page = self.render()
-        page.evaluate("responses.push({hold:true});void submit_write().finally(()=>done=true)")
-        page.wait_for_function('held.length===1')
-        page.clock.run_for(30000)
-        page.evaluate("responses.push({holdBody:true});held.shift()({ok:true,status:200,json:async()=>({pending:true,uuid:orderID,error:'visibility not confirmed'})})")
-        page.wait_for_function('calls.length===2 && held.length===1')
-        self.assertNotIn('글이 저장되었습니다', page.locator('#div_button_list').inner_text())
-        self.assertNotIn(ID, page.locator('#div_button_list').inner_text())
-        self.assertEqual(page.locator('#div_button_list button').count(), 0)
-        page.clock.run_for(15001)
-        page.wait_for_function('done')
-        self.assertEqual(page.evaluate('calls.length'), 2)
-        self.assertEqual(page.evaluate("calls.filter(c=>c.endpoint.includes('insert_article')).length"), 1)
-        self.assertTrue(page.evaluate('sessionStorage.length>0'))
-        self.assertEqual(page.locator('#txt_title').input_value(), 'Unsent fixture title')
-        self.assertIn('Unsent fixture body', page.locator('#txt_content').input_value())
-        self.assertEqual(page.locator('#div_button_list [aria-busy="false"]').count(), 1)
+    def article_pending(self, operation='insert'):
+        return dict(checker='PENDING', pending=True, uuid=ID, receipt=dict(operation=operation, uuid=ID,
+            marker=CID, previous_version_ms=0 if operation == 'insert' else 123, fingerprint='a' * 64))
+
+    def article_ack(self, operation='insert', **changes):
+        result = dict(checker='SUCCESS', uuid=ID, receipt_verified=True, active=0 if operation == 'delete' else 1)
+        result.update(changes)
+        return result
 
     def pending_detail(self, **changes):
         body = dict(uuid=ID, title='Unsent fixture title', content='<p>Unsent fixture body</p>',
@@ -193,15 +183,146 @@ class CommunityActionTests(unittest.TestCase):
         body.update(changes)
         return body
 
-    def test_pending_article_confirms_exact_current_payload_before_upload(self):
+    def test_article_unknown_initial_response_never_replays_write(self):
+        for operation in ('insert', 'update', 'delete'):
+            for failure in ('network', 'body_timeout', 'missing_id', 'wrong_id'):
+                with self.subTest(operation=operation, failure=failure):
+                    page = self.render('read' if operation == 'delete' else 'write')
+                    action = {'insert': 'submit_write', 'update': 'submit_edit', 'delete': 'click_btn_delete'}[operation]
+                    if failure == 'network':
+                        page.evaluate('responses.push({reject:true})')
+                    elif failure == 'body_timeout':
+                        page.evaluate('responses.push({holdBody:true})')
+                    else:
+                        body = self.article_pending(operation)
+                        body['uuid'] = 'invalid' if failure == 'wrong_id' else None
+                        page.evaluate('(body)=>responses.push({body})', body)
+                    page.evaluate('void ' + action + '().finally(()=>done=true)')
+                    if failure == 'body_timeout':
+                        page.wait_for_function('held.length===1')
+                        page.clock.run_for(45001)
+                    page.wait_for_function('done')
+                    page.evaluate('done=false;void ' + action + '().finally(()=>done=true)')
+                    page.wait_for_function('done')
+                    self.assertEqual(page.evaluate('calls.length'), 1)
+                    self.assertEqual(page.evaluate('communityArticlePendingReceipts.size'), 1)
+                    if operation != 'delete':
+                        self.assertEqual(page.locator('#txt_title').input_value(), 'Unsent fixture title')
+                    page.close()
+
+    def test_article_receipt_uses_remaining_deadline_and_never_reposts(self):
         page = self.render()
-        page.evaluate("window.uploads=[];uploadQueuedFiles=async(files,options)=>{uploads.push({ack:options.state.acknowledged,uuid:options.articleUUID});cancelCommunityAction(options.state);};responses.push({body:{pending:true,uuid:orderID,error:'visibility not confirmed'}},{body:{not_found:true}});void submit_write().finally(()=>done=true)")
-        page.wait_for_function('calls.length===2')
-        page.evaluate('(body)=>responses.push({body})', self.pending_detail())
-        page.clock.run_for(1001)
+        page.evaluate("responses.push({hold:true});void submit_write().finally(()=>done=true)")
+        page.wait_for_function('held.length===1')
+        page.clock.run_for(30000)
+        page.evaluate('(body)=>{responses.push({holdBody:true});held.shift()({ok:true,status:200,json:async()=>body})}', self.article_pending())
+        page.wait_for_function('calls.length===2 && held.length===1')
+        self.assertEqual(page.evaluate('calls[1].endpoint'), '/blank/ajax_board/get_article_mutation_receipt/')
+        self.assertNotIn(ID, page.locator('[data-webr-community-action-status]').inner_text())
+        page.clock.run_for(15001)
         page.wait_for_function('done')
-        self.assertEqual(page.evaluate('calls.map(c=>c.endpoint)'), ['/blank/ajax_board/insert_article/', '/blank/ajax_board/get_read_article/', '/blank/ajax_board/get_read_article/'])
-        self.assertEqual(page.evaluate('uploads'), [dict(ack=True, uuid=ID)])
+        page.evaluate('done=false;void submit_write().finally(()=>done=true)')
+        page.wait_for_function('done')
+        self.assertEqual(page.evaluate('calls.length'), 2)
+        self.assertEqual(page.locator('#txt_title').input_value(), 'Unsent fixture title')
+        self.assertIn('Unsent fixture body', page.locator('#txt_content').input_value())
+
+    def test_article_receipt_exact_ack_precedes_upload_and_reuses_submitted_fields(self):
+        for operation in ('insert', 'update'):
+            with self.subTest(operation=operation):
+                page = self.render()
+                page.evaluate("window.uploads=[];uploadQueuedFiles=async(files,options)=>{uploads.push({ack:options.state.acknowledged,uuid:options.articleUUID});cancelCommunityAction(options.state);};void 0")
+                page.evaluate('(body)=>responses.push({body},{body:{checker:"PENDING",pending:true,uuid:orderID}})', self.article_pending(operation))
+                page.evaluate('void ' + ('submit_write' if operation == 'insert' else 'submit_edit') + '().finally(()=>done=true)')
+                page.wait_for_function('calls.length===2')
+                page.evaluate('(body)=>responses.push({body})', self.article_ack(operation))
+                page.clock.run_for(1001)
+                page.wait_for_function('done')
+                self.assertEqual(page.evaluate('uploads'), [dict(ack=True, uuid=ID)])
+                self.assertEqual(page.evaluate('calls.slice(1).every(c=>c.endpoint.endsWith("get_article_mutation_receipt/"))'), True)
+                self.assertEqual(page.evaluate('calls[1].fields.txt_title'), 'Unsent fixture title')
+                self.assertEqual(page.evaluate('calls[1].fields.txt_content'), '<p>Unsent fixture body</p>')
+                self.assertEqual(page.evaluate('JSON.parse(calls[1].fields.receipt).operation'), operation)
+                page.close()
+
+    def test_article_receipt_wrong_ack_and_bare_pending_cannot_promote_detail(self):
+        for changes in (dict(active=0), dict(uuid=CID), dict(receipt_verified=False), dict(pending=True)):
+            with self.subTest(changes=changes):
+                page = self.render()
+                page.evaluate('(values)=>responses.push(...values.map(body=>({body})))', [self.article_pending(), self.article_ack(**changes)])
+                page.evaluate('window.uploads=0;uploadQueuedFiles=async()=>uploads++;void submit_write().finally(()=>done=true)')
+                page.wait_for_function('done')
+                self.assertEqual(page.evaluate('uploads'), 0)
+                self.assertEqual(page.evaluate('calls.length'), 2)
+                self.assertEqual(page.locator('#txt_title').input_value(), 'Unsent fixture title')
+                page.close()
+        page = self.render()
+        page.evaluate("responses.push({body:{pending:true,uuid:orderID,error:'unconfirmed'}},{body:{uuid:orderID,title:'Unsent fixture title'}});void submit_write().finally(()=>done=true)")
+        page.wait_for_function('done')
+        page.evaluate('done=false;void submit_write().finally(()=>done=true)')
+        page.wait_for_function('done')
+        self.assertEqual(page.evaluate('calls.length'), 1)
+
+    def test_article_receipt_total_three_across_repeat_save_and_draft_change(self):
+        page = self.render()
+        page.evaluate('(body)=>responses.push({body},...Array.from({length:3},()=>({body:{checker:"PENDING",pending:true,uuid:orderID}})))', self.article_pending())
+        page.evaluate('void submit_write().finally(()=>done=true)')
+        page.wait_for_function('calls.length===2')
+        page.clock.run_for(2001)
+        page.wait_for_function('done')
+        page.evaluate('done=false;void submit_write().finally(()=>done=true)')
+        page.wait_for_function('done')
+        page.locator('#txt_title').fill('New draft retained')
+        page.evaluate('done=false;void submit_write().finally(()=>done=true)')
+        page.wait_for_function('done')
+        self.assertEqual(page.evaluate('calls.length'), 4)
+        self.assertEqual(page.evaluate('communityArticlePendingReceipts.size'), 1)
+        self.assertEqual(page.locator('#txt_title').input_value(), 'New draft retained')
+
+    def test_article_receipt_delete_requires_active_zero_and_never_absence(self):
+        for response in (dict(not_found=True), self.article_ack('delete', active=1)):
+            with self.subTest(response=response):
+                page = self.render('read')
+                page.evaluate('(values)=>responses.push(...values.map(body=>({body})))', [self.article_pending('delete'), response])
+                page.evaluate('void click_btn_delete().finally(()=>done=true)')
+                page.wait_for_function('done')
+                self.assertEqual(page.evaluate('calls.length'), 2)
+                self.assertEqual(page.evaluate('Object.keys(calls[1].fields)'), ['receipt'])
+                self.assertIn('/read/', page.url)
+                page.close()
+        page = self.render('read')
+        page.evaluate('(body)=>responses.push({body},{holdBody:true})', self.article_pending('delete'))
+        page.evaluate('void click_btn_delete()')
+        page.wait_for_function('held.length===1')
+        self.assertEqual(page.evaluate('calls.length'), 2)
+        self.assertEqual(page.evaluate('Object.keys(calls[1].fields)'), ['receipt'])
+        page.evaluate('(body)=>held.shift()(body)', self.article_ack('delete'))
+        page.wait_for_url('**/community/')
+
+    def test_article_receipt_denial_role_change_pagehide_and_new_typing(self):
+        for retire in ('deny', 'role', 'pagehide', 'typing'):
+            with self.subTest(retire=retire):
+                page = self.render()
+                page.evaluate('(body)=>responses.push({body},{holdBody:true})', self.article_pending())
+                page.evaluate('window.uploads=0;uploadQueuedFiles=async()=>uploads++;void submit_write().finally(()=>done=true)')
+                page.wait_for_function('held.length===1')
+                if retire == 'role':
+                    page.evaluate("gv_role='revoked'")
+                elif retire == 'pagehide':
+                    page.evaluate("window.dispatchEvent(new PageTransitionEvent('pagehide'))")
+                    self.assertEqual(page.evaluate('communityArticlePendingReceipts.size'), 0)
+                elif retire == 'typing':
+                    page.locator('#txt_title').fill('Late draft retained')
+                body = dict(access_denied=True) if retire == 'deny' else self.article_ack()
+                page.evaluate('(body)=>held.shift()(body)', body)
+                page.wait_for_function('done')
+                self.assertEqual(page.evaluate('uploads'), 0)
+                self.assertEqual(page.evaluate('calls.length'), 2)
+                if retire in ('deny', 'role', 'pagehide'):
+                    self.assertEqual(page.evaluate('communityArticlePendingReceipts.size'), 0)
+                if retire == 'typing':
+                    self.assertEqual(page.locator('#txt_title').input_value(), 'Late draft retained')
+                page.close()
 
     def test_publication_pending_preserves_upload_then_readonly_confirmation(self):
         page = self.render()
@@ -214,43 +335,6 @@ class CommunityActionTests(unittest.TestCase):
         page.wait_for_function('done')
         self.assertTrue(page.evaluate('sessionStorage.length>0'))
         self.assertEqual(page.evaluate('uploads.length'), 1)
-
-    def test_pending_article_wrong_payload_or_rights_never_confirms(self):
-        for changed in [dict(title='old title'), dict(content='old body'), dict(is_secret=1),
-                        dict(category_url='notice'), dict(category_url_sub='other'), dict(check_reader='user')]:
-            with self.subTest(changed=changed):
-                page = self.render()
-                page.evaluate("window.uploads=0;uploadQueuedFiles=async()=>{uploads++;};responses.push({body:{pending:true,uuid:orderID,error:'visibility not confirmed'}})")
-                page.evaluate('(body)=>responses.push({body})', self.pending_detail(**changed))
-                page.evaluate('void submit_write().finally(()=>done=true)')
-                page.wait_for_function('done')
-                self.assertEqual(page.evaluate('uploads'), 0)
-                self.assertEqual(page.evaluate('calls.length'), 2)
-                self.assertEqual(page.locator('#div_button_list button').count(), 0)
-                self.assertTrue(page.evaluate('sessionStorage.length>0'))
-                page.close()
-
-    def test_pending_article_denial_retires_and_never_reposts(self):
-        page = self.render()
-        page.evaluate("responses.push({body:{pending:true,uuid:orderID,error:'visibility not confirmed'}},{status:403,body:{denied:true}});void submit_write().finally(()=>done=true)")
-        page.wait_for_function('done')
-        self.assertIn('현재 계정으로 처리할 수 없습니다', page.locator('#div_main').inner_text())
-        self.assertEqual(page.evaluate('calls.length'), 2)
-        self.assertEqual(page.locator('#txt_title').count(), 0)
-
-    def test_pending_article_pagehide_or_owner_change_ignores_late_read(self):
-        for retire in ["window.dispatchEvent(new PageTransitionEvent('pagehide'))", "gv_username='different-viewer'"]:
-            with self.subTest(retire=retire):
-                page = self.render()
-                page.evaluate("window.uploads=0;uploadQueuedFiles=async()=>{uploads++;};responses.push({body:{pending:true,uuid:orderID,error:'visibility not confirmed'}},{holdBody:true});void submit_write().finally(()=>done=true)")
-                page.wait_for_function('held.length===1')
-                page.evaluate(retire)
-                page.evaluate('(body)=>held.shift()(body)', self.pending_detail())
-                page.wait_for_function('done')
-                self.assertEqual(page.evaluate('uploads'), 0)
-                self.assertEqual(page.evaluate('calls.length'), 2)
-                self.assertNotIn('게시 상태를 확인했습니다', page.locator('#div_main').inner_text())
-                page.close()
 
     def test_edit_error_dto_never_grants_edit_form(self):
         page = self.render('edit')
