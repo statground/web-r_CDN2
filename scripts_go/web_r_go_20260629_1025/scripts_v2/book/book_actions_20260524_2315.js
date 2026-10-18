@@ -254,9 +254,10 @@
     bindCheckAll(root);
   }
 
-  var bookRecoveryTimer = null;
-  var bookRecoveryInFlight = false;
-  var bookRecoveryFailures = 0;
+  var bookRecoveryOwner = null;
+  var bookRecoveryPageRetired = false;
+  var bookRecoveryWindow = 45000;
+  var bookRecoveryMaxAttempts = 8;
 
   function bookRecoveryRoot() {
     if (!/^\/book\/?$/.test(window.location.pathname)) {
@@ -266,23 +267,74 @@
     return main && main.querySelector("[data-webr-book-hub][data-webr-book-retry]");
   }
 
-  function scheduleBookRecovery(delay) {
-    if (bookRecoveryTimer !== null || bookRecoveryInFlight || document.hidden || !bookRecoveryRoot()) {
-      return;
-    }
-    bookRecoveryTimer = window.setTimeout(runBookRecovery, delay);
+  function bookRecoveryCurrent(owner) {
+    return owner === bookRecoveryOwner && !owner.stopped && !bookRecoveryPageRetired &&
+      owner.route === window.location.pathname + window.location.search && owner.root === bookRecoveryRoot();
   }
 
-  function runBookRecovery() {
-    bookRecoveryTimer = null;
-    if (bookRecoveryInFlight || document.hidden || !bookRecoveryRoot()) {
+  function stopBookRecovery(owner, showStatus) {
+    if (!owner) return;
+    owner.stopped = true;
+    owner.generation += 1;
+    window.clearTimeout(owner.timer);
+    window.clearTimeout(owner.deadline);
+    owner.timer = null;
+    if (owner.request) owner.request.cancel();
+    if (showStatus && owner.root.isConnected && owner.route === window.location.pathname + window.location.search) {
+      owner.root.setAttribute("aria-busy", "false");
+      owner.root.setAttribute("data-webr-book-recovery-state", "stopped");
+      var status = owner.root.querySelector('[role="status"]');
+      if (status) status.textContent = "R 도서 목록을 현재 확인할 수 없습니다.";
+    }
+  }
+
+  function scheduleBookRecovery(delay) {
+    var root = bookRecoveryRoot();
+    if (bookRecoveryPageRetired || document.hidden || !root) {
+      if (!root) stopBookRecovery(bookRecoveryOwner, false);
       return;
     }
     var route = window.location.pathname + window.location.search;
+    if (!bookRecoveryOwner || bookRecoveryOwner.root !== root || bookRecoveryOwner.route !== route) {
+      stopBookRecovery(bookRecoveryOwner, false);
+      var owner = { root: root, route: route, started: Date.now(), attempts: 0, generation: 0,
+        stopped: false, request: null, timer: null, deadline: null };
+      bookRecoveryOwner = owner;
+      owner.deadline = window.setTimeout(function () { stopBookRecovery(owner, true); }, bookRecoveryWindow);
+    }
+    var current = bookRecoveryOwner;
+    if (current.stopped || current.timer !== null || current.request) return;
+    var remaining = bookRecoveryWindow - (Date.now() - current.started);
+    if (remaining <= 0 || current.attempts >= bookRecoveryMaxAttempts) {
+      stopBookRecovery(current, true);
+      return;
+    }
+    current.timer = window.setTimeout(function () { runBookRecovery(current); }, Math.min(delay, remaining));
+  }
+
+  function runBookRecovery(owner) {
+    owner.timer = null;
+    if (!bookRecoveryCurrent(owner) || owner.request || document.hidden) {
+      return;
+    }
+    var remaining = bookRecoveryWindow - (Date.now() - owner.started);
+    if (remaining <= 0 || owner.attempts >= bookRecoveryMaxAttempts) {
+      stopBookRecovery(owner, true);
+      return;
+    }
     var url = new URL(window.location.href);
     url.searchParams.set("fragment", "content");
-    bookRecoveryInFlight = true;
     var controller = typeof AbortController === "function" ? new AbortController() : null;
+    var request = { generation: owner.generation, timeout: null, cancel: null };
+    var timeout = new Promise(function (_resolve, reject) {
+      request.cancel = function () {
+        if (controller) controller.abort();
+        reject(new Error("Book fragment timed out or retired"));
+      };
+      request.timeout = window.setTimeout(request.cancel, Math.min(45000, remaining));
+    });
+    owner.request = request;
+    owner.attempts += 1;
     var options = {
       credentials: "same-origin",
       cache: "no-store",
@@ -291,23 +343,18 @@
     if (controller) {
       options.signal = controller.signal;
     }
-    var timeoutID;
-    var content = window.fetch(url.toString(), options).then(function (response) {
+    var content = Promise.resolve().then(function () {
+      return window.fetch(url.toString(), options);
+    }).then(function (response) {
       if (!response.ok) {
-        throw new Error("Book fragment unavailable");
+        var error = new Error("Book fragment unavailable");
+        error.terminal = response.status >= 400 && response.status < 500 && response.status !== 429;
+        throw error;
       }
       return response.text();
     });
-    Promise.race([
-      content,
-      new Promise(function (_resolve, reject) {
-        timeoutID = window.setTimeout(function () {
-          if (controller) controller.abort();
-          reject(new Error("Book fragment timed out"));
-        }, 45000);
-      })
-    ]).then(function (html) {
-      if (route !== window.location.pathname + window.location.search || !bookRecoveryRoot()) {
+    Promise.race([content, timeout]).then(function (html) {
+      if (!bookRecoveryCurrent(owner) || document.hidden || request.generation !== owner.generation) {
         return;
       }
       var fragment = new DOMParser().parseFromString(html, "text/html");
@@ -315,30 +362,53 @@
       if (!refreshed || refreshed.hasAttribute("data-webr-book-retry")) {
         throw new Error("Book authority still unavailable");
       }
-      var main = document.getElementById("div_main");
-      main.replaceChildren(refreshed);
-      bookRecoveryFailures = 0;
-      bind(main);
-    }).catch(function () {
-      bookRecoveryFailures += 1;
+      stopBookRecovery(owner, false);
+      owner.root.replaceWith(refreshed);
+      bind(refreshed);
+    }).catch(function (error) {
+      if (bookRecoveryCurrent(owner) && request.generation === owner.generation && error.terminal) {
+        stopBookRecovery(owner, true);
+      }
     }).finally(function () {
-      window.clearTimeout(timeoutID);
-      bookRecoveryInFlight = false;
-      if (bookRecoveryRoot()) {
-        scheduleBookRecovery(Math.min(15000, 2000 * Math.pow(2, Math.min(bookRecoveryFailures, 3))));
+      window.clearTimeout(request.timeout);
+      if (owner.request === request) owner.request = null;
+      if (!bookRecoveryCurrent(owner)) return;
+      if (owner.attempts >= bookRecoveryMaxAttempts || Date.now() - owner.started >= bookRecoveryWindow) {
+        stopBookRecovery(owner, true);
+      } else {
+        scheduleBookRecovery(Math.min(15000, 2000 * Math.pow(2, Math.min(owner.attempts, 3))));
       }
     });
   }
 
   document.addEventListener("visibilitychange", function () {
     if (document.hidden) {
-      if (bookRecoveryTimer !== null) {
-        window.clearTimeout(bookRecoveryTimer);
-        bookRecoveryTimer = null;
+      var owner = bookRecoveryOwner;
+      if (owner) {
+        window.clearTimeout(owner.timer);
+        owner.timer = null;
+        owner.generation += 1;
+        if (owner.request) owner.request.cancel();
       }
     } else {
       scheduleBookRecovery(0);
     }
+  });
+
+  window.addEventListener("pagehide", function () {
+    bookRecoveryPageRetired = true;
+    stopBookRecovery(bookRecoveryOwner, false);
+  });
+  window.addEventListener("pageshow", function (event) {
+    if (!event.persisted) return;
+    bookRecoveryPageRetired = false;
+    bookRecoveryOwner = null;
+    scheduleBookRecovery(2000);
+  });
+  window.addEventListener("popstate", function () {
+    stopBookRecovery(bookRecoveryOwner, false);
+    bookRecoveryOwner = null;
+    scheduleBookRecovery(2000);
   });
 
   if (document.readyState === "loading") {
