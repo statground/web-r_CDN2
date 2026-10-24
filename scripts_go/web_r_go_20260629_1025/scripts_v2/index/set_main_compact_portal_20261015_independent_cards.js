@@ -1101,8 +1101,10 @@
     cancelActivityTimeTimer();
     cancelSummaryRecoveryWork();
   });
-  window.addEventListener("pageshow", function resumeSummaryRecovery() {
+  window.addEventListener("pageshow", function resumeSummaryRecovery(event) {
+    var restoring = summaryRecoverySuspended || event.persisted === true;
     summaryRecoverySuspended = false;
+    if (!restoring) return;
     Object.values(cardStates).forEach(function revalidateCard(state) { state.wanted = true; });
     updateActivityTimes();
     scheduleActivityTimes();
